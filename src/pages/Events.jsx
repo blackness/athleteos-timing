@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
@@ -7,11 +7,12 @@ function formatDate(str) {
   return new Date(str).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function formatDuration(ms) {
-  if (!ms) return null
-  const m = Math.floor(ms / 60000)
+function fmtClock(ms) {
+  if (!ms || ms < 0) return '0:00:00'
+  const h = Math.floor(ms / 3600000)
+  const m = Math.floor((ms % 3600000) / 60000)
   const s = Math.floor((ms % 60000) / 1000)
-  return `${m}:${String(s).padStart(2,'0')}`
+  return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
 
 const SPORT_OPTIONS = ['Running', 'Cycling', 'Swimming', 'Triathlon', 'Duathlon', 'Cross Country', 'Track & Field', 'Other']
@@ -25,11 +26,18 @@ export default function Events() {
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [now, setNow] = useState(Date.now())
   const [form, setForm] = useState({
     name: '', sport: 'Running', distance: '5K',
     custom_distance: '', date: new Date().toISOString().split('T')[0],
     location: '', notes: ''
   })
+
+  // Tick every second to update live clocks on active races
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
 
   useEffect(() => { loadEvents() }, [])
 
@@ -37,7 +45,7 @@ export default function Events() {
     setLoading(true)
     const { data } = await supabase
       .from('race_events')
-      .select('*, race_finishes(count)')
+      .select('*, race_finishes(count), race_started_at')
       .eq('user_id', user.id)
       .order('event_date', { ascending: false })
     setEvents(data ?? [])
@@ -66,7 +74,7 @@ export default function Events() {
     if (err) { setError(err.message); return }
     setShowModal(false)
     resetForm()
-    navigate(`/finish/${data.id}`)
+    navigate(`/race/${data.id}/setup`)
   }
 
   function resetForm() {
@@ -144,6 +152,9 @@ export default function Events() {
           events.map(event => {
             const finisherCount = event.race_finishes?.[0]?.count ?? 0
             const isActive = event.status === 'active'
+            const raceElapsed = isActive && event.race_started_at
+              ? now - new Date(event.race_started_at).getTime()
+              : null
             return (
               <div key={event.id} style={{
                 background: '#0e1318', borderRadius: 14,
@@ -173,7 +184,7 @@ export default function Events() {
                       <div style={{ color: '#f0f4f8', fontSize: 18, fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.3, lineHeight: 1.2 }}>
                         {event.name}
                       </div>
-                      <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                         <span style={{ color: '#4a5568', fontSize: 12 }}>{formatDate(event.event_date)}</span>
                         {event.location && <span style={{ color: '#4a5568', fontSize: 12 }}>📍 {event.location}</span>}
                         <span style={{ color: '#4a5568', fontSize: 12 }}>
@@ -181,15 +192,24 @@ export default function Events() {
                         </span>
                       </div>
                     </div>
+                    {/* Live clock */}
+                    {raceElapsed != null && (
+                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                        <div style={{ fontSize: 26, fontWeight: 900, color: '#22c55e', fontVariantNumeric: 'tabular-nums', fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: -1, lineHeight: 1 }}>
+                          {fmtClock(raceElapsed)}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#374151', textTransform: 'uppercase', letterSpacing: 1, marginTop: 2 }}>elapsed</div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Action buttons */}
                 <div style={{ display: 'flex', borderTop: '1px solid #1e2730' }}>
                   <button
-                    onClick={() => navigate(`/finish/${event.id}`)}
+                    onClick={() => navigate(isActive ? `/race/${event.id}/time` : `/race/${event.id}/setup`)}
                     style={{
-                      flex: 2, padding: '12px 0',
+                      flex: 1, padding: '12px 0',
                       background: isActive ? 'rgba(34,197,94,0.08)' : 'transparent',
                       border: 'none', cursor: 'pointer',
                       fontFamily: "'Barlow Condensed', sans-serif",
@@ -199,10 +219,25 @@ export default function Events() {
                       borderRight: '1px solid #1e2730'
                     }}
                   >
-                    {isActive ? '▶ Resume' : '▶ Start Timing'}
+                    {isActive ? '▶ Resume Race' : '+ Setup'}
                   </button>
                   <button
-                    onClick={() => navigate(`/assign/${event.id}`)}
+                    onClick={() => navigate(`/cv/${event.id}`)}
+                    style={{
+                      flex: 1, padding: '12px 0',
+                      background: 'rgba(16,185,129,0.06)',
+                      border: 'none', cursor: 'pointer',
+                      fontFamily: "'Barlow Condensed', sans-serif",
+                      fontSize: 13, fontWeight: 800, letterSpacing: 1.5,
+                      textTransform: 'uppercase',
+                      color: '#10b981',
+                      borderRight: '1px solid #1e2730'
+                    }}
+                  >
+                    📷 CV Timing
+                  </button>
+                  <button
+                    onClick={() => navigate(`/race/${event.id}/assign`)}
                     style={{
                       flex: 1, padding: '12px 0',
                       background: 'transparent', border: 'none', cursor: 'pointer',
