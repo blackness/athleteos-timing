@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getRaceElapsedMs } from '../lib/raceClock'
 
 const F = "'Barlow Condensed', sans-serif"
 const FB = "'Barlow', sans-serif"
@@ -160,14 +161,24 @@ export default function CheckpointTimer() {
 
   useEffect(() => {
     clearInterval(tickRef.current)
-    if (!raceStart) return
 
-    tickRef.current = setInterval(() => {
-      setElapsed(Date.now() - raceStart)
-    }, 50)
+    if (!event?.race_started_at) {
+      setElapsed(0)
+      return
+    }
+
+    const updateElapsed = () => {
+      setElapsed(getRaceElapsedMs(event, Date.now()) ?? 0)
+    }
+
+    updateElapsed()
+
+    if (event?.status === 'active') {
+      tickRef.current = setInterval(updateElapsed, 50)
+    }
 
     return () => clearInterval(tickRef.current)
-  }, [raceStart])
+  }, [event?.race_started_at, event?.race_finished_at, event?.status])
 
   useEffect(() => {
     const bib = bibInput.trim()
@@ -266,7 +277,7 @@ export default function CheckpointTimer() {
   }, [bibInput, laps])
 
   const captureLap = useCallback(async () => {
-    if (!canCapture || savingLap) return
+    if (!canCapture || savingLap || !raceStart) return
 
     setSavingLap(true)
     const now = new Date()
@@ -424,7 +435,7 @@ export default function CheckpointTimer() {
         </div>
 
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1, color: raceStart ? '#fff' : '#374151', fontVariantNumeric: 'tabular-nums', fontFamily: F, lineHeight: 1 }}>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1, color: event?.race_started_at ? '#fff' : '#374151', fontVariantNumeric: 'tabular-nums', fontFamily: F, lineHeight: 1 }}>
             {fmt(elapsed)}
           </div>
           <div style={{ fontSize: 9, color: syncing ? '#f59e0b' : '#374151', letterSpacing: 1, textTransform: 'uppercase' }}>
@@ -471,7 +482,7 @@ export default function CheckpointTimer() {
           }}
         >
           <div style={{ padding: '20px 20px 8px', textAlign: 'center' }}>
-            <div style={{ fontSize: 56, fontWeight: 900, letterSpacing: -3, color: raceStart ? '#fff' : '#374151', fontVariantNumeric: 'tabular-nums', fontFamily: F, lineHeight: 1 }}>
+            <div style={{ fontSize: 56, fontWeight: 900, letterSpacing: -3, color: event?.race_started_at ? '#fff' : '#374151', fontVariantNumeric: 'tabular-nums', fontFamily: F, lineHeight: 1 }}>
               {fmt(elapsed)}
             </div>
             <div style={{ fontSize: 11, color: '#374151', marginTop: 4 }}>

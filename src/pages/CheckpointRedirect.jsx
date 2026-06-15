@@ -13,28 +13,25 @@ export default function CheckpointRedirect() {
         return
       }
 
+      const normalizedCode = code.trim().toUpperCase()
       let data = null
 
-      // First try short_code
-      {
-        const res = await supabase
-          .from('race_checkpoints')
-          .select('id, event_id')
-          .eq('short_code', code)
-          .single()
+      const byShort = await supabase
+        .from('race_checkpoints')
+        .select('id, event_id, short_code')
+        .ilike('short_code', normalizedCode)
+        .maybeSingle()
 
-        if (res.data) data = res.data
-      }
+      if (byShort.data) data = byShort.data
 
-      // Fallback: try direct checkpoint UUID
       if (!data) {
-        const res = await supabase
+        const byId = await supabase
           .from('race_checkpoints')
           .select('id, event_id')
           .eq('id', code)
-          .single()
+          .maybeSingle()
 
-        if (res.data) data = res.data
+        if (byId.data) data = byId.data
       }
 
       if (data?.event_id && data?.id) {
@@ -48,18 +45,7 @@ export default function CheckpointRedirect() {
   }, [code, navigate])
 
   return (
-    <div
-      style={{
-        minHeight: '100dvh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#080b0f',
-        color: '#4a5568',
-        fontFamily: "'Barlow', sans-serif",
-        fontSize: 14,
-      }}
-    >
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       Loading checkpoint…
     </div>
   )

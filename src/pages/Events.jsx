@@ -1,62 +1,128 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
+import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
 
 function formatDate(str) {
-  return new Date(str).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(str).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  })
 }
 
-function fmtClock(ms) {
-  if (!ms || ms < 0) return '0:00:00'
-  const h = Math.floor(ms / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  const s = Math.floor((ms % 60000) / 1000)
-  return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
-}
+const SPORT_OPTIONS = [
+  'Running',
+  'Cycling',
+  'Swimming',
+  'Triathlon',
+  'Duathlon',
+  'Cross Country',
+  'Track & Field',
+  'Other'
+]
 
-const SPORT_OPTIONS = ['Running', 'Cycling', 'Swimming', 'Triathlon', 'Duathlon', 'Cross Country', 'Track & Field', 'Other']
-const DISTANCE_OPTIONS = ['400m', '800m', '1500m', '1 Mile', '3000m', '5K', '8K', '10K', '15K', 'Half Marathon', 'Marathon', '40K TT', 'Sprint Tri', 'Olympic Tri', '70.3', 'Custom']
+const DISTANCE_OPTIONS = [
+  '400m',
+  '800m',
+  '1500m',
+  '1 Mile',
+  '3000m',
+  '5K',
+  '8K',
+  '10K',
+  '15K',
+  'Half Marathon',
+  'Marathon',
+  '40K TT',
+  'Sprint Tri',
+  'Olympic Tri',
+  '70.3',
+  'Custom'
+]
+
+function getPrimaryAction(event) {
+  if (event.status === 'active') {
+    return {
+      label: '▶ Resume Race',
+      path: `/race/${event.id}/monitor`,
+      color: '#22c55e',
+      background: 'rgba(34,197,94,0.08)',
+    }
+  }
+
+  if (event.status === 'finished') {
+    return {
+      label: 'View Race',
+      path: `/race/${event.id}/monitor`,
+      color: '#94a3b8',
+      background: 'rgba(148,163,184,0.06)',
+    }
+  }
+
+  return {
+    label: '+ Setup',
+    path: `/race/${event.id}/setup`,
+    color: '#f97316',
+    background: 'transparent',
+  }
+}
 
 export default function Events() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
+
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [now, setNow] = useState(Date.now())
+
   const [form, setForm] = useState({
-    name: '', sport: 'Running', distance: '5K',
-    custom_distance: '', date: new Date().toISOString().split('T')[0],
-    location: '', notes: ''
+    name: '',
+    sport: 'Running',
+    distance: '5K',
+    custom_distance: '',
+    date: new Date().toISOString().split('T')[0],
+    location: '',
+    notes: ''
   })
 
-  // Tick every second to update live clocks on active races
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
 
-  useEffect(() => { loadEvents() }, [])
+  useEffect(() => {
+    loadEvents()
+  }, [])
 
   async function loadEvents() {
     setLoading(true)
+
     const { data } = await supabase
       .from('race_events')
-      .select('*, race_finishes(count), race_started_at')
+      .select('*, race_finishes(count), race_started_at, race_finished_at')
       .eq('user_id', user.id)
       .order('event_date', { ascending: false })
+
     setEvents(data ?? [])
     setLoading(false)
   }
 
   async function createEvent() {
-    if (!form.name.trim()) { setError('Event name is required'); return }
+    if (!form.name.trim()) {
+      setError('Event name is required')
+      return
+    }
+
     setSaving(true)
     setError(null)
+
     const distance = form.distance === 'Custom' ? form.custom_distance : form.distance
+
     const { data, error: err } = await supabase
       .from('race_events')
       .insert({
@@ -70,15 +136,29 @@ export default function Events() {
       })
       .select()
       .single()
+
     setSaving(false)
-    if (err) { setError(err.message); return }
+
+    if (err) {
+      setError(err.message)
+      return
+    }
+
     setShowModal(false)
     resetForm()
     navigate(`/race/${data.id}/setup`)
   }
 
   function resetForm() {
-    setForm({ name: '', sport: 'Running', distance: '5K', custom_distance: '', date: new Date().toISOString().split('T')[0], location: '', notes: '' })
+    setForm({
+      name: '',
+      sport: 'Running',
+      distance: '5K',
+      custom_distance: '',
+      date: new Date().toISOString().split('T')[0],
+      location: '',
+      notes: ''
+    })
     setError(null)
   }
 
@@ -87,61 +167,104 @@ export default function Events() {
     navigate('/login')
   }
 
-  const statusColor = { active: '#22c55e', completed: '#6b7280', draft: '#f97316' }
-  const statusLabel = { active: 'Live', completed: 'Done', draft: 'Draft' }
-
   return (
     <div style={{ minHeight: '100dvh', background: '#080b0f', fontFamily: "'Barlow', sans-serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
-      {/* Header */}
-      <div style={{
-        padding: '20px 20px 16px',
-        background: 'linear-gradient(180deg, #0d1117 0%, #080b0f 100%)',
-        borderBottom: '1px solid #1e2730',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-      }}>
+      <div
+        style={{
+          padding: '20px 20px 16px',
+          background: 'linear-gradient(180deg, #0d1117 0%, #080b0f 100%)',
+          borderBottom: '1px solid #1e2730',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}
+      >
         <div>
-          <div style={{ fontSize: 11, color: '#4a5568', letterSpacing: 3, textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700 }}>
+          <div
+            style={{
+              fontSize: 11,
+              color: '#4a5568',
+              letterSpacing: 3,
+              textTransform: 'uppercase',
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontWeight: 700
+            }}
+          >
             AthleteOS
           </div>
-          <h1 style={{ color: '#f0f4f8', fontSize: 26, fontWeight: 900, margin: '2px 0 0', fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: -0.5 }}>
+          <h1
+            style={{
+              color: '#f0f4f8',
+              fontSize: 26,
+              fontWeight: 900,
+              margin: '2px 0 0',
+              fontFamily: "'Barlow Condensed', sans-serif",
+              letterSpacing: -0.5
+            }}
+          >
             Race Timing
           </h1>
         </div>
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: '#4a5568' }}>{profile?.full_name?.split(' ')[0]}</span>
-          <button onClick={handleSignOut} style={{
-            background: 'none', border: '1px solid #1e2730', borderRadius: 6,
-            color: '#4a5568', fontSize: 12, fontWeight: 600, padding: '5px 12px',
-            cursor: 'pointer', fontFamily: "'Barlow Condensed', sans-serif', letterSpacing: 1, textTransform: 'uppercase'"
-          }}>Sign Out</button>
+          <span style={{ fontSize: 12, color: '#4a5568' }}>
+            {profile?.full_name?.split(' ')[0]}
+          </span>
+          <button
+            onClick={handleSignOut}
+            style={{
+              background: 'none',
+              border: '1px solid #1e2730',
+              borderRadius: 6,
+              color: '#4a5568',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '5px 12px',
+              cursor: 'pointer',
+              fontFamily: "'Barlow Condensed', sans-serif",
+              letterSpacing: 1,
+              textTransform: 'uppercase'
+            }}
+          >
+            Sign Out
+          </button>
         </div>
       </div>
 
-      {/* New Event CTA */}
       <div style={{ padding: '16px 20px 0' }}>
         <button
           onClick={() => setShowModal(true)}
           style={{
-            width: '100%', padding: '16px', borderRadius: 12,
+            width: '100%',
+            padding: '16px',
+            borderRadius: 12,
             background: 'linear-gradient(135deg, #16a34a, #15803d)',
-            border: 'none', color: '#fff', cursor: 'pointer',
+            border: 'none',
+            color: '#fff',
+            cursor: 'pointer',
             fontFamily: "'Barlow Condensed', sans-serif",
-            fontSize: 18, fontWeight: 900, letterSpacing: 2,
+            fontSize: 18,
+            fontWeight: 900,
+            letterSpacing: 2,
             textTransform: 'uppercase',
             boxShadow: '0 4px 24px rgba(22,163,74,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10
           }}
         >
           <span style={{ fontSize: 20 }}>+</span> New Event
         </button>
       </div>
 
-      {/* Events list */}
       <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading ? (
-          <div style={{ color: '#4a5568', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>Loading...</div>
+          <div style={{ color: '#4a5568', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>
+            Loading...
+          </div>
         ) : events.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 0' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🏁</div>
@@ -152,111 +275,258 @@ export default function Events() {
           events.map(event => {
             const finisherCount = event.race_finishes?.[0]?.count ?? 0
             const isActive = event.status === 'active'
-            const raceElapsed = isActive && event.race_started_at
-              ? now - new Date(event.race_started_at).getTime()
-              : null
+            const isFinished = event.status === 'finished'
+            const raceElapsed = getRaceElapsedMs(event, now)
+            const primaryAction = getPrimaryAction(event)
+
             return (
-              <div key={event.id} style={{
-                background: '#0e1318', borderRadius: 14,
-                border: `1.5px solid ${isActive ? 'rgba(34,197,94,0.3)' : '#1e2730'}`,
-                overflow: 'hidden',
-                boxShadow: isActive ? '0 0 20px rgba(34,197,94,0.08)' : 'none'
-              }}>
+              <div
+                key={event.id}
+                style={{
+                  background: '#0e1318',
+                  borderRadius: 14,
+                  border: `1.5px solid ${
+                    isActive
+                      ? 'rgba(34,197,94,0.3)'
+                      : isFinished
+                        ? 'rgba(148,163,184,0.18)'
+                        : '#1e2730'
+                  }`,
+                  overflow: 'hidden',
+                  boxShadow: isActive ? '0 0 20px rgba(34,197,94,0.08)' : 'none'
+                }}
+              >
                 <div style={{ padding: '16px 16px 12px' }}>
-                  {/* Top row */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      marginBottom: 8
+                    }}
+                  >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          marginBottom: 4,
+                          flexWrap: 'wrap'
+                        }}
+                      >
                         {isActive && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', animation: 'pulse 1.5s infinite' }} />
-                            <span style={{ fontSize: 10, fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, color: '#22c55e', letterSpacing: 2, textTransform: 'uppercase' }}>Live</span>
+                            <div
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: '50%',
+                                background: '#22c55e',
+                                animation: 'pulse 1.5s infinite'
+                              }}
+                            />
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontFamily: "'Barlow Condensed', sans-serif",
+                                fontWeight: 700,
+                                color: '#22c55e',
+                                letterSpacing: 2,
+                                textTransform: 'uppercase'
+                              }}
+                            >
+                              Live
+                            </span>
                           </div>
                         )}
-                        <span style={{
-                          fontSize: 10, fontFamily: "'Barlow Condensed', sans-serif",
-                          fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
-                          color: '#4a5568'
-                        }}>
+
+                        {isFinished && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontFamily: "'Barlow Condensed', sans-serif",
+                              fontWeight: 700,
+                              color: '#94a3b8',
+                              letterSpacing: 2,
+                              textTransform: 'uppercase'
+                            }}
+                          >
+                            Finished
+                          </span>
+                        )}
+
+                        {!isActive && !isFinished && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontFamily: "'Barlow Condensed', sans-serif",
+                              fontWeight: 700,
+                              color: '#f97316',
+                              letterSpacing: 2,
+                              textTransform: 'uppercase'
+                            }}
+                          >
+                            Draft
+                          </span>
+                        )}
+
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontFamily: "'Barlow Condensed', sans-serif",
+                            fontWeight: 700,
+                            letterSpacing: 2,
+                            textTransform: 'uppercase',
+                            color: '#4a5568'
+                          }}
+                        >
                           {event.sport} · {event.distance}
                         </span>
                       </div>
-                      <div style={{ color: '#f0f4f8', fontSize: 18, fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: 0.3, lineHeight: 1.2 }}>
+
+                      <div
+                        style={{
+                          color: '#f0f4f8',
+                          fontSize: 18,
+                          fontWeight: 700,
+                          fontFamily: "'Barlow Condensed', sans-serif",
+                          letterSpacing: 0.3,
+                          lineHeight: 1.2
+                        }}
+                      >
                         {event.name}
                       </div>
-                      <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <span style={{ color: '#4a5568', fontSize: 12 }}>{formatDate(event.event_date)}</span>
-                        {event.location && <span style={{ color: '#4a5568', fontSize: 12 }}>📍 {event.location}</span>}
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 12,
+                          marginTop: 6,
+                          flexWrap: 'wrap',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <span style={{ color: '#4a5568', fontSize: 12 }}>
+                          {formatDate(event.event_date)}
+                        </span>
+                        {event.location && (
+                          <span style={{ color: '#4a5568', fontSize: 12 }}>
+                            📍 {event.location}
+                          </span>
+                        )}
                         <span style={{ color: '#4a5568', fontSize: 12 }}>
                           {finisherCount} finisher{finisherCount !== 1 ? 's' : ''}
                         </span>
                       </div>
                     </div>
-                    {/* Live clock */}
+
                     {raceElapsed != null && (
                       <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-                        <div style={{ fontSize: 26, fontWeight: 900, color: '#22c55e', fontVariantNumeric: 'tabular-nums', fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: -1, lineHeight: 1 }}>
-                          {fmtClock(raceElapsed)}
+                        <div
+                          style={{
+                            fontSize: 26,
+                            fontWeight: 900,
+                            color: isActive ? '#22c55e' : '#94a3b8',
+                            fontVariantNumeric: 'tabular-nums',
+                            fontFamily: "'Barlow Condensed', sans-serif",
+                            letterSpacing: -1,
+                            lineHeight: 1
+                          }}
+                        >
+                          {formatRaceClock(raceElapsed)}
                         </div>
-                        <div style={{ fontSize: 9, color: '#374151', textTransform: 'uppercase', letterSpacing: 1, marginTop: 2 }}>elapsed</div>
+                        <div
+                          style={{
+                            fontSize: 9,
+                            color: '#374151',
+                            textTransform: 'uppercase',
+                            letterSpacing: 1,
+                            marginTop: 2
+                          }}
+                        >
+                          elapsed
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Action buttons */}
                 <div style={{ display: 'flex', borderTop: '1px solid #1e2730' }}>
                   <button
-                    onClick={() => navigate(isActive ? `/race/${event.id}/time` : `/race/${event.id}/setup`)}
+                    onClick={() => navigate(primaryAction.path)}
                     style={{
-                      flex: 1, padding: '12px 0',
-                      background: isActive ? 'rgba(34,197,94,0.08)' : 'transparent',
-                      border: 'none', cursor: 'pointer',
+                      flex: 1,
+                      padding: '12px 0',
+                      background: primaryAction.background,
+                      border: 'none',
+                      cursor: 'pointer',
                       fontFamily: "'Barlow Condensed', sans-serif",
-                      fontSize: 13, fontWeight: 800, letterSpacing: 1.5,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      letterSpacing: 1.5,
                       textTransform: 'uppercase',
-                      color: isActive ? '#22c55e' : '#f97316',
+                      color: primaryAction.color,
                       borderRight: '1px solid #1e2730'
                     }}
                   >
-                    {isActive ? '▶ Resume Race' : '+ Setup'}
+                    {primaryAction.label}
                   </button>
+
                   <button
-                    onClick={() => navigate(`/cv/${event.id}`)}
+                    onClick={() => navigate(`/race/${event.id}/checkpoints`)}
                     style={{
-                      flex: 1, padding: '12px 0',
-                      background: 'rgba(16,185,129,0.06)',
-                      border: 'none', cursor: 'pointer',
+                      flex: 1,
+                      padding: '12px 0',
+                      background: 'rgba(249,115,22,0.06)',
+                      border: 'none',
+                      cursor: 'pointer',
                       fontFamily: "'Barlow Condensed', sans-serif",
-                      fontSize: 13, fontWeight: 800, letterSpacing: 1.5,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      letterSpacing: 1.5,
                       textTransform: 'uppercase',
-                      color: '#10b981',
+                      color: '#f97316',
                       borderRight: '1px solid #1e2730'
                     }}
                   >
-                    📷 CV Timing
+                    Checkpoints
                   </button>
+
                   <button
-                    onClick={() => navigate(`/race/${event.id}/assign`)}
+                    onClick={() => navigate(`/race/${event.id}/monitor`)}
                     style={{
-                      flex: 1, padding: '12px 0',
-                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      flex: 1,
+                      padding: '12px 0',
+                      background: 'rgba(59,130,246,0.06)',
+                      border: 'none',
+                      cursor: 'pointer',
                       fontFamily: "'Barlow Condensed', sans-serif",
-                      fontSize: 13, fontWeight: 700, letterSpacing: 1,
-                      textTransform: 'uppercase', color: '#4a5568',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      letterSpacing: 1.5,
+                      textTransform: 'uppercase',
+                      color: '#3b82f6',
                       borderRight: '1px solid #1e2730'
                     }}
                   >
-                    Assign
+                    Monitor
                   </button>
+
                   <button
                     onClick={() => navigate(`/results/${event.id}`)}
                     style={{
-                      flex: 1, padding: '12px 0',
-                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      flex: 1,
+                      padding: '12px 0',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
                       fontFamily: "'Barlow Condensed', sans-serif",
-                      fontSize: 13, fontWeight: 700, letterSpacing: 1,
-                      textTransform: 'uppercase', color: '#4a5568'
+                      fontSize: 13,
+                      fontWeight: 700,
+                      letterSpacing: 1,
+                      textTransform: 'uppercase',
+                      color: '#4a5568'
                     }}
                   >
                     Results
@@ -268,40 +538,71 @@ export default function Events() {
         )}
       </div>
 
-      {/* New Event Modal */}
       {showModal && (
         <div
-          onClick={e => { if (e.target === e.currentTarget) { setShowModal(false); resetForm() } }}
+          onClick={e => {
+            if (e.target === e.currentTarget) {
+              setShowModal(false)
+              resetForm()
+            }
+          }}
           style={{
-            position: 'fixed', inset: 0, zIndex: 100,
-            background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'rgba(0,0,0,0.8)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
             padding: '0'
           }}
         >
-          <div style={{
-            background: '#0e1318', borderRadius: '20px 20px 0 0',
-            border: '1px solid #1e2730', borderBottom: 'none',
-            width: '100%', maxWidth: 560,
-            padding: '24px 24px 40px',
-            maxHeight: '90dvh', overflowY: 'auto'
-          }}>
-            {/* Handle */}
+          <div
+            style={{
+              background: '#0e1318',
+              borderRadius: '20px 20px 0 0',
+              border: '1px solid #1e2730',
+              borderBottom: 'none',
+              width: '100%',
+              maxWidth: 560,
+              padding: '24px 24px 40px',
+              maxHeight: '90dvh',
+              overflowY: 'auto'
+            }}
+          >
             <div style={{ width: 36, height: 4, borderRadius: 2, background: '#1e2730', margin: '0 auto 20px' }} />
 
-            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 900, color: '#f0f4f8', marginBottom: 20, letterSpacing: 0.5 }}>
+            <div
+              style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: 22,
+                fontWeight: 900,
+                color: '#f0f4f8',
+                marginBottom: 20,
+                letterSpacing: 0.5
+              }}
+            >
               New Event
             </div>
 
             {error && (
-              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
+              <div
+                style={{
+                  background: 'rgba(239,68,68,0.1)',
+                  border: '1px solid rgba(239,68,68,0.3)',
+                  color: '#f87171',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  fontSize: 13,
+                  marginBottom: 16
+                }}
+              >
                 ⚠️ {error}
               </div>
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-              {/* Name */}
               <div>
                 <label style={{ fontSize: 11, color: '#4a5568', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', display: 'block', marginBottom: 6, fontFamily: "'Barlow Condensed', sans-serif" }}>
                   Event Name *
@@ -314,7 +615,6 @@ export default function Events() {
                 />
               </div>
 
-              {/* Sport + Distance */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 11, color: '#4a5568', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', display: 'block', marginBottom: 6, fontFamily: "'Barlow Condensed', sans-serif" }}>Sport</label>
@@ -326,6 +626,7 @@ export default function Events() {
                     {SPORT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
+
                 <div>
                   <label style={{ fontSize: 11, color: '#4a5568', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', display: 'block', marginBottom: 6, fontFamily: "'Barlow Condensed', sans-serif" }}>Distance</label>
                   <select
@@ -338,7 +639,6 @@ export default function Events() {
                 </div>
               </div>
 
-              {/* Custom distance */}
               {form.distance === 'Custom' && (
                 <div>
                   <label style={{ fontSize: 11, color: '#4a5568', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', display: 'block', marginBottom: 6, fontFamily: "'Barlow Condensed', sans-serif" }}>Custom Distance</label>
@@ -351,7 +651,6 @@ export default function Events() {
                 </div>
               )}
 
-              {/* Date + Location */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 11, color: '#4a5568', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', display: 'block', marginBottom: 6, fontFamily: "'Barlow Condensed', sans-serif" }}>Date</label>
@@ -362,6 +661,7 @@ export default function Events() {
                     style={{ width: '100%', padding: '11px 14px', background: '#080b0f', border: '1.5px solid #1e2730', borderRadius: 8, color: '#f0f4f8', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: "'Barlow', sans-serif", colorScheme: 'dark' }}
                   />
                 </div>
+
                 <div>
                   <label style={{ fontSize: 11, color: '#4a5568', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', display: 'block', marginBottom: 6, fontFamily: "'Barlow Condensed', sans-serif" }}>Location</label>
                   <input
@@ -373,7 +673,6 @@ export default function Events() {
                 </div>
               </div>
 
-              {/* Notes */}
               <div>
                 <label style={{ fontSize: 11, color: '#4a5568', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', display: 'block', marginBottom: 6, fontFamily: "'Barlow Condensed', sans-serif" }}>Notes</label>
                 <textarea
@@ -389,16 +688,23 @@ export default function Events() {
                 onClick={createEvent}
                 disabled={saving}
                 style={{
-                  width: '100%', padding: '15px', borderRadius: 10,
+                  width: '100%',
+                  padding: '15px',
+                  borderRadius: 10,
                   background: saving ? '#1e2730' : 'linear-gradient(135deg, #16a34a, #15803d)',
-                  border: 'none', color: '#fff', cursor: saving ? 'not-allowed' : 'pointer',
+                  border: 'none',
+                  color: '#fff',
+                  cursor: saving ? 'not-allowed' : 'pointer',
                   fontFamily: "'Barlow Condensed', sans-serif",
-                  fontSize: 16, fontWeight: 900, letterSpacing: 2, textTransform: 'uppercase',
+                  fontSize: 16,
+                  fontWeight: 900,
+                  letterSpacing: 2,
+                  textTransform: 'uppercase',
                   boxShadow: saving ? 'none' : '0 4px 20px rgba(22,163,74,0.3)',
                   marginTop: 4
                 }}
               >
-                {saving ? 'Creating...' : 'Create & Go to Finish Line →'}
+                {saving ? 'Creating...' : 'Create & Setup Race →'}
               </button>
             </div>
           </div>
@@ -409,7 +715,7 @@ export default function Events() {
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         input::placeholder { color: #2d3748; }
         input:focus, textarea:focus, select:focus { border-color: #f97316 !important; }
-        ::-webkit-scrollbar { width: 4px; } 
+        ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #1e2730; border-radius: 2px; }
       `}</style>

@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { exportRawLapEvents, exportLapSummary } from '../lib/exportLapResults'
+import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
 
 // ── CSV parsing ────────────────────────────────────────────
 function parseCSV(text) {
@@ -21,6 +22,7 @@ const FIELD_LABELS = {
   last_name: 'Last Name',
   full_name: 'Full Name',
   team: 'Team / Club',
+  division: 'Division',
   age: 'Age',
   gender: 'Gender',
   skip: '— Skip —',
@@ -33,13 +35,16 @@ function autoMap(headers) {
     const i = lower.findIndex(h => patterns.some(p => h.includes(p)))
     if (i >= 0 && !Object.values(map).includes(headers[i])) map[field] = headers[i]
   }
+
   guess('bib_number', ['bib', 'number', 'num', '#'])
   guess('first_name', ['first'])
   guess('last_name', ['last', 'surname'])
   guess('full_name', ['name', 'athlete', 'runner', 'full'])
   guess('team', ['team', 'club', 'school', 'org'])
+  guess('division', ['division', 'category', 'class'])
   guess('age', ['age', 'dob', 'born'])
   guess('gender', ['gender', 'sex', 'm/f'])
+
   return map
 }
 
@@ -77,20 +82,7 @@ const S = {
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  startBtn: {
-    background: '#16a34a',
-    border: 'none',
-    borderRadius: 8,
-    color: '#fff',
-    padding: '10px 28px',
-    fontSize: 15,
-    fontWeight: 900,
-    cursor: 'pointer',
-    fontFamily: F,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-  body: { maxWidth: 820, margin: '0 auto', padding: '24px 20px 60px' },
+  body: { maxWidth: 1100, margin: '0 auto', padding: '24px 20px 60px' },
   section: { marginBottom: 28 },
   sLabel: {
     fontSize: 10,
@@ -164,7 +156,7 @@ const S = {
     borderBottom: '1px solid #0d1117',
     fontSize: 13,
   },
-  bibBadge: (adhoc) => ({
+  bibBadge: adhoc => ({
     width: 34,
     height: 34,
     background: adhoc ? '#0f1f3a' : '#1a2030',
@@ -179,6 +171,17 @@ const S = {
     flexShrink: 0,
     fontFamily: F,
   }),
+}
+
+const adhocLabelStyle = {
+  fontSize: 10,
+  color: '#4a5568',
+  display: 'block',
+  marginBottom: 4,
+  textTransform: 'uppercase',
+  letterSpacing: 1,
+  fontFamily: F,
+  fontWeight: 700,
 }
 
 function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
@@ -241,8 +244,8 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
         )}
       </div>
 
-      <span style={{ width: 60, color: '#4a5568', fontSize: 12 }}>
-        {checkpoint.code ?? '—'}
+      <span style={{ width: 90, color: '#4a5568', fontSize: 12 }}>
+        {checkpoint.short_code ?? checkpoint.code ?? '—'}
       </span>
 
       <button style={S.removeBtn} onClick={() => onDelete(checkpoint.id)}>×</button>
@@ -250,6 +253,549 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
   )
 }
 
+function RaceControlPanel({
+  event,
+  eventId,
+  startingRace,
+  finishingRace,
+  onStartRace,
+  onFinishRace,
+  navigate,
+}) {
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    if (event?.status !== 'active' || !event?.race_started_at) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [event?.status, event?.race_started_at])
+
+  const isActive = event?.status === 'active'
+  const isFinished = event?.status === 'finished'
+  const hasStarted = !!event?.race_started_at
+  const elapsedMs = getRaceElapsedMs(event, now)
+
+  const status = isActive
+    ? { label: 'LIVE', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.25)' }
+    : isFinished
+      ? { label: 'FINISHED', color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.2)' }
+      : { label: 'NOT STARTED', color: '#eab308', bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.25)' }
+
+  return (
+    <div style={{ ...S.card, padding: 18, marginBottom: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <div style={{ ...S.sLabel, marginBottom: 6 }}>Race Control</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 10px',
+                borderRadius: 999,
+                border: `1px solid ${status.border}`,
+                background: status.bg,
+                color: status.color,
+                fontSize: 11,
+                fontFamily: F,
+                fontWeight: 800,
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: status.color, display: 'inline-block' }} />
+              {status.label}
+            </span>
+
+            {hasStarted && (
+              <span style={{ color: '#4a5568', fontSize: 12 }}>
+                Started {new Date(event.race_started_at).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'right', minWidth: 140 }}>
+          <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1.5, fontFamily: F, fontWeight: 700, marginBottom: 4 }}>
+            Race Clock
+          </div>
+          <div style={{ fontSize: 36, fontWeight: 900, color: isActive ? '#f0f4f8' : '#374151', fontFamily: F, letterSpacing: -1.5, lineHeight: 1 }}>
+            {formatRaceClock(elapsedMs)}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ background: '#080b0f', border: '1px solid #1e2730', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 4 }}>
+          {isActive
+            ? 'Race is live. Checkpoint timers are active and the public clock is running.'
+            : isFinished
+              ? 'Race is marked finished. Checkpoint capture should be stopped.'
+              : 'Race has not started yet. Starting race activates checkpoint timers and the public live clock.'}
+        </div>
+        <div style={{ fontSize: 12, color: '#4a5568' }}>
+          Use these controls carefully — they affect all timer devices and the public results site.
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 10 }}>
+        <button
+          onClick={onStartRace}
+          disabled={startingRace || isActive || isFinished}
+          style={{
+            height: 50,
+            borderRadius: 10,
+            border: 'none',
+            background: startingRace || isActive || isFinished ? '#1e2730' : 'linear-gradient(135deg, #16a34a, #15803d)',
+            color: '#fff',
+            cursor: startingRace || isActive || isFinished ? 'not-allowed' : 'pointer',
+            fontFamily: F,
+            fontWeight: 900,
+            fontSize: 15,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            opacity: startingRace || isActive || isFinished ? 0.6 : 1,
+            boxShadow: startingRace || isActive || isFinished ? 'none' : '0 4px 18px rgba(22,163,74,0.25)',
+          }}
+        >
+          {isActive ? 'Race Live' : isFinished ? 'Race Finished' : startingRace ? 'Starting…' : 'Start Race'}
+        </button>
+
+        <button
+          onClick={onFinishRace}
+          disabled={finishingRace || !isActive}
+          style={{
+            height: 50,
+            borderRadius: 10,
+            border: '1px solid rgba(239,68,68,0.35)',
+            background: 'transparent',
+            color: !isActive ? '#4b5563' : '#f87171',
+            cursor: !isActive || finishingRace ? 'not-allowed' : 'pointer',
+            fontFamily: F,
+            fontWeight: 800,
+            fontSize: 14,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
+            opacity: finishingRace ? 0.7 : 1,
+          }}
+        >
+          {finishingRace ? 'Finishing…' : 'Finish Race'}
+        </button>
+
+        <button
+          onClick={() => navigate(`/race/${eventId}/monitor`)}
+          style={{
+            height: 50,
+            borderRadius: 10,
+            border: '1px solid #1e2730',
+            background: 'rgba(59,130,246,0.06)',
+            color: '#60a5fa',
+            cursor: 'pointer',
+            fontFamily: F,
+            fontWeight: 800,
+            fontSize: 14,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
+          }}
+        >
+          Monitor
+        </button>
+
+        <button
+          onClick={() => navigate(`/race/${eventId}/checkpoints`)}
+          style={{
+            height: 50,
+            borderRadius: 10,
+            border: '1px solid #1e2730',
+            background: 'rgba(249,115,22,0.06)',
+            color: '#f97316',
+            cursor: 'pointer',
+            fontFamily: F,
+            fontWeight: 800,
+            fontSize: 14,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
+          }}
+        >
+          Checkpoints
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+        <button
+          onClick={() => navigate(`/results/${eventId}`)}
+          style={{
+            height: 44,
+            borderRadius: 10,
+            border: '1px solid #1e2730',
+            background: 'transparent',
+            color: '#60a5fa',
+            cursor: 'pointer',
+            fontFamily: F,
+            fontWeight: 700,
+            fontSize: 13,
+            letterSpacing: 1.2,
+            textTransform: 'uppercase',
+          }}
+        >
+          Live Results ↗
+        </button>
+
+        <button
+          onClick={() => navigate(`/race/${eventId}/checkpoint-qr`)}
+          style={{
+            height: 44,
+            borderRadius: 10,
+            border: '1px solid #1e2730',
+            background: 'transparent',
+            color: '#f97316',
+            cursor: 'pointer',
+            fontFamily: F,
+            fontWeight: 700,
+            fontSize: 13,
+            letterSpacing: 1.2,
+            textTransform: 'uppercase',
+          }}
+        >
+          Print QR Sheet
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function EditableCellInput({
+  value,
+  onChange,
+  onSave,
+  type = 'text',
+  list,
+  placeholder,
+  width = '100%',
+  lockedStyle = false,
+  title,
+}) {
+  const [draft, setDraft] = useState(value ?? '')
+
+  useEffect(() => {
+    setDraft(value ?? '')
+  }, [value])
+
+  const commit = () => {
+    const normalized = type === 'number' ? (draft === '' ? '' : String(draft)) : draft
+    const original = value ?? ''
+    if (normalized !== original) onSave(draft)
+  }
+
+  return (
+    <input
+      type={type}
+      value={draft}
+      list={list}
+      title={title}
+      placeholder={placeholder}
+      onChange={e => {
+        setDraft(e.target.value)
+        onChange?.(e.target.value)
+      }}
+      onBlur={commit}
+      onKeyDown={e => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur()
+        }
+        if (e.key === 'Escape') {
+          setDraft(value ?? '')
+          e.currentTarget.blur()
+        }
+      }}
+      style={{
+        width,
+        padding: '6px 8px',
+        background: lockedStyle ? 'rgba(234,179,8,0.08)' : '#080b0f',
+        border: lockedStyle ? '1px solid rgba(234,179,8,0.35)' : '1px solid #1e2730',
+        borderRadius: 6,
+        color: '#e2e8f0',
+        fontSize: 12,
+        fontFamily: FB,
+        outline: 'none',
+        boxSizing: 'border-box',
+        transition: 'border-color 0.15s ease, background 0.15s ease',
+      }}
+    />
+  )
+}
+
+function RowSaveBadge({ state }) {
+  if (!state || state === 'idle') return null
+
+  const config =
+    state === 'saving'
+      ? { text: 'Saving…', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.25)' }
+      : state === 'saved'
+        ? { text: 'Saved', color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.25)' }
+        : { text: 'Error', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.25)' }
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: 62,
+        height: 22,
+        padding: '0 8px',
+        borderRadius: 999,
+        border: `1px solid ${config.border}`,
+        background: config.bg,
+        color: config.color,
+        fontSize: 9,
+        fontFamily: F,
+        fontWeight: 800,
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {config.text}
+    </span>
+  )
+}
+
+function EditableEntryRow({
+  entry,
+  zebra,
+  onSaveField,
+  onDelete,
+  teamOptions,
+  divisionOptions,
+  genderOptions,
+  saveState,
+  isRaceLocked,
+}) {
+  return (
+    <div
+      style={{
+        ...S.row,
+        background: zebra ? '#0a0f16' : 'transparent',
+        alignItems: 'center',
+      }}
+    >
+      <div style={{ width: 54 }}>
+        <EditableCellInput
+          value={entry.bib_number ?? ''}
+          onSave={val => onSaveField(entry.id, 'bib_number', val.trim() || null)}
+          placeholder="Bib"
+          lockedStyle={isRaceLocked}
+          title={
+            isRaceLocked
+              ? 'Race is active or finished. Changing bibs now can affect live splits and results.'
+              : 'Bib number'
+          }
+        />
+      </div>
+
+      <div style={{ width: 120 }}>
+        <EditableCellInput
+          value={entry.first_name ?? ''}
+          onSave={val => onSaveField(entry.id, 'first_name', val.trim() || null)}
+          placeholder="First"
+        />
+      </div>
+
+      <div style={{ width: 120 }}>
+        <EditableCellInput
+          value={entry.last_name ?? ''}
+          onSave={val => onSaveField(entry.id, 'last_name', val.trim() || null)}
+          placeholder="Last"
+        />
+      </div>
+
+      <div style={{ width: 140 }}>
+        <EditableSuggestInput
+          value={entry.team ?? ''}
+          options={teamOptions}
+          onSave={val => onSaveField(entry.id, 'team', val)}
+          placeholder="Team"
+          title="Select an existing team or type a new one"
+        />
+      </div>
+
+      <div style={{ width: 110 }}>
+        <EditableSuggestInput
+          value={entry.division ?? ''}
+          options={divisionOptions}
+          onSave={val => onSaveField(entry.id, 'division', val)}
+          placeholder="Division"
+          title="Select an existing division or type a new one"
+        />
+      </div>
+
+      <div style={{ width: 60 }}>
+        <EditableCellInput
+          value={entry.age ?? ''}
+          type="number"
+          onSave={val => onSaveField(entry.id, 'age', val === '' ? null : parseInt(val, 10) || null)}
+          placeholder="Age"
+        />
+      </div>
+
+      <div style={{ width: 90 }}>
+        <EditableSuggestInput
+          value={entry.gender ?? ''}
+          options={genderOptions}
+          onSave={val => onSaveField(entry.id, 'gender', val)}
+          placeholder="Gender"
+          title="Select an existing gender value or type a new one"
+        />
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-start' }}>
+          {entry.is_adhoc && (
+            <span
+              style={{
+                fontSize: 9,
+                background: '#0f1f3a',
+                color: '#60a5fa',
+                padding: '1px 5px',
+                borderRadius: 3,
+                letterSpacing: 1,
+              }}
+            >
+              DAY-OF
+            </span>
+          )}
+
+          <RowSaveBadge state={saveState} />
+        </div>
+      </div>
+
+      <button style={S.removeBtn} onClick={() => onDelete(entry.id)}>×</button>
+    </div>
+  )
+}
+function EditableSuggestInput({
+  value,
+  options = [],
+  onSave,
+  placeholder,
+  width = '100%',
+  title,
+}) {
+  const [draft, setDraft] = useState(value ?? '')
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    setDraft(value ?? '')
+  }, [value])
+
+  const filtered = options.filter(opt =>
+    String(opt).toLowerCase().includes(String(draft ?? '').toLowerCase())
+  )
+
+  const commit = nextValue => {
+    const finalValue = nextValue ?? draft
+    const normalized = finalValue?.trim?.() ?? ''
+    const original = value ?? ''
+    if (normalized !== original) {
+      onSave(normalized || null)
+    }
+    setOpen(false)
+  }
+
+  return (
+    <div style={{ position: 'relative', width }}>
+      <input
+        value={draft}
+        title={title}
+        placeholder={placeholder}
+        onFocus={() => setOpen(true)}
+        onChange={e => {
+          setDraft(e.target.value)
+          setOpen(true)
+        }}
+        onBlur={() => {
+          setTimeout(() => {
+            commit()
+          }, 120)
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit()
+            e.currentTarget.blur()
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            setDraft(value ?? '')
+            setOpen(false)
+            e.currentTarget.blur()
+          }
+          if (e.key === 'ArrowDown') {
+            setOpen(true)
+          }
+        }}
+        style={{
+          width: '100%',
+          padding: '6px 8px',
+          background: '#080b0f',
+          border: '1px solid #1e2730',
+          borderRadius: 6,
+          color: '#e2e8f0',
+          fontSize: 12,
+          fontFamily: FB,
+          outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+
+      {open && filtered.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            background: '#0e1318',
+            border: '1px solid #1e2730',
+            borderRadius: 8,
+            boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
+            zIndex: 20,
+            maxHeight: 180,
+            overflowY: 'auto',
+          }}
+        >
+          {filtered.slice(0, 12).map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onMouseDown={e => {
+                e.preventDefault()
+                setDraft(opt)
+                commit(opt)
+              }}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: '8px 10px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '1px solid #141920',
+                color: '#e2e8f0',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontFamily: FB,
+              }}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 export default function PreRaceSetup() {
   const { id: eventId } = useParams()
   const navigate = useNavigate()
@@ -263,6 +809,7 @@ export default function PreRaceSetup() {
   const [startingRace, setStartingRace] = useState(false)
   const [finishingRace, setFinishingRace] = useState(false)
   const [checkpointName, setCheckpointName] = useState('')
+  const [saveStateByEntryId, setSaveStateByEntryId] = useState({})
 
   const [csvStep, setCsvStep] = useState('idle')
   const [csvData, setCsvData] = useState(null)
@@ -277,6 +824,7 @@ export default function PreRaceSetup() {
     first_name: '',
     last_name: '',
     team: '',
+    division: '',
     age: '',
     gender: '',
   })
@@ -295,6 +843,20 @@ export default function PreRaceSetup() {
       setLoading(false)
     })
   }, [eventId])
+
+  const teamOptions = useMemo(() => {
+    return Array.from(new Set(entries.map(e => e.team).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  }, [entries])
+
+  const divisionOptions = useMemo(() => {
+    return Array.from(new Set(entries.map(e => e.division).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  }, [entries])
+
+  const genderOptions = useMemo(() => {
+    const base = ['M', 'F', 'NB', 'Non-Binary', 'Open']
+    const existing = entries.map(e => e.gender).filter(Boolean)
+    return Array.from(new Set([...base, ...existing]))
+  }, [entries])
 
   const loadCheckpoints = async () => {
     const { data } = await supabase
@@ -315,11 +877,14 @@ export default function PreRaceSetup() {
         ? Math.max(...checkpoints.map(c => c.checkpoint_order)) + 1
         : 1
 
+    const shortCode = `CP${nextOrder}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+
     const { error } = await supabase.from('race_checkpoints').insert({
       event_id: eventId,
       name,
       checkpoint_order: nextOrder,
       code: `CP${nextOrder}`,
+      short_code: shortCode,
       is_active: true,
     })
 
@@ -337,7 +902,7 @@ export default function PreRaceSetup() {
     loadCheckpoints()
   }
 
-  const deleteCheckpoint = async (id) => {
+  const deleteCheckpoint = async id => {
     const ok = window.confirm('Delete this checkpoint?')
     if (!ok) return
     await supabase.from('race_checkpoints').delete().eq('id', id)
@@ -362,6 +927,7 @@ export default function PreRaceSetup() {
           name: `Checkpoint ${i}`,
           checkpoint_order: i,
           code: `CP${i}`,
+          short_code: `CP${i}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
           is_active: true,
         })
       }
@@ -374,7 +940,20 @@ export default function PreRaceSetup() {
 
   const startRace = async () => {
     if (startingRace) return
-    const ok = window.confirm('Start race now? This will activate the race clock for all checkpoint timers.')
+
+    if (event?.status === 'active') {
+      window.alert('Race is already active.')
+      return
+    }
+
+    if (event?.status === 'finished') {
+      window.alert('Race is already finished. Reopening/resetting should be a separate admin action.')
+      return
+    }
+
+    const ok = window.confirm(
+      'Start race now?\n\nThis will activate all checkpoint timers and begin the public live clock.'
+    )
     if (!ok) return
 
     setStartingRace(true)
@@ -384,6 +963,7 @@ export default function PreRaceSetup() {
       .from('race_events')
       .update({
         race_started_at: now,
+        race_finished_at: null,
         status: 'active',
       })
       .eq('id', eventId)
@@ -394,46 +974,66 @@ export default function PreRaceSetup() {
 
     if (!error && data) {
       setEvent(data)
-      navigate(`/race/${eventId}/checkpoints`)
+      navigate(`/race/${eventId}/monitor`)
     }
   }
 
-  const finishRace = async () => {
-    if (finishingRace) return
-    const ok = window.confirm('Mark race as finished? This will stop checkpoint lap capture.')
-    if (!ok) return
+const finishRace = async () => {
+  if (finishingRace) return
 
-    setFinishingRace(true)
-
-    const { data, error } = await supabase
-      .from('race_events')
-      .update({ status: 'finished' })
-      .eq('id', eventId)
-      .select()
-      .single()
-
-    setFinishingRace(false)
-
-    if (!error && data) {
-      setEvent(data)
-    }
+  if (event?.status !== 'active') {
+    window.alert('Race must be active before it can be finished.')
+    return
   }
 
-  // ── CSV upload ────────────────────────────────────────────
-  const handleFile = (e) => {
+  const ok = window.confirm(
+    'Mark race as finished?\n\nThis will stop checkpoint lap capture for timer devices.'
+  )
+  if (!ok) return
+
+  setFinishingRace(true)
+
+  const finishedAt = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from('race_events')
+    .update({
+      status: 'finished',
+      race_finished_at: finishedAt,
+    })
+    .eq('id', eventId)
+    .select()
+    .single()
+
+  setFinishingRace(false)
+
+  if (error) {
+    console.error('finishRace error:', error)
+    window.alert(`Could not finish race: ${error.message}`)
+    return
+  }
+
+  if (!data) {
+    window.alert('Could not finish race: no row returned.')
+    return
+  }
+
+  setEvent(data)
+}
+  const handleFile = e => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (ev) => processText(ev.target.result)
+    reader.onload = ev => processText(ev.target.result)
     reader.readAsText(file)
   }
 
-  const handlePaste = (e) => {
+  const handlePaste = e => {
     const text = e.clipboardData.getData('text')
     if (text) processText(text)
   }
 
-  const processText = (text) => {
+  const processText = text => {
     setCsvError('')
     const parsed = parseCSV(text)
     if (!parsed.headers.length) {
@@ -447,10 +1047,12 @@ export default function PreRaceSetup() {
 
   const importCSV = async () => {
     setCsvError('')
+
     if (!mapping.bib_number) {
       setCsvError('Bib # column is required.')
       return
     }
+
     if (!mapping.first_name && !mapping.last_name && !mapping.full_name) {
       setCsvError('Need at least a name column (First Name, Last Name, or Full Name).')
       return
@@ -458,10 +1060,9 @@ export default function PreRaceSetup() {
 
     setImporting(true)
     const toInsert = []
-    const existingBibs = new Set(entries.map(e => e.bib_number))
 
     for (const row of csvData.rows) {
-      const get = (field) => {
+      const get = field => {
         const col = mapping[field]
         if (!col) return ''
         const idx = csvData.headers.indexOf(col)
@@ -469,7 +1070,7 @@ export default function PreRaceSetup() {
       }
 
       const bib = get('bib_number')
-      if (!bib || existingBibs.has(bib)) continue
+      if (!bib) continue
 
       let first = get('first_name')
       let last = get('last_name')
@@ -488,16 +1089,15 @@ export default function PreRaceSetup() {
         first_name: first || last,
         last_name: last || '',
         team: get('team') || null,
+        division: get('division') || null,
         age: get('age') ? parseInt(get('age')) || null : null,
         gender: get('gender') || null,
         is_adhoc: false,
       })
-
-      existingBibs.add(bib)
     }
 
     if (!toInsert.length) {
-      setCsvError('No new rows to import (all bibs already exist).')
+      setCsvError('No valid rows to import.')
       setImporting(false)
       return
     }
@@ -511,8 +1111,8 @@ export default function PreRaceSetup() {
     }
 
     setEntries(prev =>
-      [...prev, ...data].sort((a, b) =>
-        a.bib_number.localeCompare(b.bib_number, undefined, { numeric: true })
+      [...prev, ...(data || [])].sort((a, b) =>
+        String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
       )
     )
     setCsvStep('idle')
@@ -520,7 +1120,6 @@ export default function PreRaceSetup() {
     setMapping({})
   }
 
-  // ── Ad-hoc ────────────────────────────────────────────────
   const addAdHoc = async () => {
     setFormError('')
 
@@ -528,26 +1127,30 @@ export default function PreRaceSetup() {
       setFormError('Bib number is required.')
       return
     }
+
     if (!form.first_name.trim()) {
       setFormError('First name is required.')
       return
     }
-    if (entries.find(e => e.bib_number === form.bib_number.trim())) {
-      setFormError(`Bib ${form.bib_number.trim()} already exists in this event.`)
-      return
-    }
 
     setSaving(true)
-    const { data, error } = await supabase.from('event_entries').insert({
-      event_id: eventId,
-      bib_number: form.bib_number.trim(),
-      first_name: form.first_name.trim(),
-      last_name: form.last_name.trim() || null,
-      team: form.team.trim() || null,
-      age: form.age ? parseInt(form.age) : null,
-      gender: form.gender || null,
-      is_adhoc: true,
-    }).select().single()
+
+    const { data, error } = await supabase
+      .from('event_entries')
+      .insert({
+        event_id: eventId,
+        bib_number: form.bib_number.trim(),
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim() || null,
+        team: form.team.trim() || null,
+        division: form.division.trim() || null,
+        age: form.age ? parseInt(form.age, 10) : null,
+        gender: form.gender.trim() || null,
+        is_adhoc: true,
+      })
+      .select()
+      .single()
+
     setSaving(false)
 
     if (error) {
@@ -557,14 +1160,70 @@ export default function PreRaceSetup() {
 
     setEntries(prev =>
       [...prev, data].sort((a, b) =>
-        a.bib_number.localeCompare(b.bib_number, undefined, { numeric: true })
+        String(a.bib_number).localeCompare(String(b.b_number), undefined, { numeric: true })
       )
     )
-    setForm({ bib_number: '', first_name: '', last_name: '', team: '', age: '', gender: '' })
+
+    setForm({
+      bib_number: '',
+      first_name: '',
+      last_name: '',
+      team: '',
+      division: '',
+      age: '',
+      gender: '',
+    })
     setShowAdHoc(false)
   }
 
-  const removeEntry = async (id) => {
+  const saveEntryField = async (entryId, field, value) => {
+    const existing = entries.find(e => e.id === entryId)
+    if (!existing) return
+
+    const currentValue = existing[field] ?? null
+    const nextValue = value ?? null
+
+    if (currentValue === nextValue) return
+
+    if (field === 'bib_number' && event?.status !== 'draft') {
+      const ok = window.confirm(
+        `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
+      )
+      if (!ok) return
+    }
+
+    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saving' }))
+
+    const { data, error } = await supabase
+      .from('event_entries')
+      .update({ [field]: nextValue })
+      .eq('id', entryId)
+      .select()
+      .single()
+
+    if (error || !data) {
+      setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'error' }))
+      setTimeout(() => {
+        setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
+      }, 2000)
+      return
+    }
+
+    setEntries(prev =>
+      prev
+        .map(e => (e.id === entryId ? data : e))
+        .sort((a, b) =>
+          String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
+        )
+    )
+
+    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saved' }))
+    setTimeout(() => {
+      setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
+    }, 1200)
+  }
+
+  const removeEntry = async id => {
     await supabase.from('event_entries').delete().eq('id', id)
     setEntries(prev => prev.filter(e => e.id !== id))
   }
@@ -584,7 +1243,6 @@ export default function PreRaceSetup() {
     <div style={S.page}>
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
-      {/* Header */}
       <div style={S.header}>
         <button style={S.backBtn} onClick={() => navigate('/')}>← Events</button>
 
@@ -613,27 +1271,15 @@ export default function PreRaceSetup() {
           </button>
 
           <button
-            style={{ ...S.startBtn, opacity: startingRace ? 0.7 : 1 }}
-            onClick={startRace}
+            style={{ ...S.backBtn, color: '#3b82f6' }}
+            onClick={() => navigate(`/race/${eventId}/monitor`)}
           >
-            {event?.status === 'active' ? 'Race Live' : startingRace ? 'Starting…' : 'Start Race ▶'}
-          </button>
-
-          <button
-            style={{
-              ...S.backBtn,
-              color: event?.status === 'finished' ? '#9ca3af' : '#f87171',
-              opacity: finishingRace ? 0.7 : 1,
-            }}
-            onClick={finishRace}
-          >
-            {finishingRace ? 'Finishing…' : 'Finish Race'}
+            Monitor
           </button>
         </div>
       </div>
 
       <div style={S.body}>
-        {/* Stats */}
         <div style={S.statRow}>
           {[
             { label: 'Total Athletes', value: entries.length },
@@ -648,7 +1294,16 @@ export default function PreRaceSetup() {
           ))}
         </div>
 
-        {/* CSV Import */}
+        <RaceControlPanel
+          event={event}
+          eventId={eventId}
+          startingRace={startingRace}
+          finishingRace={finishingRace}
+          onStartRace={startRace}
+          onFinishRace={finishRace}
+          navigate={navigate}
+        />
+
         <div style={S.section}>
           <div style={S.sLabel}>Import Athletes</div>
 
@@ -722,7 +1377,7 @@ export default function PreRaceSetup() {
 
               <div style={{ background: '#080b0f', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
                 {csvData.rows.slice(0, 3).map((row, i) => {
-                  const get = (field) => {
+                  const get = field => {
                     const col = mapping[field]
                     if (!col) return '—'
                     const idx = csvData.headers.indexOf(col)
@@ -734,8 +1389,9 @@ export default function PreRaceSetup() {
                       <span style={{ color: '#f97316', fontWeight: 700, width: 36, fontFamily: F }}>{get('bib_number')}</span>
                       <span style={{ color: '#e2e8f0', flex: 1 }}>{name}</span>
                       <span style={{ color: '#4a5568' }}>{get('team')}</span>
+                      <span style={{ color: '#4a5568' }}>{get('division')}</span>
                       <span style={{ color: '#4a5568', width: 24 }}>{get('age')}</span>
-                      <span style={{ color: '#4a5568', width: 20 }}>{get('gender')}</span>
+                      <span style={{ color: '#4a5568', width: 40 }}>{get('gender')}</span>
                     </div>
                   )
                 })}
@@ -745,7 +1401,7 @@ export default function PreRaceSetup() {
 
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={importCSV} disabled={importing} style={{ ...S.addBtn, flex: 1, opacity: importing ? 0.6 : 1 }}>
-                  {importing ? 'Importing…' : `Import ${csvData.rows.length} Athletes`}
+                  {importing ? 'Importing…' : `Import ${csvData.rows.length} Rows`}
                 </button>
                 <button onClick={() => { setCsvStep('idle'); setCsvData(null); setCsvError('') }} style={{ ...S.backBtn }}>
                   Cancel
@@ -755,7 +1411,6 @@ export default function PreRaceSetup() {
           )}
         </div>
 
-        {/* Checkpoints */}
         <div style={S.section}>
           <div style={S.sLabel}>Checkpoints</div>
           <div style={{ ...S.card, padding: 18 }}>
@@ -792,7 +1447,7 @@ export default function PreRaceSetup() {
                 <div style={{ display: 'flex', gap: 10, padding: '6px 14px', borderBottom: '1px solid #1a2030', fontSize: 10, color: '#374151', textTransform: 'uppercase', letterSpacing: 1, fontFamily: F, fontWeight: 700 }}>
                   <span style={{ width: 60 }}>Order</span>
                   <span style={{ flex: 1 }}>Name</span>
-                  <span style={{ width: 60 }}>Code</span>
+                  <span style={{ width: 90 }}>Quick Code</span>
                   <span style={{ width: 30 }}></span>
                 </div>
 
@@ -835,93 +1490,203 @@ export default function PreRaceSetup() {
           </div>
         </div>
 
-        {/* Roster */}
         {entries.length > 0 && (
           <div style={S.section}>
             <div style={S.sLabel}>Roster ({entries.length})</div>
-            <div style={S.card}>
-              <div style={{ display: 'flex', gap: 10, padding: '6px 14px', borderBottom: '1px solid #1a2030', fontSize: 10, color: '#374151', textTransform: 'uppercase', letterSpacing: 1, fontFamily: F, fontWeight: 700 }}>
-                <span style={{ width: 34 }}>Bib</span>
-                <span style={{ flex: 1 }}>Name</span>
-                <span style={{ width: 100 }}>Team</span>
-                <span style={{ width: 30 }}>Age</span>
-                <span style={{ width: 24 }}>M/F</span>
-                <span style={{ width: 24 }}></span>
-              </div>
 
-              {entries.map((entry, i) => (
-                <div key={entry.id} style={{ ...S.row, background: i % 2 === 0 ? 'transparent' : '#0a0f16' }}>
-                  <div style={S.bibBadge(entry.is_adhoc)}>{entry.bib_number}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ color: '#e2e8f0' }}>{entry.first_name} {entry.last_name}</span>
-                    {entry.is_adhoc && (
-                      <span style={{ marginLeft: 6, fontSize: 9, background: '#0f1f3a', color: '#60a5fa', padding: '1px 5px', borderRadius: 3, letterSpacing: 1 }}>
-                        DAY-OF
-                      </span>
-                    )}
+            {event?.status !== 'draft' && (
+              <div
+                style={{
+                  marginBottom: 10,
+                  color: '#eab308',
+                  fontSize: 12,
+                  fontFamily: FB,
+                }}
+              >
+                Bib edits are sensitive once the race has started. Team, division, gender, and names can still be corrected inline.
+              </div>
+            )}
+
+            <div style={{ ...S.card, overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <div style={{ minWidth: 860 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 10,
+                      padding: '6px 14px',
+                      borderBottom: '1px solid #1a2030',
+                      fontSize: 10,
+                      color: '#374151',
+                      textTransform: 'uppercase',
+                      letterSpacing: 1,
+                      fontFamily: F,
+                      fontWeight: 700,
+                      alignItems: 'center',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 2,
+                      background: '#0e1318',
+                      boxShadow: '0 2px 0 rgba(0,0,0,0.2)',
+                    }}
+                  >
+                    <span style={{ width: 54, color: event?.status !== 'draft' ? '#eab308' : '#374151' }}>
+                      Bib
+                    </span>
+                    <span style={{ width: 120 }}>First</span>
+                    <span style={{ width: 120 }}>Last</span>
+                    <span style={{ width: 140 }}>Team</span>
+                    <span style={{ width: 110 }}>Division</span>
+                    <span style={{ width: 60 }}>Age</span>
+                    <span style={{ width: 90 }}>Gender</span>
+                    <span style={{ flex: 1 }}></span>
+                    <span style={{ width: 24 }}></span>
                   </div>
-                  <span style={{ width: 100, color: '#4a5568', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {entry.team ?? '—'}
-                  </span>
-                  <span style={{ width: 30, color: '#4a5568', fontSize: 12 }}>{entry.age ?? '—'}</span>
-                  <span style={{ width: 24, color: '#4a5568', fontSize: 12 }}>{entry.gender ?? '—'}</span>
-                  <button style={S.removeBtn} onClick={() => removeEntry(entry.id)}>×</button>
+
+                  <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                    {entries.map((entry, i) => (
+                      <EditableEntryRow
+                        key={entry.id}
+                        entry={entry}
+                        zebra={i % 2 === 1}
+                        onSaveField={saveEntryField}
+                        onDelete={removeEntry}
+                        teamOptions={teamOptions}
+                        divisionOptions={divisionOptions}
+                        genderOptions={genderOptions}
+                        saveState={saveStateByEntryId[entry.id] || 'idle'}
+                        isRaceLocked={event?.status !== 'draft'}
+                      />
+                    ))}
+                  </div>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Add day-of */}
         {showAdHoc ? (
           <div style={{ ...S.card, padding: 18, marginBottom: 24 }}>
-            <div style={{ ...S.sLabel, marginBottom: 12 }}>Add Day-of Runner</div>
+            <div style={{ ...S.sLabel, marginBottom: 12 }}>Add Day-Of Competitor</div>
 
-            {formError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>{formError}</div>}
+            {formError && (
+              <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>
+                {formError}
+              </div>
+            )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {[
-                { key: 'bib_number', label: 'Bib # *', type: 'text', span: false },
-                { key: 'gender', label: 'Gender', type: 'select', span: false },
-                { key: 'first_name', label: 'First Name *', type: 'text', span: false },
-                { key: 'last_name', label: 'Last Name', type: 'text', span: false },
-                { key: 'team', label: 'Team / Club', type: 'text', span: true },
-                { key: 'age', label: 'Age', type: 'number', span: false },
-              ].map(({ key, label, type, span }) => (
-                <div key={key} style={{ gridColumn: span ? '1 / -1' : 'auto' }}>
-                  <label style={{ fontSize: 10, color: '#4a5568', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1, fontFamily: F, fontWeight: 700 }}>
-                    {label}
-                  </label>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr 1fr 1fr',
+                gap: 10,
+              }}
+            >
+              <div>
+                <label style={adhocLabelStyle}>Bib # *</label>
+                <input
+                  value={form.bib_number}
+                  onChange={e => setForm(p => ({ ...p, bib_number: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
 
-                  {type === 'select' ? (
-                    <select
-                      value={form[key] ?? ''}
-                      onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
-                      style={S.select}
-                    >
-                      <option value="">—</option>
-                      <option value="M">M</option>
-                      <option value="F">F</option>
-                      <option value="NB">NB</option>
-                    </select>
-                  ) : (
-                    <input
-                      type={type}
-                      value={form[key] ?? ''}
-                      onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
-                      style={S.input}
-                      onKeyDown={e => e.key === 'Enter' && addAdHoc()}
-                    />
-                  )}
-                </div>
-              ))}
+              <div>
+                <label style={adhocLabelStyle}>First Name *</label>
+                <input
+                  value={form.first_name}
+                  onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+
+              <div>
+                <label style={adhocLabelStyle}>Last Name</label>
+                <input
+                  value={form.last_name}
+                  onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+
+              <div>
+                <label style={adhocLabelStyle}>Age</label>
+                <input
+                  type="number"
+                  value={form.age}
+                  onChange={e => setForm(p => ({ ...p, age: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+
+              <div>
+                <label style={adhocLabelStyle}>Team</label>
+                <input
+                  list="adhoc-team-options"
+                  value={form.team}
+                  onChange={e => setForm(p => ({ ...p, team: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+
+              <div>
+                <label style={adhocLabelStyle}>Division</label>
+                <input
+                  list="adhoc-division-options"
+                  value={form.division}
+                  onChange={e => setForm(p => ({ ...p, division: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
+
+              <div>
+                <label style={adhocLabelStyle}>Gender</label>
+                <input
+                  list="adhoc-gender-options"
+                  value={form.gender}
+                  onChange={e => setForm(p => ({ ...p, gender: e.target.value }))}
+                  style={S.input}
+                />
+              </div>
             </div>
 
+            <datalist id="adhoc-team-options">
+              {teamOptions.map(v => <option key={v} value={v} />)}
+            </datalist>
+
+            <datalist id="adhoc-division-options">
+              {divisionOptions.map(v => <option key={v} value={v} />)}
+            </datalist>
+
+            <datalist id="adhoc-gender-options">
+              {genderOptions.map(v => <option key={v} value={v} />)}
+            </datalist>
+
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <button onClick={addAdHoc} disabled={saving} style={{ ...S.addBtn, flex: 1, opacity: saving ? 0.6 : 1 }}>
-                {saving ? 'Adding…' : 'Add Runner'}
+              <button
+                onClick={addAdHoc}
+                disabled={saving}
+                style={{ ...S.addBtn, flex: 1, opacity: saving ? 0.6 : 1 }}
+              >
+                {saving ? 'Adding…' : 'Add Competitor'}
               </button>
-              <button onClick={() => { setShowAdHoc(false); setFormError('') }} style={{ ...S.backBtn }}>
+
+              <button
+                onClick={() => {
+                  setShowAdHoc(false)
+                  setFormError('')
+                  setForm({
+                    bib_number: '',
+                    first_name: '',
+                    last_name: '',
+                    team: '',
+                    division: '',
+                    age: '',
+                    gender: '',
+                  })
+                }}
+                style={{ ...S.backBtn }}
+              >
                 Cancel
               </button>
             </div>
@@ -942,53 +1707,7 @@ export default function PreRaceSetup() {
               marginBottom: 24,
             }}
           >
-            + Add day-of runner
-          </button>
-        )}
-
-        {/* Primary CTA */}
-        <button
-          style={{
-            width: '100%',
-            padding: 18,
-            background: '#16a34a',
-            border: 'none',
-            borderRadius: 12,
-            color: '#fff',
-            fontSize: 20,
-            fontWeight: 900,
-            cursor: 'pointer',
-            fontFamily: F,
-            letterSpacing: 3,
-            textTransform: 'uppercase',
-            boxShadow: '0 4px 24px rgba(22,163,74,0.25)',
-            opacity: startingRace ? 0.7 : 1,
-          }}
-          onClick={startRace}
-        >
-          {event?.status === 'active' ? 'Race Live ▶' : startingRace ? 'Starting…' : 'Start Race ▶'}
-        </button>
-
-        {event?.status === 'active' && (
-          <button
-            style={{
-              width: '100%',
-              padding: 14,
-              background: 'transparent',
-              border: '1px solid #7f1d1d',
-              borderRadius: 12,
-              color: '#f87171',
-              fontSize: 16,
-              fontWeight: 800,
-              cursor: 'pointer',
-              fontFamily: F,
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-              marginTop: 12,
-            }}
-            onClick={finishRace}
-          >
-            Finish Race
+            + Add Day-Of Competitor
           </button>
         )}
 
