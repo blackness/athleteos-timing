@@ -53,6 +53,23 @@ function splitFullName(name = '') {
   return { first_name: parts[0] ?? '', last_name: parts.slice(1).join(' ') }
 }
 
+function getDisplayName(entry) {
+  if (!entry) return null
+
+  const personName = `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim()
+  if (personName) return personName
+
+  if (entry.team) return entry.team
+
+  return null
+}
+
+function isTeamOnlyEntry(entry) {
+  if (!entry) return false
+  const personName = `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim()
+  return !personName && !!entry.team
+}
+
 // ── styles ─────────────────────────────────────────────────
 const F = "'Barlow Condensed', sans-serif"
 const FB = "'Barlow', sans-serif"
@@ -573,6 +590,9 @@ function EditableEntryRow({
   saveState,
   isRaceLocked,
 }) {
+  const displayLabel = getDisplayName(entry)
+  const showTeamBadge = isTeamOnlyEntry(entry)
+
   return (
     <div
       style={{
@@ -651,7 +671,7 @@ function EditableEntryRow({
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-start' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-start', flexWrap: 'wrap' }}>
           {entry.is_adhoc && (
             <span
               style={{
@@ -667,6 +687,26 @@ function EditableEntryRow({
             </span>
           )}
 
+          {showTeamBadge && (
+            <span
+              style={{
+                fontSize: 9,
+                background: 'rgba(249,115,22,0.10)',
+                color: '#f97316',
+                padding: '1px 6px',
+                borderRadius: 999,
+                letterSpacing: 1,
+                border: '1px solid rgba(249,115,22,0.25)',
+                fontFamily: F,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+              }}
+              title={displayLabel || 'Team entry'}
+            >
+              Team Entry
+            </span>
+          )}
+
           <RowSaveBadge state={saveState} />
         </div>
       </div>
@@ -675,6 +715,7 @@ function EditableEntryRow({
     </div>
   )
 }
+
 function EditableSuggestInput({
   value,
   options = [],
@@ -796,6 +837,7 @@ function EditableSuggestInput({
     </div>
   )
 }
+
 export default function PreRaceSetup() {
   const { id: eventId } = useParams()
   const navigate = useNavigate()
@@ -978,48 +1020,49 @@ export default function PreRaceSetup() {
     }
   }
 
-const finishRace = async () => {
-  if (finishingRace) return
+  const finishRace = async () => {
+    if (finishingRace) return
 
-  if (event?.status !== 'active') {
-    window.alert('Race must be active before it can be finished.')
-    return
+    if (event?.status !== 'active') {
+      window.alert('Race must be active before it can be finished.')
+      return
+    }
+
+    const ok = window.confirm(
+      'Mark race as finished?\n\nThis will stop checkpoint lap capture for timer devices.'
+    )
+    if (!ok) return
+
+    setFinishingRace(true)
+
+    const finishedAt = new Date().toISOString()
+
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({
+        status: 'finished',
+        race_finished_at: finishedAt,
+      })
+      .eq('id', eventId)
+      .select()
+      .single()
+
+    setFinishingRace(false)
+
+    if (error) {
+      console.error('finishRace error:', error)
+      window.alert(`Could not finish race: ${error.message}`)
+      return
+    }
+
+    if (!data) {
+      window.alert('Could not finish race: no row returned.')
+      return
+    }
+
+    setEvent(data)
   }
 
-  const ok = window.confirm(
-    'Mark race as finished?\n\nThis will stop checkpoint lap capture for timer devices.'
-  )
-  if (!ok) return
-
-  setFinishingRace(true)
-
-  const finishedAt = new Date().toISOString()
-
-  const { data, error } = await supabase
-    .from('race_events')
-    .update({
-      status: 'finished',
-      race_finished_at: finishedAt,
-    })
-    .eq('id', eventId)
-    .select()
-    .single()
-
-  setFinishingRace(false)
-
-  if (error) {
-    console.error('finishRace error:', error)
-    window.alert(`Could not finish race: ${error.message}`)
-    return
-  }
-
-  if (!data) {
-    window.alert('Could not finish race: no row returned.')
-    return
-  }
-
-  setEvent(data)
-}
   const handleFile = e => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1053,8 +1096,11 @@ const finishRace = async () => {
       return
     }
 
-    if (!mapping.first_name && !mapping.last_name && !mapping.full_name) {
-      setCsvError('Need at least a name column (First Name, Last Name, or Full Name).')
+    const hasNameMapping = !!(mapping.first_name || mapping.last_name || mapping.full_name)
+    const hasTeamMapping = !!mapping.team
+
+    if (!hasNameMapping && !hasTeamMapping) {
+      setCsvError('Need at least a Team column or a Name column (First Name, Last Name, or Full Name).')
       return
     }
 
@@ -1074,6 +1120,7 @@ const finishRace = async () => {
 
       let first = get('first_name')
       let last = get('last_name')
+      const team = get('team') || null
 
       if (!first && !last && mapping.full_name) {
         const split = splitFullName(get('full_name'))
@@ -1081,16 +1128,18 @@ const finishRace = async () => {
         last = split.last_name
       }
 
-      if (!first && !last) continue
+      const hasPersonName = !!(first || last)
+
+      if (!hasPersonName && !team) continue
 
       toInsert.push({
         event_id: eventId,
         bib_number: bib,
-        first_name: first || last,
-        last_name: last || '',
-        team: get('team') || null,
+        first_name: first || null,
+        last_name: last || null,
+        team,
         division: get('division') || null,
-        age: get('age') ? parseInt(get('age')) || null : null,
+        age: get('age') ? parseInt(get('age'), 10) || null : null,
         gender: get('gender') || null,
         is_adhoc: false,
       })
@@ -1115,6 +1164,7 @@ const finishRace = async () => {
         String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
       )
     )
+
     setCsvStep('idle')
     setCsvData(null)
     setMapping({})
@@ -1128,8 +1178,8 @@ const finishRace = async () => {
       return
     }
 
-    if (!form.first_name.trim()) {
-      setFormError('First name is required.')
+    if (!form.first_name.trim() && !form.team.trim()) {
+      setFormError('Either First name or Team is required.')
       return
     }
 
@@ -1140,7 +1190,7 @@ const finishRace = async () => {
       .insert({
         event_id: eventId,
         bib_number: form.bib_number.trim(),
-        first_name: form.first_name.trim(),
+        first_name: form.first_name.trim() || null,
         last_name: form.last_name.trim() || null,
         team: form.team.trim() || null,
         division: form.division.trim() || null,
@@ -1160,7 +1210,7 @@ const finishRace = async () => {
 
     setEntries(prev =>
       [...prev, data].sort((a, b) =>
-        String(a.bib_number).localeCompare(String(b.b_number), undefined, { numeric: true })
+        String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
       )
     )
 
@@ -1264,6 +1314,13 @@ const finishRace = async () => {
           </button>
 
           <button
+            style={{ ...S.backBtn, color: '#a78bfa' }}
+            onClick={() => navigate(`/race/${eventId}/corrections`)}
+          >
+            Corrections
+          </button>
+
+          <button
             style={{ ...S.backBtn, color: '#f97316' }}
             onClick={() => navigate(`/race/${eventId}/checkpoints`)}
           >
@@ -1282,7 +1339,7 @@ const finishRace = async () => {
       <div style={S.body}>
         <div style={S.statRow}>
           {[
-            { label: 'Total Athletes', value: entries.length },
+            { label: 'Total Entries', value: entries.length },
             { label: 'Pre-registered', value: preloaded.length },
             { label: 'Day-of', value: adhoc.length },
             { label: 'Checkpoints', value: checkpoints.length },
@@ -1305,7 +1362,7 @@ const finishRace = async () => {
         />
 
         <div style={S.section}>
-          <div style={S.sLabel}>Import Athletes</div>
+          <div style={S.sLabel}>Import Athletes / Teams</div>
 
           {csvStep === 'idle' && (
             <div style={{ ...S.card, padding: 20 }}>
@@ -1338,7 +1395,7 @@ const finishRace = async () => {
                   Supports CSV, TSV, or paste from Excel/Google Sheets
                 </div>
                 <div style={{ color: '#4a5568', fontSize: 11, marginTop: 6 }}>
-                  Any column order — you'll map the fields next
+                  For relay imports, Bib + Team is enough. Athlete names are optional.
                 </div>
                 <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }} onChange={handleFile} />
               </div>
@@ -1383,7 +1440,11 @@ const finishRace = async () => {
                     const idx = csvData.headers.indexOf(col)
                     return idx >= 0 ? row[idx] || '—' : '—'
                   }
-                  const name = mapping.first_name ? `${get('first_name')} ${get('last_name')}`.trim() : get('full_name')
+                  const personName = mapping.first_name
+                    ? `${get('first_name')} ${get('last_name')}`.trim()
+                    : get('full_name')
+
+                  const name = personName || get('team') || '—'
                   return (
                     <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 12px', borderBottom: '1px solid #0d1117', fontSize: 12, alignItems: 'center' }}>
                       <span style={{ color: '#f97316', fontWeight: 700, width: 36, fontFamily: F }}>{get('bib_number')}</span>
@@ -1567,7 +1628,7 @@ const finishRace = async () => {
 
         {showAdHoc ? (
           <div style={{ ...S.card, padding: 18, marginBottom: 24 }}>
-            <div style={{ ...S.sLabel, marginBottom: 12 }}>Add Day-Of Competitor</div>
+            <div style={{ ...S.sLabel, marginBottom: 12 }}>Add Day-Of Competitor / Team</div>
 
             {formError && (
               <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>
@@ -1592,7 +1653,7 @@ const finishRace = async () => {
               </div>
 
               <div>
-                <label style={adhocLabelStyle}>First Name *</label>
+                <label style={adhocLabelStyle}>First Name</label>
                 <input
                   value={form.first_name}
                   onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))}
@@ -1668,7 +1729,7 @@ const finishRace = async () => {
                 disabled={saving}
                 style={{ ...S.addBtn, flex: 1, opacity: saving ? 0.6 : 1 }}
               >
-                {saving ? 'Adding…' : 'Add Competitor'}
+                {saving ? 'Adding…' : 'Add Entry'}
               </button>
 
               <button
@@ -1707,7 +1768,7 @@ const finishRace = async () => {
               marginBottom: 24,
             }}
           >
-            + Add Day-Of Competitor
+            + Add Day-Of Competitor / Team
           </button>
         )}
 

@@ -13,6 +13,7 @@ import CheckpointSelect from './pages/CheckpointSelect'
 import CheckpointRedirect from './pages/CheckpointRedirect'
 import CheckpointQrSheet from './pages/CheckpointQrSheet'
 import RaceMonitor from './pages/RaceMonitor'
+import RaceCorrections from './pages/RaceCorrections'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -55,6 +56,7 @@ function AppRoutes() {
       <Route path="/c/:code" element={<ProtectedRoute><CheckpointRedirect /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
       <Route path="/race/:id/monitor" element={<ProtectedRoute><RaceMonitor /></ProtectedRoute>} />
+      <Route path="/race/:id/corrections" element={<RaceCorrections />} />
     </Routes>
   )
 }

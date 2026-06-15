@@ -44,29 +44,44 @@ function getDisplayName(entry) {
   return `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim() || null
 }
 
-function thStyle() {
-  return {
-    padding: '8px 12px',
-    textAlign: 'left',
-    fontFamily: fontHead,
-    fontSize: 9,
-    fontWeight: 700,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: C.muted,
-    whiteSpace: 'nowrap',
-  }
+function getDisplayNameForBib(entriesForBib, bib) {
+  if (!entriesForBib?.length) return `Bib ${bib}`
+
+  const first = entriesForBib[0]
+  const count = entriesForBib.length
+  const team = first?.team || null
+  const firstName = getDisplayName(first)
+
+  if (count > 1 && team) return team
+  if (firstName) return firstName
+  if (team) return team
+  return `Bib ${bib}`
 }
 
-function tdStyle(mono = false) {
-  return {
-    padding: '7px 12px',
-    fontFamily: mono ? fontMono : fontBody,
-    fontSize: 12,
-    color: C.text,
-    whiteSpace: 'nowrap',
-    verticalAlign: 'middle',
-  }
+function getPrimaryEntry(entriesForBib) {
+  return entriesForBib?.[0] || null
+}
+
+function splitSortStamp(row) {
+  return new Date(
+    row?.updated_at ||
+    row?.created_at ||
+    row?.captured_at ||
+    0
+  ).getTime()
+}
+
+function choosePreferredSplit(existing, candidate) {
+  if (!existing) return candidate
+  if (!candidate) return existing
+
+  const existingVoid = existing.status === 'void'
+  const candidateVoid = candidate.status === 'void'
+
+  if (existingVoid && !candidateVoid) return candidate
+  if (!existingVoid && candidateVoid) return existing
+
+  return splitSortStamp(candidate) >= splitSortStamp(existing) ? candidate : existing
 }
 
 function emptyStateStyle() {
@@ -82,6 +97,53 @@ function emptyStateStyle() {
   }
 }
 
+function thBase() {
+  return {
+    padding: '8px 12px',
+    textAlign: 'left',
+    fontFamily: fontHead,
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: C.muted,
+    whiteSpace: 'nowrap',
+    background: C.surface,
+    borderBottom: `1px solid ${C.border}`,
+  }
+}
+
+function tdBase(mono = false) {
+  return {
+    padding: '7px 12px',
+    fontFamily: mono ? fontMono : fontBody,
+    fontSize: 12,
+    color: C.text,
+    whiteSpace: 'nowrap',
+    verticalAlign: 'middle',
+    background: 'inherit',
+  }
+}
+
+function stickyHeader(left = undefined, z = 3, extra = {}) {
+  return {
+    position: 'sticky',
+    top: 0,
+    zIndex: z,
+    ...(left != null ? { left } : {}),
+    ...extra,
+  }
+}
+
+function stickyCell(left, bg, z = 2) {
+  return {
+    position: 'sticky',
+    left,
+    zIndex: z,
+    background: bg,
+  }
+}
+
 function ProgressTable({ rows, checkpoints }) {
   if (!rows.length) {
     return <div style={emptyStateStyle()}>No entries or checkpoint activity yet…</div>
@@ -89,79 +151,74 @@ function ProgressTable({ rows, checkpoints }) {
 
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 860 }}>
         <thead>
-          <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-            {['Bib', 'Name', 'Team', 'Division', ...checkpoints.map(cp => `CP${cp.checkpoint_order}`), 'Finish'].map(h => (
-              <th key={h} style={thStyle()}>{h}</th>
+          <tr>
+            <th style={{ ...thBase(), ...stickyHeader(0, 5), left: 0, minWidth: 72 }}>Bib</th>
+            <th style={{ ...thBase(), ...stickyHeader(72, 5), left: 72, minWidth: 200 }}>Name</th>
+            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 110 }}>Division</th>
+            {checkpoints.map(cp => (
+              <th key={cp.id} style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 90 }}>
+                CP{cp.checkpoint_order}
+              </th>
             ))}
+            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 90 }}>Finish</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr
-              key={r.id}
-              style={{
-                borderBottom: `1px solid ${C.border}18`,
-                background: i % 2 === 0 ? 'transparent' : C.surface2 + '40',
-              }}
-            >
-              <td style={tdStyle(true)}>{r.bib_number}</td>
+          {rows.map((r, i) => {
+            const rowBg = i % 2 === 0 ? C.surface : C.surface2 + '40'
 
-              <td style={tdStyle()}>
-                <div
-                  style={{
-                    color: r.name ? C.text : C.muted,
-                    fontWeight: 600,
-                    fontStyle: r.name ? 'normal' : 'italic',
-                  }}
-                >
-                  {r.name || 'not in roster'}
-                </div>
-              </td>
+            return (
+              <tr key={r.id} style={{ background: rowBg }}>
+                <td style={{ ...tdBase(true), ...stickyCell(0, rowBg, 3) }}>{r.bib_number}</td>
 
-              <td style={tdStyle()}>
-                {r.team ? (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: r.teamColor || C.muted, display: 'inline-block' }} />
-                    <span style={{ color: C.muted }}>{r.team}</span>
-                  </span>
-                ) : (
-                  <span style={{ color: C.muted }}>—</span>
-                )}
-              </td>
-
-              <td style={tdStyle()}>
-                <span style={{ color: r.division ? C.text : C.muted }}>
-                  {r.division || '—'}
-                </span>
-              </td>
-
-              {checkpoints.map(cp => {
-                const split = r.splits[cp.id]
-                return (
-                  <td key={cp.id} style={tdStyle(true)}>
-                    {split ? (
-                      <span style={{ color: C.text }}>{fmtTime(split.elapsed_ms)}</span>
-                    ) : (
-                      <span style={{ color: '#2d3748' }}>—</span>
-                    )}
-                  </td>
-                )
-              })}
-
-              <td style={tdStyle(true)}>
-                {r.finish ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ color: C.green, fontWeight: 700 }}>{fmtTime(r.finish.time_ms)}</span>
-                    <span style={{ color: C.muted, fontSize: 10 }}>#{r.finish.place}</span>
+                <td style={{ ...tdBase(), ...stickyCell(72, rowBg, 3), minWidth: 200 }}>
+                  <div
+                    style={{
+                      color: r.name ? C.text : C.muted,
+                      fontWeight: 600,
+                      fontStyle: r.name ? 'normal' : 'italic',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {r.name || `Bib ${r.bib_number}`}
                   </div>
-                ) : (
-                  <span style={{ color: '#2d3748' }}>—</span>
-                )}
-              </td>
-            </tr>
-          ))}
+                </td>
+
+                <td style={tdBase()}>
+                  <span style={{ color: r.division ? C.text : C.muted }}>
+                    {r.division || '—'}
+                  </span>
+                </td>
+
+                {checkpoints.map(cp => {
+                  const split = r.splits[cp.id]
+                  return (
+                    <td key={cp.id} style={tdBase(true)}>
+                      {split ? (
+                        <span style={{ color: C.text }}>{fmtTime(split.elapsed_ms)}</span>
+                      ) : (
+                        <span style={{ color: '#2d3748' }}>—</span>
+                      )}
+                    </td>
+                  )
+                })}
+
+                <td style={tdBase(true)}>
+                  {r.finish ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ color: C.green, fontWeight: 700 }}>{fmtTime(r.finish.time_ms)}</span>
+                      <span style={{ color: C.muted, fontSize: 10 }}>#{r.finish.place}</span>
+                    </div>
+                  ) : (
+                    <span style={{ color: '#2d3748' }}>—</span>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -177,29 +234,27 @@ function ResultsTable({ rows }) {
   const medals = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' }
 
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 720 }}>
         <thead>
-          <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-            {['#', 'Bib', 'Athlete', 'Team', 'Division', 'Time', 'Gap'].map(h => (
-              <th key={h} style={thStyle()}>{h}</th>
-            ))}
+          <tr>
+            <th style={{ ...thBase(), ...stickyHeader(0, 6), left: 0, minWidth: 52 }}>#</th>
+            <th style={{ ...thBase(), ...stickyHeader(52, 6), left: 52, minWidth: 72 }}>Bib</th>
+            <th style={{ ...thBase(), ...stickyHeader(124, 6), left: 124, minWidth: 220 }}>Name</th>
+            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 110 }}>Division</th>
+            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 110 }}>Time</th>
+            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 90 }}>Gap</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => {
             const medal = medals[r.place]
             const gap = leaderMs != null && r.time_ms != null ? r.time_ms - leaderMs : null
+            const rowBg = i % 2 === 0 ? C.surface : C.surface2 + '40'
 
             return (
-              <tr
-                key={r.id}
-                style={{
-                  borderBottom: `1px solid ${C.border}18`,
-                  background: i % 2 === 0 ? 'transparent' : C.surface2 + '40',
-                }}
-              >
-                <td style={tdStyle()}>
+              <tr key={r.id} style={{ background: rowBg }}>
+                <td style={{ ...tdBase(), ...stickyCell(0, rowBg, 3), minWidth: 52 }}>
                   <span
                     style={{
                       display: 'inline-flex',
@@ -219,29 +274,20 @@ function ResultsTable({ rows }) {
                   </span>
                 </td>
 
-                <td style={tdStyle(true)}>{r.bib_number ?? '—'}</td>
+                <td style={{ ...tdBase(true), ...stickyCell(52, rowBg, 3), minWidth: 72 }}>
+                  {r.bib_number ?? '—'}
+                </td>
 
-                <td style={tdStyle()}>
+                <td style={{ ...tdBase(), ...stickyCell(124, rowBg, 3), minWidth: 220 }}>
                   <span style={{ color: r.name ? C.text : C.muted, fontStyle: r.name ? 'normal' : 'italic' }}>
-                    {r.name ?? 'not in roster'}
+                    {r.name ?? `Bib ${r.bib_number}`}
                   </span>
                 </td>
 
-                <td style={tdStyle()}>
-                  {r.team ? (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: r.teamColor || C.muted, display: 'inline-block' }} />
-                      <span style={{ color: C.muted }}>{r.team}</span>
-                    </span>
-                  ) : (
-                    <span style={{ color: C.muted }}>—</span>
-                  )}
-                </td>
+                <td style={tdBase()}>{r.division || '—'}</td>
+                <td style={tdBase(true)}>{fmtTime(r.time_ms)}</td>
 
-                <td style={tdStyle()}>{r.division || '—'}</td>
-                <td style={tdStyle(true)}>{fmtTime(r.time_ms)}</td>
-
-                <td style={tdStyle(true)}>
+                <td style={tdBase(true)}>
                   {gap === 0 ? (
                     <span style={{ color: C.green }}>Leader</span>
                   ) : gap ? (
@@ -265,37 +311,34 @@ function TeamsTable({ rows }) {
   }
 
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 680 }}>
         <thead>
-          <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+          <tr>
             {['Team', 'Division', 'Entries', 'Finished', 'Best Finish', 'Best Time'].map(h => (
-              <th key={h} style={thStyle()}>{h}</th>
+              <th key={h} style={{ ...thBase(), ...stickyHeader(undefined, 4) }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr
-              key={`${r.team}-${r.division}`}
-              style={{
-                borderBottom: `1px solid ${C.border}18`,
-                background: i % 2 === 0 ? 'transparent' : C.surface2 + '40',
-              }}
-            >
-              <td style={tdStyle()}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.teamColor || C.muted, display: 'inline-block' }} />
-                  <span style={{ color: C.text, fontWeight: 600 }}>{r.team}</span>
-                </span>
-              </td>
-              <td style={tdStyle()}>{r.division || '—'}</td>
-              <td style={tdStyle(true)}>{r.entries}</td>
-              <td style={tdStyle(true)}>{r.finished}</td>
-              <td style={tdStyle(true)}>{r.bestPlace ?? '—'}</td>
-              <td style={tdStyle(true)}>{r.bestTime != null ? fmtTime(r.bestTime) : '—'}</td>
-            </tr>
-          ))}
+          {rows.map((r, i) => {
+            const rowBg = i % 2 === 0 ? C.surface : C.surface2 + '40'
+            return (
+              <tr key={`${r.team}-${r.division}`} style={{ background: rowBg }}>
+                <td style={tdBase()}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.teamColor || C.muted, display: 'inline-block' }} />
+                    <span style={{ color: C.text, fontWeight: 600 }}>{r.team}</span>
+                  </span>
+                </td>
+                <td style={tdBase()}>{r.division || '—'}</td>
+                <td style={tdBase(true)}>{r.entries}</td>
+                <td style={tdBase(true)}>{r.finished}</td>
+                <td style={tdBase(true)}>{r.bestPlace ?? '—'}</td>
+                <td style={tdBase(true)}>{r.bestTime != null ? fmtTime(r.bestTime) : '—'}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -336,7 +379,7 @@ export default function LiveResults() {
         supabase.from('race_events').select('*').eq('id', eventId).single(),
         supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
         supabase.from('race_checkpoints').select('*').eq('event_id', eventId).eq('is_active', true).order('checkpoint_order'),
-        supabase.from('lap_events').select('*').eq('event_id', eventId).neq('status', 'void'),
+        supabase.from('lap_events').select('*').eq('event_id', eventId),
         supabase.from('race_finishes').select('*').eq('event_id', eventId).order('place', { ascending: true }),
       ])
 
@@ -378,7 +421,6 @@ export default function LiveResults() {
             .from('lap_events')
             .select('*')
             .eq('event_id', eventId)
-            .neq('status', 'void')
 
           setLaps(data || [])
           setLastUpdate(new Date())
@@ -406,10 +448,11 @@ export default function LiveResults() {
   const raceElapsedMs = getRaceElapsedMs(event, now)
   const isLive = event?.status === 'active'
 
-  const entryMap = useMemo(() => {
+  const entriesByBib = useMemo(() => {
     const map = {}
     entries.forEach(e => {
-      map[e.bib_number] = e
+      if (!map[e.bib_number]) map[e.bib_number] = []
+      map[e.bib_number].push(e)
     })
     return map
   }, [entries])
@@ -431,21 +474,20 @@ export default function LiveResults() {
 
     laps.forEach(l => {
       if (l.bib_number) {
-        const entry = entryMap[l.bib_number]
+        const entry = getPrimaryEntry(entriesByBib[l.bib_number])
         if (entry?.division) vals.add(entry.division)
       }
     })
 
     finishes.forEach(f => {
       if (f.bib_number) {
-        const entry = entryMap[f.bib_number]
+        const entry = getPrimaryEntry(entriesByBib[f.bib_number])
         if (entry?.division) vals.add(entry.division)
       }
     })
 
-    const out = Array.from(vals).sort((a, b) => a.localeCompare(b))
-    return out
-  }, [entries, laps, finishes, entryMap])
+    return Array.from(vals).sort((a, b) => a.localeCompare(b))
+  }, [entries, laps, finishes, entriesByBib])
 
   const progressRows = useMemo(() => {
     const splitMap = {}
@@ -456,15 +498,11 @@ export default function LiveResults() {
     })
 
     laps.forEach(l => {
-      if (!l.bib_number || l.status === 'void') return
+      if (!l.bib_number) return
       allBibs.add(l.bib_number)
 
       const key = `${l.bib_number}:${l.checkpoint_id}`
-      const existing = splitMap[key]
-
-      if (!existing || new Date(l.captured_at) > new Date(existing.captured_at)) {
-        splitMap[key] = l
-      }
+      splitMap[key] = choosePreferredSplit(splitMap[key], l)
     })
 
     finishes.forEach(f => {
@@ -473,47 +511,84 @@ export default function LiveResults() {
 
     return Array.from(allBibs)
       .map(bib => {
-        const entry = entryMap[bib] || null
+        const entriesForBib = entriesByBib[bib] || []
+        const primaryEntry = getPrimaryEntry(entriesForBib)
         const splits = {}
+
+        let latestCheckpointOrder = 0
+        let latestCheckpointElapsedMs = null
 
         checkpoints.forEach(cp => {
           const key = `${bib}:${cp.id}`
-          if (splitMap[key]) splits[cp.id] = splitMap[key]
+          const split = splitMap[key]
+
+          if (split && split.status !== 'void') {
+            splits[cp.id] = split
+
+            if (
+              cp.checkpoint_order > latestCheckpointOrder ||
+              (
+                cp.checkpoint_order === latestCheckpointOrder &&
+                (latestCheckpointElapsedMs == null || split.elapsed_ms < latestCheckpointElapsedMs)
+              )
+            ) {
+              latestCheckpointOrder = cp.checkpoint_order
+              latestCheckpointElapsedMs = split.elapsed_ms
+            }
+          }
         })
 
         return {
-          id: entry?.id || `bib-${bib}`,
+          id: primaryEntry?.id || `bib-${bib}`,
           bib_number: bib,
-          name: getDisplayName(entry),
-          team: entry?.team || null,
-          teamColor: entry?.team ? teamMap[entry.team] : null,
-          division: entry?.division || null,
+          name: getDisplayNameForBib(entriesForBib, bib),
+          division: primaryEntry?.division || null,
           splits,
           finish: finishMap[bib] || null,
-          isUnknownEntry: !entry,
+          latestCheckpointOrder,
+          latestCheckpointElapsedMs,
         }
       })
       .sort((a, b) => {
-        const aFinish = a.finish?.place ?? Infinity
-        const bFinish = b.finish?.place ?? Infinity
-        if (aFinish !== bFinish) return aFinish - bFinish
+        const aFinished = !!a.finish
+        const bFinished = !!b.finish
+
+        if (aFinished && bFinished) {
+          return (a.finish.place ?? Infinity) - (b.finish.place ?? Infinity)
+        }
+
+        if (aFinished && !bFinished) return -1
+        if (!aFinished && bFinished) return 1
+
+        if (a.latestCheckpointOrder !== b.latestCheckpointOrder) {
+          return b.latestCheckpointOrder - a.latestCheckpointOrder
+        }
+
+        if (a.latestCheckpointElapsedMs != null && b.latestCheckpointElapsedMs != null) {
+          if (a.latestCheckpointElapsedMs !== b.latestCheckpointElapsedMs) {
+            return a.latestCheckpointElapsedMs - b.latestCheckpointElapsedMs
+          }
+        }
+
+        if (a.latestCheckpointElapsedMs != null && b.latestCheckpointElapsedMs == null) return -1
+        if (a.latestCheckpointElapsedMs == null && b.latestCheckpointElapsedMs != null) return 1
+
         return String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
       })
-  }, [entries, laps, finishes, checkpoints, entryMap, finishMap, teamMap])
+  }, [entries, laps, finishes, checkpoints, entriesByBib, finishMap])
 
   const resultsRows = useMemo(() => {
     return finishes.map(f => {
-      const entry = f.bib_number ? entryMap[f.bib_number] : null
+      const entriesForBib = entriesByBib[f.bib_number] || []
+      const primaryEntry = getPrimaryEntry(entriesForBib)
+
       return {
         ...f,
-        name: getDisplayName(entry),
-        team: entry?.team || null,
-        teamColor: entry?.team ? teamMap[entry.team] : null,
-        division: entry?.division || null,
-        isUnknownEntry: !entry,
+        name: getDisplayNameForBib(entriesForBib, f.bib_number),
+        division: primaryEntry?.division || null,
       }
     })
-  }, [finishes, entryMap, teamMap])
+  }, [finishes, entriesByBib])
 
   const teamRows = useMemo(() => {
     const grouped = {}
@@ -536,10 +611,10 @@ export default function LiveResults() {
     })
 
     finishes.forEach(f => {
-      const entry = f.bib_number ? entryMap[f.bib_number] : null
-      if (!entry?.team) return
+      const primaryEntry = getPrimaryEntry(entriesByBib[f.bib_number] || [])
+      if (!primaryEntry?.team) return
 
-      const key = `${entry.team}::${entry.division || ''}`
+      const key = `${primaryEntry.team}::${primaryEntry.division || ''}`
       const g = grouped[key]
       if (!g) return
 
@@ -554,7 +629,7 @@ export default function LiveResults() {
       if (aPlace !== bPlace) return aPlace - bPlace
       return a.team.localeCompare(b.team)
     })
-  }, [entries, finishes, entryMap, teamMap])
+  }, [entries, finishes, entriesByBib, teamMap])
 
   const filteredProgressRows = useMemo(() => {
     if (divisionFilter === 'all') return progressRows
@@ -610,7 +685,6 @@ export default function LiveResults() {
     <div style={{ minHeight: '100dvh', background: C.bg, color: C.text, fontFamily: fontBody }}>
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
-      {/* Header */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '14px 20px' }}>
         <div
           style={{
@@ -714,13 +788,12 @@ export default function LiveResults() {
         </div>
       </div>
 
-      {/* Stats */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
           {[
-            { label: 'Entries / Seen Bibs', value: progressRows.length, color: C.text },
+            { label: 'Entries / Bibs', value: progressRows.length, color: C.text },
             { label: 'Checkpoints', value: checkpoints.length, color: C.muted },
-            { label: 'Assigned splits', value: laps.filter(l => !!l.bib_number && l.status !== 'void').length, color: C.green },
+            { label: 'Assigned splits', value: laps.filter(l => l.status !== 'void' && !!l.bib_number).length, color: C.green },
             { label: 'Finishers', value: finishes.filter(f => !!f.bib_number).length, color: C.blue },
             { label: 'Teams', value: Object.keys(teamMap).length, color: C.muted },
           ].map((s, idx, arr) => (
@@ -739,8 +812,7 @@ export default function LiveResults() {
         </div>
       </div>
 
-      {/* Main Tabs */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', minWidth: 'max-content' }}>
           <button style={tabBtn(tab === 'progress')} onClick={() => setTab('progress')}>
             Progress
@@ -754,38 +826,26 @@ export default function LiveResults() {
         </div>
       </div>
 
-      {/* Division Filter Tabs */}
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
+      <div style={{ position: 'sticky', top: 42, zIndex: 19, background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', minWidth: 'max-content' }}>
-          <button
-            style={subTabBtn(divisionFilter === 'all')}
-            onClick={() => setDivisionFilter('all')}
-          >
+          <button style={subTabBtn(divisionFilter === 'all')} onClick={() => setDivisionFilter('all')}>
             All Divisions
           </button>
 
           {divisions.map(div => (
-            <button
-              key={div}
-              style={subTabBtn(divisionFilter === div)}
-              onClick={() => setDivisionFilter(div)}
-            >
+            <button key={div} style={subTabBtn(divisionFilter === div)} onClick={() => setDivisionFilter(div)}>
               {div}
             </button>
           ))}
 
           {hasUnknownDivisionRows && (
-            <button
-              style={subTabBtn(divisionFilter === 'unknown')}
-              onClick={() => setDivisionFilter('unknown')}
-            >
+            <button style={subTabBtn(divisionFilter === 'unknown')} onClick={() => setDivisionFilter('unknown')}>
               Unknown
             </button>
           )}
         </div>
       </div>
 
-      {/* Content */}
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 20px' }}>
         {tab === 'progress' && (
           <ProgressTable rows={filteredProgressRows} checkpoints={checkpoints} />
@@ -801,7 +861,7 @@ export default function LiveResults() {
       </div>
 
       <div style={{ textAlign: 'center', color: '#1f2937', fontSize: 11, padding: '24px 0', letterSpacing: 1, fontFamily: fontHead }}>
-        POWERED BY ATHLETOS
+        POWERED BY ATHLETEOS
       </div>
 
       <style>{`
