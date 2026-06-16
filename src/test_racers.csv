@@ -1,51 +1,31 @@
-bib_number,first_name,last_name,team,division,gender,age
-101,Emma,Wilson,Northern Stride,1 Person,F,29
-102,Liam,Carter,Peak Motion,1 Person,M,31
-103,Olivia,Bennett,River Run Club,1 Person,F,27
-104,Noah,Mitchell,Summit Pace,1 Person,M,34
-105,Ava,Turner,Fast North,1 Person,F,25
-106,William,Hayes,Granite Endurance,1 Person,M,36
-107,Sophia,Parker,Lakeside Racing,1 Person,F,30
-108,James,Collins,Trail Forge,1 Person,M,33
-109,Isabella,Morris,Urban Stride,1 Person,F,28
-110,Benjamin,Reed,Frontline Endurance,1 Person,M,38
-111,Mia,Cook,Altitude Collective,1 Person,F,24
-112,Lucas,Bailey,North River Racing,1 Person,M,26
-113,Charlotte,Brooks,East Gate Run Co,1 Person,F,32
-114,Henry,Rogers,Iron Loop,1 Person,M,35
-115,Amelia,Price,Maple Stride,1 Person,F,29
-116,Alexander,Gray,Cinder Track,1 Person,M,37
-117,Harper,Long,Blue Ridge Endurance,1 Person,F,23
-118,Daniel,Foster,Storm Pace,1 Person,M,40
-119,Evelyn,Hayward,Harbour Run Club,1 Person,F,33
-120,Michael,Ward,West End Flyers,1 Person,M,41
-201,Jack,Evans,Relay North,2 Person,M,30
-202,Grace,Perry,Twin Stride,2 Person,F,28
-203,Logan,Hughes,Double Tempo,2 Person,M,34
-204,Chloe,Russell,Northbound Pair,2 Person,F,27
-205,Matthew,Jenkins,Fast Exchange,2 Person,M,36
-206,Lily,Powell,Lake Pair Racing,2 Person,F,31
-207,Samuel,Butler,Bridge Runners,2 Person,M,32
-208,Zoe,Sanders,Coastline Duo,2 Person,F,26
-209,David,Barnes,Velocity Two,2 Person,M,39
-210,Ella,Ross,Split Decision,2 Person,F,29
-211,Joseph,Henderson,Second Wind Pair,2 Person,M,33
-212,Hannah,Cole,Double Track,2 Person,F,25
-301,Ethan,Wood,Quad Squad Alpha,4 Person,M,35
-302,Abigail,Bell,Trail Quads,4 Person,F,30
-303,Mason,Murphy,North Coast Four,4 Person,M,37
-304,Emily,Cooper,Rapid Relay Four,4 Person,F,28
-305,Jacob,Richardson,Fourward Motion,4 Person,M,41
-306,Scarlett,Cox,Summit Four,4 Person,F,32
-307,Matthew,Howard,Team Switchback,4 Person,M,34
-308,Avery,Ward,Four Peaks Racing,4 Person,F,27
-309,Jackson,Torres,Checkpoint Chasers,4 Person,M,38
-310,Sofia,Peterson,Riverstone Four,4 Person,F,29
-401,Elijah,Gray,Octane Eight,8 Person,M,36
-402,Aria,Baker,The Long Lap,8 Person,F,31
-403,Sebastian,Diaz,Great North Eight,8 Person,M,39
-404,Penelope,Watson,Enduro Eight,8 Person,F,28
-405,David,Brooks,Team Apex Eight,8 Person,M,42
-406,Nora,Kelly,Harbour Eight,8 Person,F,33
-407,Carter,James,Switchpoint Eight,8 Person,M,37
-408,Victoria,Price,Relay House,8 Person,F,30
+bib_number,first_name,last_name,team,division,age,gender
+101,Ava,Smith,,1 Person,29,F
+102,Noah,Johnson,,1 Person,34,M
+103,Emma,Brown,,1 Person,27,F
+104,Liam,Davis,,1 Person,31,M
+201,Mason,Lee,North Stride Duo,2 Person,33,M
+201,Sophia,Lee,North Stride Duo,2 Person,30,F
+202,Lucas,Wilson,River Run Duo,2 Person,28,M
+202,Isla,Wilson,River Run Duo,2 Person,27,F
+301,Olivia,Martin,Trail Blazers Trio,3 Person,26,F
+301,Ethan,Martin,Trail Blazers Trio,3 Person,32,M
+301,Chloe,Martin,Trail Blazers Trio,3 Person,24,F
+302,James,Anderson,Summit Pace Trio,3 Person,35,M
+302,Grace,Anderson,Summit Pace Trio,3 Person,33,F
+302,Benjamin,Anderson,Summit Pace Trio,3 Person,22,M
+401,Harper,Thomas,Iron Ridge Four,4 Person,29,F
+401,Elijah,Thomas,Iron Ridge Four,4 Person,31,M
+401,Amelia,Thomas,Iron Ridge Four,4 Person,25,F
+401,Henry,Thomas,Iron Ridge Four,4 Person,28,M
+501,Evelyn,Moore,Peak Five,5 Person,30,F
+501,Jack,Moore,Peak Five,5 Person,34,M
+501,Abigail,Moore,Peak Five,5 Person,27,F
+501,Daniel,Moore,Peak Five,5 Person,26,M
+501,Scarlett,Moore,Peak Five,5 Person,23,F
+601,Michael,Taylor,Endurance Six,6 Person,36,M
+601,Emily,Taylor,Endurance Six,6 Person,32,F
+601,Alexander,Taylor,Endurance Six,6 Person,28,M
+601,Madison,Taylor,Endurance Six,6 Person,24,F
+601,Logan,Taylor,Endurance Six,6 Person,21,M
+601,Charlotte,Taylor,Endurance Six,6 Person,20,F
+602,Nora,Walker,Fast Lane Six,6 Person,29,F

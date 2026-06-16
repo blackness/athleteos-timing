@@ -6,6 +6,71 @@ import { getRaceElapsedMs } from '../lib/raceClock'
 const F = "'Barlow Condensed', sans-serif"
 const FB = "'Barlow', sans-serif"
 
+const THEMES = {
+  dark: {
+    bg: '#080b0f',
+    pageAlt: '#0c1018',
+    panel: '#0b1016',
+    panel2: '#0e1318',
+    border: '#1a2030',
+    border2: '#1e2730',
+    text: '#e2e8f0',
+    textStrong: '#f8fafc',
+    muted: '#94a3b8',
+    muted2: '#64748b',
+    dim: '#374151',
+    faint: '#1f2937',
+    accent: '#1d4ed8',
+    accentAlt: '#0f766e',
+    success: '#16a34a',
+    successBright: '#22c55e',
+    warning: '#f59e0b',
+    warningBg: 'rgba(234,179,8,0.10)',
+    warningBorder: 'rgba(234,179,8,0.28)',
+    danger: '#f87171',
+    dangerBorder: '#4b1f1f',
+    inputBg: '#0a0a0a',
+    inputBorder: '#2a3444',
+    buttonText: '#ffffff',
+    flash: '#22c55e',
+    pendingNext: '#0f1a0f',
+    voidBg: '#1a0f0f',
+    pendingBg: '#0a0800',
+    zebra: '#0a0c10',
+  },
+  light: {
+    bg: '#f8fafc',
+    pageAlt: '#ffffff',
+    panel: '#ffffff',
+    panel2: '#f8fafc',
+    border: '#cbd5e1',
+    border2: '#94a3b8',
+    text: '#0f172a',
+    textStrong: '#020617',
+    muted: '#475569',
+    muted2: '#64748b',
+    dim: '#94a3b8',
+    faint: '#e2e8f0',
+    accent: '#2563eb',
+    accentAlt: '#0f766e',
+    success: '#16a34a',
+    successBright: '#15803d',
+    warning: '#d97706',
+    warningBg: '#fff7ed',
+    warningBorder: '#fdba74',
+    danger: '#dc2626',
+    dangerBorder: '#fca5a5',
+    inputBg: '#ffffff',
+    inputBorder: '#94a3b8',
+    buttonText: '#ffffff',
+    flash: '#16a34a',
+    pendingNext: '#ecfdf5',
+    voidBg: '#fef2f2',
+    pendingBg: '#fffbeb',
+    zebra: '#f8fafc',
+  },
+}
+
 function fmt(ms, short = false) {
   if (ms == null) return short ? '--:--' : '--:--:--'
   const h = Math.floor(ms / 3600000)
@@ -50,48 +115,9 @@ function getRepeatGuardStorageKey(checkpointId) {
   return `checkpoint_repeat_guard:${checkpointId}`
 }
 
-const modeBtn = active => ({
-  flex: 1,
-  height: 38,
-  borderRadius: 10,
-  border: '1px solid #1e2730',
-  background: active ? '#1d4ed8' : '#0e1318',
-  color: active ? '#fff' : '#94a3b8',
-  cursor: 'pointer',
-  fontFamily: F,
-  fontWeight: 800,
-  fontSize: 11,
-  letterSpacing: 1.5,
-  textTransform: 'uppercase',
-})
-
-const guardBtn = active => ({
-  padding: '6px 10px',
-  borderRadius: 999,
-  border: '1px solid #1e2730',
-  background: active ? '#0f766e' : 'transparent',
-  color: active ? '#fff' : '#94a3b8',
-  cursor: 'pointer',
-  fontFamily: F,
-  fontWeight: 700,
-  fontSize: 10,
-  letterSpacing: 1,
-  textTransform: 'uppercase',
-})
-
-const filterBtn = active => ({
-  padding: '7px 10px',
-  borderRadius: 999,
-  border: '1px solid #1e2730',
-  background: active ? '#1d4ed8' : 'transparent',
-  color: active ? '#fff' : '#94a3b8',
-  cursor: 'pointer',
-  fontFamily: F,
-  fontWeight: 700,
-  fontSize: 10,
-  letterSpacing: 1.2,
-  textTransform: 'uppercase',
-})
+function getThemeStorageKey(checkpointId) {
+  return `checkpoint_theme:${checkpointId}`
+}
 
 export default function CheckpointTimer() {
   const { id: eventId, checkpointId } = useParams()
@@ -110,6 +136,7 @@ export default function CheckpointTimer() {
   const [inputMode, setInputMode] = useState('capture_first')
   const [repeatGuardMs, setRepeatGuardMs] = useState(0)
   const [recentFilter, setRecentFilter] = useState('all')
+  const [theme, setTheme] = useState('dark')
 
   const [savingLap, setSavingLap] = useState(false)
   const [savingAssign, setSavingAssign] = useState(false)
@@ -127,6 +154,74 @@ export default function CheckpointTimer() {
   const deviceIdRef = useRef(null)
   const lastCaptureAtRef = useRef(0)
 
+  const T = THEMES[theme]
+
+  const modeBtn = active => ({
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    border: `1px solid ${T.border2}`,
+    background: active ? T.accent : T.panel2,
+    color: active ? T.buttonText : T.muted,
+    cursor: 'pointer',
+    fontFamily: F,
+    fontWeight: 800,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  })
+
+  const guardBtn = active => ({
+    padding: '6px 10px',
+    borderRadius: 999,
+    border: `1px solid ${T.border2}`,
+    background: active ? T.accentAlt : 'transparent',
+    color: active ? T.buttonText : T.muted,
+    cursor: 'pointer',
+    fontFamily: F,
+    fontWeight: 700,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  })
+
+  const filterBtn = active => ({
+    padding: '7px 10px',
+    borderRadius: 999,
+    border: `1px solid ${T.border2}`,
+    background: active ? T.accent : 'transparent',
+    color: active ? T.buttonText : T.muted,
+    cursor: 'pointer',
+    fontFamily: F,
+    fontWeight: 700,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  })
+
+  const themeBtn = active => ({
+    padding: '6px 10px',
+    borderRadius: 999,
+    border: `1px solid ${T.border2}`,
+    background: active ? T.panel2 : 'transparent',
+    color: active ? T.textStrong : T.muted,
+    cursor: 'pointer',
+    fontFamily: F,
+    fontWeight: 700,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  })
+
+  const refocusBibInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.focus()
+        inputRef.current.select?.()
+      }
+    })
+  }, [])
+
   useEffect(() => {
     const savedMode = localStorage.getItem(getModeStorageKey(checkpointId))
     if (savedMode === 'capture_first' || savedMode === 'bib_first') {
@@ -137,6 +232,13 @@ export default function CheckpointTimer() {
     if (savedGuard != null) {
       const parsed = parseInt(savedGuard, 10)
       if ([0, 300, 500].includes(parsed)) setRepeatGuardMs(parsed)
+    }
+
+    const savedTheme = localStorage.getItem(getThemeStorageKey(checkpointId))
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      setTheme(savedTheme)
+    } else {
+      setTheme('light')
     }
   }, [checkpointId])
 
@@ -149,6 +251,11 @@ export default function CheckpointTimer() {
     if (!checkpointId) return
     localStorage.setItem(getRepeatGuardStorageKey(checkpointId), String(repeatGuardMs))
   }, [checkpointId, repeatGuardMs])
+
+  useEffect(() => {
+    if (!checkpointId) return
+    localStorage.setItem(getThemeStorageKey(checkpointId), theme)
+  }, [checkpointId, theme])
 
   useEffect(() => {
     if (!eventId || !checkpointId) return
@@ -478,13 +585,13 @@ export default function CheckpointTimer() {
       setBibInput('')
       setPreview(null)
       setTimeout(() => {
-        inputRef.current?.focus()
+        refocusBibInput()
         setMessage('')
       }, 1200)
     }
 
     setSavingLap(false)
-  }, [canCapture, savingLap, eventId, checkpointId, raceStart, inputMode, bibInput, entries, repeatGuardMs])
+  }, [canCapture, savingLap, eventId, checkpointId, raceStart, inputMode, bibInput, entries, repeatGuardMs, refocusBibInput])
 
   const assignBib = useCallback(async () => {
     const bib = bibInput.trim()
@@ -521,9 +628,9 @@ export default function CheckpointTimer() {
     setBibInput('')
     setPreview(null)
     setSavingAssign(false)
-    inputRef.current?.focus()
+    refocusBibInput()
     setTimeout(() => setMessage(''), 1500)
-  }, [bibInput, nextPending, savingAssign, entries, eventId, checkpointId])
+  }, [bibInput, nextPending, savingAssign, entries, eventId, checkpointId, refocusBibInput])
 
   const voidLastPending = useCallback(async () => {
     const target = [...pending].reverse()[0]
@@ -649,40 +756,49 @@ export default function CheckpointTimer() {
   }, [captureLap, canCapture, inputMode])
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#080b0f', color: '#e2e8f0', fontFamily: FB, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100dvh', background: T.bg, color: T.text, fontFamily: FB, display: 'flex', flexDirection: 'column' }}>
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
-      <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid #1a2030', background: '#0c1018', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: `1px solid ${T.border}`, background: T.pageAlt, gap: 12 }}>
         <button
           onClick={() => navigate(`/race/${eventId}/checkpoints`)}
-          style={{ background: 'none', border: '1px solid #1e2730', color: '#4a5568', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 11, fontFamily: F, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}
+          style={{ background: 'none', border: `1px solid ${T.border2}`, color: T.muted2, borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 11, fontFamily: F, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}
         >
           ← Checkpoints
         </button>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10, color: '#f97316', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
+          <div style={{ fontSize: 10, color: T.warning, letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
             CHECKPOINT TIMER
           </div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: '#f1f5f9', fontFamily: F, lineHeight: 1.05 }}>
+          <div style={{ fontSize: 22, fontWeight: 900, color: T.textStrong, fontFamily: F, lineHeight: 1.05 }}>
             {checkpoint?.name || 'Checkpoint'}
           </div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>
             {event?.name}
           </div>
         </div>
 
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button style={themeBtn(theme === 'light')} onClick={() => setTheme('light')}>
+            ☀ Light
+          </button>
+          <button style={themeBtn(theme === 'dark')} onClick={() => setTheme('dark')}>
+            🌙 Dark
+          </button>
+        </div>
+
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1, color: event?.race_started_at ? '#fff' : '#374151', fontVariantNumeric: 'tabular-nums', fontFamily: F, lineHeight: 1 }}>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: -1, color: event?.race_started_at ? T.textStrong : T.dim, fontVariantNumeric: 'tabular-nums', fontFamily: F, lineHeight: 1 }}>
             {fmt(elapsed)}
           </div>
-          <div style={{ fontSize: 9, color: syncing ? '#f59e0b' : '#374151', letterSpacing: 1, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 9, color: syncing ? T.warning : T.dim, letterSpacing: 1, textTransform: 'uppercase' }}>
             {syncing ? 'Syncing…' : event?.status === 'finished' ? 'Race finished' : canCapture ? 'Race active' : 'Waiting for start'}
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', borderBottom: '1px solid #1a2030', background: '#0c1018' }}>
+      <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, background: T.pageAlt }}>
         {['timer', 'recent'].map(tab => (
           <button
             key={tab}
@@ -698,8 +814,8 @@ export default function CheckpointTimer() {
               fontSize: 12,
               letterSpacing: 2,
               textTransform: 'uppercase',
-              color: mobileTab === tab ? '#f97316' : '#374151',
-              borderBottom: mobileTab === tab ? '2px solid #f97316' : '2px solid transparent',
+              color: mobileTab === tab ? T.warning : T.dim,
+              borderBottom: mobileTab === tab ? `2px solid ${T.warning}` : '2px solid transparent',
             }}
           >
             {tab === 'timer'
@@ -715,10 +831,10 @@ export default function CheckpointTimer() {
           style={{
             width: 420,
             flexShrink: 0,
-            borderRight: '1px solid #1a2030',
+            borderRight: `1px solid ${T.border}`,
             display: mobileTab === 'timer' ? 'flex' : 'none',
             flexDirection: 'column',
-            background: '#080b0f',
+            background: T.bg,
           }}
         >
           <div style={{ padding: '14px 16px 12px' }}>
@@ -731,7 +847,7 @@ export default function CheckpointTimer() {
               </button>
             </div>
 
-            <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', minHeight: 18, marginBottom: 10 }}>
+            <div style={{ textAlign: 'center', fontSize: 11, color: T.muted, minHeight: 18, marginBottom: 10 }}>
               {inputMode === 'capture_first'
                 ? 'Tap racers as they pass. Assign bibs afterward.'
                 : 'Enter bib, then tap to record immediately.'}
@@ -757,18 +873,18 @@ export default function CheckpointTimer() {
                 style={{
                   marginBottom: 12,
                   borderRadius: 12,
-                  border: '1px solid rgba(234,179,8,0.28)',
-                  background: 'rgba(234,179,8,0.10)',
+                  border: `1px solid ${T.warningBorder}`,
+                  background: T.warningBg,
                   padding: '12px 14px',
                 }}
               >
-                <div style={{ fontSize: 11, color: '#f59e0b', fontFamily: F, fontWeight: 900, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 11, color: T.warning, fontFamily: F, fontWeight: 900, letterSpacing: 1.5, textTransform: 'uppercase' }}>
                   {pending.length} Unassigned {pending.length === 1 ? 'Tap' : 'Taps'}
                 </div>
-                <div style={{ marginTop: 4, fontSize: 18, color: '#fff', fontFamily: F, fontWeight: 900 }}>
+                <div style={{ marginTop: 4, fontSize: 18, color: T.textStrong, fontFamily: F, fontWeight: 900 }}>
                   Awaiting Bib: {nextPending ? fmt(nextPending.elapsed_ms, true) : '—'}
                 </div>
-                <div style={{ marginTop: 3, fontSize: 11, color: '#cbd5e1' }}>
+                <div style={{ marginTop: 3, fontSize: 11, color: T.muted }}>
                   Assign bibs before more taps are missed.
                 </div>
               </div>
@@ -778,15 +894,15 @@ export default function CheckpointTimer() {
               <div style={{ marginBottom: 12 }}>
                 <div style={{ minHeight: 18, margin: '0 0 8px', fontSize: 12 }}>
                   {preview?.found && (
-                    <span style={{ color: '#22c55e' }}>
+                    <span style={{ color: T.successBright }}>
                       ✓ {preview.name}{preview.team ? ` · ${preview.team}` : ''}
                     </span>
                   )}
                   {preview && !preview.found && (
-                    <span style={{ color: '#f59e0b' }}>⚠ Not in roster</span>
+                    <span style={{ color: T.warning }}>⚠ Not in roster</span>
                   )}
                   {duplicateBibAtCheckpoint && (
-                    <span style={{ color: '#ef4444', marginLeft: 8 }}>⚠ Bib already recorded at this checkpoint</span>
+                    <span style={{ color: T.danger, marginLeft: 8 }}>⚠ Bib already recorded at this checkpoint</span>
                   )}
                 </div>
 
@@ -804,10 +920,10 @@ export default function CheckpointTimer() {
                   style={{
                     width: '100%',
                     height: 58,
-                    background: '#0a0a0a',
-                    border: '1px solid #2a3444',
+                    background: T.inputBg,
+                    border: `1px solid ${T.inputBorder}`,
                     borderRadius: 12,
-                    color: '#fff',
+                    color: T.textStrong,
                     fontSize: 28,
                     fontWeight: 700,
                     textAlign: 'center',
@@ -823,7 +939,14 @@ export default function CheckpointTimer() {
 
             <div className="capture-row" style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 12, alignItems: 'stretch' }}>
               <button
-                onPointerDown={canCapture ? captureLap : undefined}
+                onPointerDown={
+                  canCapture
+                    ? e => {
+                        e.preventDefault()
+                        captureLap()
+                      }
+                    : undefined
+                }
                 disabled={!canCapture || (inputMode === 'bib_first' && !bibInput.trim())}
                 style={{
                   width: '100%',
@@ -831,13 +954,13 @@ export default function CheckpointTimer() {
                   borderRadius: 20,
                   border: 'none',
                   background: !canCapture
-                    ? '#374151'
+                    ? T.dim
                     : flash
-                      ? '#22c55e'
+                      ? T.flash
                       : inputMode === 'bib_first'
-                        ? '#0f766e'
-                        : '#1d4ed8',
-                  color: '#fff',
+                        ? T.accentAlt
+                        : T.accent,
+                  color: T.buttonText,
                   fontSize: 34,
                   fontWeight: 900,
                   letterSpacing: 3,
@@ -862,8 +985,8 @@ export default function CheckpointTimer() {
               <div
                 style={{
                   borderRadius: 16,
-                  border: '1px solid #1e2730',
-                  background: '#0b1016',
+                  border: `1px solid ${T.border2}`,
+                  background: T.panel,
                   padding: '12px 14px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -871,25 +994,25 @@ export default function CheckpointTimer() {
                   minHeight: 180,
                 }}
               >
-                <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
+                <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
                   Last Captures
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
                   {recentCaptured.length === 0 ? (
-                    <div style={{ color: '#374151', fontSize: 14, textAlign: 'center', paddingTop: 20 }}>
+                    <div style={{ color: T.dim, fontSize: 14, textAlign: 'center', paddingTop: 20 }}>
                       No taps yet
                     </div>
                   ) : (
                     recentCaptured.map((l, idx) => (
                       <div key={l.id} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 10, color: idx === 0 ? '#22c55e' : '#64748b', textTransform: 'uppercase', letterSpacing: 1.2, fontFamily: F, fontWeight: 800 }}>
+                        <span style={{ fontSize: 10, color: idx === 0 ? T.successBright : T.muted2, textTransform: 'uppercase', letterSpacing: 1.2, fontFamily: F, fontWeight: 800 }}>
                           {idx === 0 ? 'Last' : idx === 1 ? 'Prev' : 'Earlier'}
                         </span>
                         <span
                           style={{
                             fontSize: idx === 0 ? 28 : 22,
-                            color: '#ffffff',
+                            color: T.textStrong,
                             fontWeight: 900,
                             fontFamily: F,
                             lineHeight: 1,
@@ -903,7 +1026,7 @@ export default function CheckpointTimer() {
                   )}
                 </div>
 
-                <div style={{ textAlign: 'center', fontSize: 11, color: '#64748b', marginTop: 10 }}>
+                <div style={{ textAlign: 'center', fontSize: 11, color: T.muted2, marginTop: 10 }}>
                   {event?.status === 'finished'
                     ? 'Race ended'
                     : !canCapture
@@ -916,7 +1039,7 @@ export default function CheckpointTimer() {
             </div>
 
             {message && (
-              <div style={{ marginTop: 10, textAlign: 'center', fontSize: 11, color: '#f59e0b' }}>
+              <div style={{ marginTop: 10, textAlign: 'center', fontSize: 11, color: T.warning }}>
                 {message}
               </div>
             )}
@@ -924,26 +1047,26 @@ export default function CheckpointTimer() {
 
           {inputMode === 'capture_first' && (
             <>
-              <div style={{ padding: '0 16px 16px', borderTop: '1px solid #0d1117' }}>
-                <div style={{ paddingTop: 12, fontSize: 9, color: '#374151', textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
+              <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${T.faint}` }}>
+                <div style={{ paddingTop: 12, fontSize: 9, color: T.dim, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
                   Assign next bib
                 </div>
 
                 <div style={{ minHeight: 18, margin: '8px 0', fontSize: 12 }}>
                   {preview?.found && (
-                    <span style={{ color: '#22c55e' }}>
+                    <span style={{ color: T.successBright }}>
                       ✓ {preview.name}{preview.team ? ` · ${preview.team}` : ''}
                     </span>
                   )}
                   {preview && !preview.found && (
-                    <span style={{ color: '#f59e0b' }}>⚠ Not in roster</span>
+                    <span style={{ color: T.warning }}>⚠ Not in roster</span>
                   )}
                   {duplicateBibAtCheckpoint && (
-                    <span style={{ color: '#ef4444', marginLeft: 8 }}>⚠ Bib already recorded at this checkpoint</span>
+                    <span style={{ color: T.danger, marginLeft: 8 }}>⚠ Bib already recorded at this checkpoint</span>
                   )}
                 </div>
 
-                <div style={{ fontSize: 18, color: nextPending ? '#ffffff' : '#64748b', marginBottom: 8, fontFamily: F, fontWeight: 900 }}>
+                <div style={{ fontSize: 18, color: nextPending ? T.textStrong : T.muted2, marginBottom: 8, fontFamily: F, fontWeight: 900 }}>
                   {nextPending ? `Awaiting Bib · ${fmt(nextPending.elapsed_ms, true)}` : 'No pending laps'}
                 </div>
 
@@ -960,10 +1083,10 @@ export default function CheckpointTimer() {
                     style={{
                       flex: 1,
                       height: 58,
-                      background: '#0a0a0a',
-                      border: '1px solid #2a3444',
+                      background: T.inputBg,
+                      border: `1px solid ${T.inputBorder}`,
                       borderRadius: 12,
-                      color: '#fff',
+                      color: T.textStrong,
                       fontSize: 28,
                       fontWeight: 700,
                       textAlign: 'center',
@@ -974,15 +1097,16 @@ export default function CheckpointTimer() {
                     }}
                   />
                   <button
+                    onPointerDown={e => e.preventDefault()}
                     onClick={assignBib}
                     disabled={!bibInput.trim() || !nextPending || savingAssign}
                     style={{
                       width: 100,
                       height: 58,
-                      background: '#16a34a',
+                      background: T.success,
                       border: 'none',
                       borderRadius: 12,
-                      color: '#fff',
+                      color: T.buttonText,
                       fontSize: 15,
                       fontWeight: 900,
                       cursor: 'pointer',
@@ -997,7 +1121,7 @@ export default function CheckpointTimer() {
                 </div>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #0d1117' }}>
+              <div style={{ flex: 1, overflowY: 'auto', borderTop: `1px solid ${T.faint}` }}>
                 <div
                   style={{
                     padding: '8px 14px 2px',
@@ -1010,7 +1134,7 @@ export default function CheckpointTimer() {
                   <div
                     style={{
                       fontSize: 9,
-                      color: '#374151',
+                      color: T.dim,
                       textTransform: 'uppercase',
                       letterSpacing: 2,
                       fontFamily: F,
@@ -1027,9 +1151,9 @@ export default function CheckpointTimer() {
                       height: 26,
                       padding: '0 10px',
                       borderRadius: 999,
-                      border: '1px solid #4b1f1f',
+                      border: `1px solid ${T.dangerBorder}`,
                       background: 'transparent',
-                      color: pending.length ? '#f87171' : '#4b5563',
+                      color: pending.length ? T.danger : T.dim,
                       fontFamily: F,
                       fontWeight: 700,
                       fontSize: 10,
@@ -1048,7 +1172,7 @@ export default function CheckpointTimer() {
                   style={{
                     padding: '0 14px 6px',
                     fontSize: 10,
-                    color: '#4a5568',
+                    color: T.muted2,
                     lineHeight: 1.3,
                   }}
                 >
@@ -1056,7 +1180,7 @@ export default function CheckpointTimer() {
                 </div>
 
                 {pending.length === 0 ? (
-                  <div style={{ padding: '20px 14px', color: '#1f2937', fontSize: 12, textAlign: 'center' }}>
+                  <div style={{ padding: '20px 14px', color: T.dim, fontSize: 12, textAlign: 'center' }}>
                     No pending laps
                   </div>
                 ) : (
@@ -1068,14 +1192,14 @@ export default function CheckpointTimer() {
                         alignItems: 'center',
                         gap: 10,
                         padding: '10px 14px',
-                        borderBottom: '1px solid #0d1117',
-                        background: i === 0 ? '#0f1a0f' : 'transparent',
+                        borderBottom: `1px solid ${T.faint}`,
+                        background: i === 0 ? T.pendingNext : 'transparent',
                       }}
                     >
-                      <span style={{ color: '#374151', width: 40, fontSize: 11, fontFamily: F }}>
+                      <span style={{ color: T.dim, width: 40, fontSize: 11, fontFamily: F }}>
                         {i === 0 ? 'NEXT' : `${i + 1}`}
                       </span>
-                      <span style={{ color: '#ffffff', fontWeight: 900, flex: 1, fontSize: 20, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
+                      <span style={{ color: T.textStrong, fontWeight: 900, flex: 1, fontSize: 20, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
                         {fmt(l.elapsed_ms, true)}
                       </span>
                     </div>
@@ -1086,8 +1210,8 @@ export default function CheckpointTimer() {
           )}
 
           {inputMode === 'bib_first' && (
-            <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid #0d1117' }}>
-              <div style={{ padding: '14px', color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>
+            <div style={{ flex: 1, overflowY: 'auto', borderTop: `1px solid ${T.faint}` }}>
+              <div style={{ padding: '14px', color: T.muted, fontSize: 12, lineHeight: 1.5 }}>
                 Bib First mode records laps immediately with the entered bib.
                 <br />
                 Use the Recent tab to correct bibs, void mistakes, or restore voided rows.
@@ -1103,9 +1227,10 @@ export default function CheckpointTimer() {
             display: mobileTab === 'recent' ? 'flex' : 'none',
             flexDirection: 'column',
             overflow: 'hidden',
+            background: T.bg,
           }}
         >
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid #1a2030', background: '#0c1018' }}>
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, background: T.pageAlt }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button style={filterBtn(recentFilter === 'all')} onClick={() => setRecentFilter('all')}>
                 All ({laps.length})
@@ -1127,15 +1252,15 @@ export default function CheckpointTimer() {
               display: 'grid',
               gridTemplateColumns: '90px 70px 1fr 90px 96px',
               padding: '8px 14px',
-              borderBottom: '1px solid #1a2030',
+              borderBottom: `1px solid ${T.border}`,
               fontSize: 9,
-              color: '#374151',
+              color: T.dim,
               textTransform: 'uppercase',
               letterSpacing: 1.5,
               fontFamily: F,
               fontWeight: 700,
               flexShrink: 0,
-              background: '#0c1018',
+              background: T.pageAlt,
             }}
           >
             <span>Time</span>
@@ -1147,7 +1272,7 @@ export default function CheckpointTimer() {
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {filteredRecentLaps.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#1f2937', padding: '48px 0', fontSize: 13 }}>
+              <div style={{ textAlign: 'center', color: T.dim, padding: '48px 0', fontSize: 13 }}>
                 No laps in this filter
               </div>
             ) : (
@@ -1165,14 +1290,14 @@ export default function CheckpointTimer() {
                       display: 'grid',
                       gridTemplateColumns: '90px 70px 1fr 90px 96px',
                       padding: '8px 14px',
-                      borderBottom: '1px solid #0d1117',
-                      background: l.status === 'void' ? '#1a0f0f' : isPending ? '#0a0800' : i % 2 === 0 ? 'transparent' : '#0a0c10',
-                      opacity: l.status === 'void' ? 0.6 : isPending ? 0.75 : 1,
+                      borderBottom: `1px solid ${T.faint}`,
+                      background: l.status === 'void' ? T.voidBg : isPending ? T.pendingBg : i % 2 === 0 ? 'transparent' : T.zebra,
+                      opacity: l.status === 'void' ? 0.7 : isPending ? 0.9 : 1,
                       alignItems: 'center',
                       gap: 8,
                     }}
                   >
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: T.textStrong, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
                       {fmt(l.elapsed_ms, true)}
                     </span>
 
@@ -1192,10 +1317,10 @@ export default function CheckpointTimer() {
                         style={{
                           width: 56,
                           height: 28,
-                          background: '#0a0a0a',
-                          border: '1px solid #f97316',
+                          background: T.inputBg,
+                          border: `1px solid ${T.warning}`,
                           borderRadius: 6,
-                          color: '#fff',
+                          color: T.textStrong,
                           fontSize: 13,
                           fontWeight: 700,
                           textAlign: 'center',
@@ -1212,7 +1337,7 @@ export default function CheckpointTimer() {
                         style={{
                           background: 'transparent',
                           border: 'none',
-                          color: l.bib_number ? '#f97316' : '#2d3748',
+                          color: l.bib_number ? T.warning : T.dim,
                           fontSize: 13,
                           fontWeight: 700,
                           fontFamily: F,
@@ -1226,11 +1351,11 @@ export default function CheckpointTimer() {
                       </button>
                     )}
 
-                    <span style={{ fontSize: 13, color: name ? '#e2e8f0' : '#2d3748', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 13, color: name ? T.text : T.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {name ?? (l.status === 'void' ? 'voided' : isPending ? 'awaiting bib' : 'not in roster')}
                     </span>
 
-                    <span style={{ fontSize: 11, color: l.status === 'void' ? '#f87171' : isPending ? '#f59e0b' : '#22c55e', textTransform: 'uppercase', letterSpacing: 1 }}>
+                    <span style={{ fontSize: 11, color: l.status === 'void' ? T.danger : isPending ? T.warning : T.successBright, textTransform: 'uppercase', letterSpacing: 1 }}>
                       {l.status}
                     </span>
 
@@ -1242,9 +1367,9 @@ export default function CheckpointTimer() {
                             minWidth: 78,
                             height: 30,
                             borderRadius: 8,
-                            border: '1px solid #1f5130',
+                            border: `1px solid ${T.success}`,
                             background: 'transparent',
-                            color: '#22c55e',
+                            color: T.success,
                             fontFamily: F,
                             fontWeight: 700,
                             fontSize: 11,
@@ -1261,9 +1386,9 @@ export default function CheckpointTimer() {
                             minWidth: 78,
                             height: 30,
                             borderRadius: 8,
-                            border: '1px solid #4b1f1f',
+                            border: `1px solid ${T.dangerBorder}`,
                             background: 'transparent',
-                            color: '#f87171',
+                            color: T.danger,
                             fontFamily: F,
                             fontWeight: 700,
                             fontSize: 11,

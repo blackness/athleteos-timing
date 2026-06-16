@@ -1,27 +1,50 @@
+// LiveResults.jsx
 import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
 
-const C = {
-  bg: '#080b0f',
-  surface: '#0e1318',
-  surface2: '#141920',
-  border: '#1e2730',
-  text: '#f0f4f8',
-  muted: '#4a5568',
-  orange: '#f97316',
-  blue: '#3b82f6',
-  green: '#10b981',
-  red: '#ef4444',
-  yellow: '#eab308',
+const THEMES = {
+  dark: {
+    bg: '#080b0f',
+    surface: '#0e1318',
+    surface2: '#141920',
+    border: '#1e2730',
+    text: '#f0f4f8',
+    muted: '#4a5568',
+    orange: '#f97316',
+    blue: '#3b82f6',
+    green: '#10b981',
+    red: '#ef4444',
+    yellow: '#eab308',
+    dim: '#2d3748',
+    footer: '#1f2937',
+    medalFallback: '#1a2230',
+  },
+  light: {
+    bg: '#f8fafc',
+    surface: '#ffffff',
+    surface2: '#f1f5f9',
+    border: '#cbd5e1',
+    text: '#0f172a',
+    muted: '#64748b',
+    orange: '#ea580c',
+    blue: '#2563eb',
+    green: '#16a34a',
+    red: '#dc2626',
+    yellow: '#d97706',
+    dim: '#94a3b8',
+    footer: '#94a3b8',
+    medalFallback: '#e2e8f0',
+  },
 }
 
 const fontHead = "'Barlow Condensed', sans-serif"
 const fontBody = "'Barlow', sans-serif"
 const fontMono = "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace"
 
-const TEAM_COLORS = [C.green, C.blue, C.yellow, '#9d6aff', C.red, '#f97316', '#06b6d4', '#ec4899']
+const NAME_COL_WIDTH = 130
+const THEME_STORAGE_KEY = 'live_results_theme'
 
 function fmtTime(ms) {
   if (ms == null) return '—'
@@ -84,7 +107,7 @@ function choosePreferredSplit(existing, candidate) {
   return splitSortStamp(candidate) >= splitSortStamp(existing) ? candidate : existing
 }
 
-function emptyStateStyle() {
+function emptyStateStyle(C) {
   return {
     background: C.surface,
     border: `1px solid ${C.border}`,
@@ -97,7 +120,7 @@ function emptyStateStyle() {
   }
 }
 
-function thBase() {
+function thBase(C) {
   return {
     padding: '8px 12px',
     textAlign: 'left',
@@ -110,10 +133,12 @@ function thBase() {
     whiteSpace: 'nowrap',
     background: C.surface,
     borderBottom: `1px solid ${C.border}`,
+    cursor: 'pointer',
+    userSelect: 'none',
   }
 }
 
-function tdBase(mono = false) {
+function tdBase(C, mono = false) {
   return {
     padding: '7px 12px',
     fontFamily: mono ? fontMono : fontBody,
@@ -144,36 +169,115 @@ function stickyCell(left, bg, z = 2) {
   }
 }
 
-function ProgressTable({ rows, checkpoints }) {
+function nameCellStyle(bg) {
+  return {
+    ...stickyCell(0, bg, 3),
+    minWidth: NAME_COL_WIDTH,
+    maxWidth: NAME_COL_WIDTH,
+    width: NAME_COL_WIDTH,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }
+}
+
+function sortIndicator(active, dir) {
+  if (!active) return ' ↕'
+  return dir === 'asc' ? ' ↑' : ' ↓'
+}
+
+function compareValues(a, b, dir = 'asc', type = 'string') {
+  const mul = dir === 'asc' ? 1 : -1
+
+  if (type === 'number') {
+    const av = a == null ? Infinity : a
+    const bv = b == null ? Infinity : b
+    if (av < bv) return -1 * mul
+    if (av > bv) return 1 * mul
+    return 0
+  }
+
+  const av = String(a ?? '')
+  const bv = String(b ?? '')
+  return av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }) * mul
+}
+
+function ThemeToggle({ theme, setTheme, C }) {
+  const btn = active => ({
+    padding: '6px 10px',
+    borderRadius: 999,
+    border: `1px solid ${C.border}`,
+    background: active ? C.surface2 : 'transparent',
+    color: active ? C.text : C.muted,
+    cursor: 'pointer',
+    fontFamily: fontHead,
+    fontWeight: 700,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  })
+
+  return (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+      <button style={btn(theme === 'light')} onClick={() => setTheme('light')}>
+        ☀ Light
+      </button>
+      <button style={btn(theme === 'dark')} onClick={() => setTheme('dark')}>
+        🌙 Dark
+      </button>
+    </div>
+  )
+}
+
+function ProgressTable({ rows, displayCheckpoints, sortConfig, onSort, C }) {
   if (!rows.length) {
-    return <div style={emptyStateStyle()}>No entries or checkpoint activity yet…</div>
+    return <div style={emptyStateStyle(C)}>No entries or checkpoint activity yet…</div>
   }
 
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 860 }}>
+      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 990 }}>
         <thead>
           <tr>
-            <th style={{ ...thBase(), ...stickyHeader(0, 5), left: 0, minWidth: 72 }}>Bib</th>
-            <th style={{ ...thBase(), ...stickyHeader(72, 5), left: 72, minWidth: 200 }}>Name</th>
-            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 110 }}>Division</th>
-            {checkpoints.map(cp => (
-              <th key={cp.id} style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 90 }}>
-                CP{cp.checkpoint_order}
+            <th
+              onClick={() => onSort('name', 'string')}
+              style={{ ...thBase(C), ...stickyHeader(0, 5), left: 0, minWidth: NAME_COL_WIDTH, maxWidth: NAME_COL_WIDTH, width: NAME_COL_WIDTH }}
+            >
+              Name{sortIndicator(sortConfig.key === 'name', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('bib_number', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 72 }}>
+              Bib{sortIndicator(sortConfig.key === 'bib_number', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('division', 'string')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 110 }}>
+              Division{sortIndicator(sortConfig.key === 'division', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('wave_code', 'string')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 90 }}>
+              Wave{sortIndicator(sortConfig.key === 'wave_code', sortConfig.dir)}
+            </th>
+
+            {displayCheckpoints.map(cp => (
+              <th
+                key={cp.id}
+                onClick={() => onSort(`cp:${cp.id}:cum`, 'number')}
+                style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 110 }}
+              >
+                {cp.isFinish ? 'Finish' : `CP${cp.checkpoint_order}`}
+                {sortIndicator(sortConfig.key === `cp:${cp.id}:cum`, sortConfig.dir)}
               </th>
             ))}
-            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 90 }}>Finish</th>
           </tr>
         </thead>
+
         <tbody>
           {rows.map((r, i) => {
-            const rowBg = i % 2 === 0 ? C.surface : C.surface2 + '40'
+            const rowBg = i % 2 === 0 ? C.surface : C.surface2
 
             return (
               <tr key={r.id} style={{ background: rowBg }}>
-                <td style={{ ...tdBase(true), ...stickyCell(0, rowBg, 3) }}>{r.bib_number}</td>
-
-                <td style={{ ...tdBase(), ...stickyCell(72, rowBg, 3), minWidth: 200 }}>
+                <td style={{ ...tdBase(C), ...nameCellStyle(rowBg) }} title={r.name || `Bib ${r.bib_number}`}>
                   <div
                     style={{
                       color: r.name ? C.text : C.muted,
@@ -181,41 +285,48 @@ function ProgressTable({ rows, checkpoints }) {
                       fontStyle: r.name ? 'normal' : 'italic',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {r.name || `Bib ${r.bib_number}`}
                   </div>
                 </td>
 
-                <td style={tdBase()}>
+                <td style={tdBase(C, true)}>{r.bib_number}</td>
+
+                <td style={tdBase(C)}>
                   <span style={{ color: r.division ? C.text : C.muted }}>
                     {r.division || '—'}
                   </span>
                 </td>
 
-                {checkpoints.map(cp => {
+                <td style={tdBase(C)}>
+                  <span style={{ color: r.wave_code ? C.text : C.muted }}>
+                    {r.wave_code || '—'}
+                  </span>
+                </td>
+
+                {displayCheckpoints.map(cp => {
                   const split = r.splits[cp.id]
+                  const lapMs = r.lapTimes?.[cp.id] ?? null
+
                   return (
-                    <td key={cp.id} style={tdBase(true)}>
+                    <td key={cp.id} style={tdBase(C, true)}>
                       {split ? (
-                        <span style={{ color: C.text }}>{fmtTime(split.elapsed_ms)}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ color: cp.isFinish ? C.green : C.text, fontWeight: cp.isFinish ? 700 : 500 }}>
+                            {fmtTime(split.elapsed_ms)}
+                          </span>
+                          <span style={{ color: C.muted, fontSize: 10 }}>
+                            {fmtTime(lapMs)}
+                          </span>
+                        </div>
                       ) : (
-                        <span style={{ color: '#2d3748' }}>—</span>
+                        <span style={{ color: C.dim }}>—</span>
                       )}
                     </td>
                   )
                 })}
-
-                <td style={tdBase(true)}>
-                  {r.finish ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <span style={{ color: C.green, fontWeight: 700 }}>{fmtTime(r.finish.time_ms)}</span>
-                      <span style={{ color: C.muted, fontSize: 10 }}>#{r.finish.place}</span>
-                    </div>
-                  ) : (
-                    <span style={{ color: '#2d3748' }}>—</span>
-                  )}
-                </td>
               </tr>
             )
           })}
@@ -225,36 +336,74 @@ function ProgressTable({ rows, checkpoints }) {
   )
 }
 
-function ResultsTable({ rows }) {
+function ResultsTable({ rows, sortConfig, onSort, C }) {
   if (!rows.length) {
-    return <div style={emptyStateStyle()}>No finishers in this division yet…</div>
+    return <div style={emptyStateStyle(C)}>No finishers in this division yet…</div>
   }
 
-  const leaderMs = rows.find(r => r.time_ms != null)?.time_ms ?? null
   const medals = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' }
 
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 720 }}>
+      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 710 }}>
         <thead>
           <tr>
-            <th style={{ ...thBase(), ...stickyHeader(0, 6), left: 0, minWidth: 52 }}>#</th>
-            <th style={{ ...thBase(), ...stickyHeader(52, 6), left: 52, minWidth: 72 }}>Bib</th>
-            <th style={{ ...thBase(), ...stickyHeader(124, 6), left: 124, minWidth: 220 }}>Name</th>
-            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 110 }}>Division</th>
-            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 110 }}>Time</th>
-            <th style={{ ...thBase(), ...stickyHeader(undefined, 4), minWidth: 90 }}>Gap</th>
+            <th
+              onClick={() => onSort('name', 'string')}
+              style={{ ...thBase(C), ...stickyHeader(0, 6), left: 0, minWidth: NAME_COL_WIDTH, maxWidth: NAME_COL_WIDTH, width: NAME_COL_WIDTH }}
+            >
+              Name{sortIndicator(sortConfig.key === 'name', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('place', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 52 }}>
+              #{sortIndicator(sortConfig.key === 'place', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('bib_number', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 72 }}>
+              Bib{sortIndicator(sortConfig.key === 'bib_number', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('division', 'string')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 110 }}>
+              Division{sortIndicator(sortConfig.key === 'division', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('wave_code', 'string')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 90 }}>
+              Wave{sortIndicator(sortConfig.key === 'wave_code', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('time_ms', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 110 }}>
+              Time{sortIndicator(sortConfig.key === 'time_ms', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('gap_ms', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 90 }}>
+              Gap{sortIndicator(sortConfig.key === 'gap_ms', sortConfig.dir)}
+            </th>
           </tr>
         </thead>
+
         <tbody>
           {rows.map((r, i) => {
             const medal = medals[r.place]
-            const gap = leaderMs != null && r.time_ms != null ? r.time_ms - leaderMs : null
-            const rowBg = i % 2 === 0 ? C.surface : C.surface2 + '40'
+            const rowBg = i % 2 === 0 ? C.surface : C.surface2
 
             return (
               <tr key={r.id} style={{ background: rowBg }}>
-                <td style={{ ...tdBase(), ...stickyCell(0, rowBg, 3), minWidth: 52 }}>
+                <td style={{ ...tdBase(C), ...nameCellStyle(rowBg) }} title={r.name ?? `Bib ${r.bib_number}`}>
+                  <span
+                    style={{
+                      color: r.name ? C.text : C.muted,
+                      fontStyle: r.name ? 'normal' : 'italic',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      display: 'block',
+                    }}
+                  >
+                    {r.name ?? `Bib ${r.bib_number}`}
+                  </span>
+                </td>
+
+                <td style={tdBase(C)}>
                   <span
                     style={{
                       display: 'inline-flex',
@@ -263,7 +412,7 @@ function ResultsTable({ rows }) {
                       width: 24,
                       height: 24,
                       borderRadius: '50%',
-                      background: medal ?? C.surface2,
+                      background: medal ?? C.medalFallback,
                       fontSize: 11,
                       fontWeight: 800,
                       fontFamily: fontHead,
@@ -274,68 +423,20 @@ function ResultsTable({ rows }) {
                   </span>
                 </td>
 
-                <td style={{ ...tdBase(true), ...stickyCell(52, rowBg, 3), minWidth: 72 }}>
-                  {r.bib_number ?? '—'}
-                </td>
+                <td style={tdBase(C, true)}>{r.bib_number ?? '—'}</td>
+                <td style={tdBase(C)}>{r.division || '—'}</td>
+                <td style={tdBase(C)}>{r.wave_code || '—'}</td>
+                <td style={tdBase(C, true)}>{fmtTime(r.time_ms)}</td>
 
-                <td style={{ ...tdBase(), ...stickyCell(124, rowBg, 3), minWidth: 220 }}>
-                  <span style={{ color: r.name ? C.text : C.muted, fontStyle: r.name ? 'normal' : 'italic' }}>
-                    {r.name ?? `Bib ${r.bib_number}`}
-                  </span>
-                </td>
-
-                <td style={tdBase()}>{r.division || '—'}</td>
-                <td style={tdBase(true)}>{fmtTime(r.time_ms)}</td>
-
-                <td style={tdBase(true)}>
-                  {gap === 0 ? (
+                <td style={tdBase(C, true)}>
+                  {r.gap_ms === 0 ? (
                     <span style={{ color: C.green }}>Leader</span>
-                  ) : gap ? (
-                    <span style={{ color: C.muted }}>{fmtGap(gap)}</span>
+                  ) : r.gap_ms ? (
+                    <span style={{ color: C.muted }}>{fmtGap(r.gap_ms)}</span>
                   ) : (
                     '—'
                   )}
                 </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function TeamsTable({ rows }) {
-  if (!rows.length) {
-    return <div style={emptyStateStyle()}>No team data in this division yet…</div>
-  }
-
-  return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 680 }}>
-        <thead>
-          <tr>
-            {['Team', 'Division', 'Entries', 'Finished', 'Best Finish', 'Best Time'].map(h => (
-              <th key={h} style={{ ...thBase(), ...stickyHeader(undefined, 4) }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => {
-            const rowBg = i % 2 === 0 ? C.surface : C.surface2 + '40'
-            return (
-              <tr key={`${r.team}-${r.division}`} style={{ background: rowBg }}>
-                <td style={tdBase()}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.teamColor || C.muted, display: 'inline-block' }} />
-                    <span style={{ color: C.text, fontWeight: 600 }}>{r.team}</span>
-                  </span>
-                </td>
-                <td style={tdBase()}>{r.division || '—'}</td>
-                <td style={tdBase(true)}>{r.entries}</td>
-                <td style={tdBase(true)}>{r.finished}</td>
-                <td style={tdBase(true)}>{r.bestPlace ?? '—'}</td>
-                <td style={tdBase(true)}>{r.bestTime != null ? fmtTime(r.bestTime) : '—'}</td>
               </tr>
             )
           })}
@@ -351,13 +452,32 @@ export default function LiveResults() {
   const [event, setEvent] = useState(null)
   const [entries, setEntries] = useState([])
   const [checkpoints, setCheckpoints] = useState([])
+  const [waves, setWaves] = useState([])
   const [laps, setLaps] = useState([])
   const [finishes, setFinishes] = useState([])
-  const [teamMap, setTeamMap] = useState({})
   const [tab, setTab] = useState('progress')
   const [divisionFilter, setDivisionFilter] = useState('all')
   const [lastUpdate, setLastUpdate] = useState(null)
   const [now, setNow] = useState(Date.now())
+  const [theme, setTheme] = useState('light')
+
+  const [progressSort, setProgressSort] = useState({ key: 'name', dir: 'asc', type: 'string' })
+  const [resultsSort, setResultsSort] = useState({ key: 'place', dir: 'asc', type: 'number' })
+
+  const C = THEMES[theme]
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY)
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      setTheme(savedTheme)
+    } else {
+      setTheme('light')
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem(THEME_STORAGE_KEY, theme)
+  }, [theme])
 
   useEffect(() => {
     if (event?.status !== 'active') return
@@ -373,12 +493,14 @@ export default function LiveResults() {
         { data: eventData },
         { data: entryData },
         { data: checkpointData },
+        { data: waveData },
         { data: lapData },
         { data: finishData },
       ] = await Promise.all([
         supabase.from('race_events').select('*').eq('id', eventId).single(),
         supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
         supabase.from('race_checkpoints').select('*').eq('event_id', eventId).eq('is_active', true).order('checkpoint_order'),
+        supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
         supabase.from('lap_events').select('*').eq('event_id', eventId),
         supabase.from('race_finishes').select('*').eq('event_id', eventId).order('place', { ascending: true }),
       ])
@@ -386,15 +508,9 @@ export default function LiveResults() {
       setEvent(eventData || null)
       setEntries(entryData || [])
       setCheckpoints(checkpointData || [])
+      setWaves(waveData || [])
       setLaps(lapData || [])
       setFinishes(finishData || [])
-
-      const teams = {}
-      let ci = 0
-      ;(entryData || []).forEach(e => {
-        if (e.team && !teams[e.team]) teams[e.team] = TEAM_COLORS[ci++ % TEAM_COLORS.length]
-      })
-      setTeamMap(teams)
 
       if ((lapData?.length || 0) > 0 || (finishData?.length || 0) > 0) {
         setLastUpdate(new Date())
@@ -417,11 +533,7 @@ export default function LiveResults() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` },
         async () => {
-          const { data } = await supabase
-            .from('lap_events')
-            .select('*')
-            .eq('event_id', eventId)
-
+          const { data } = await supabase.from('lap_events').select('*').eq('event_id', eventId)
           setLaps(data || [])
           setLastUpdate(new Date())
         }
@@ -440,6 +552,20 @@ export default function LiveResults() {
           setLastUpdate(new Date())
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'race_waves', filter: `event_id=eq.${eventId}` },
+        async () => {
+          const { data } = await supabase
+            .from('race_waves')
+            .select('*')
+            .eq('event_id', eventId)
+            .order('display_order', { ascending: true })
+
+          setWaves(data || [])
+          setLastUpdate(new Date())
+        }
+      )
       .subscribe()
 
     return () => supabase.removeChannel(ch)
@@ -447,6 +573,10 @@ export default function LiveResults() {
 
   const raceElapsedMs = getRaceElapsedMs(event, now)
   const isLive = event?.status === 'active'
+
+  const wavesById = useMemo(() => {
+    return Object.fromEntries(waves.map(w => [w.id, w]))
+  }, [waves])
 
   const entriesByBib = useMemo(() => {
     const map = {}
@@ -457,7 +587,23 @@ export default function LiveResults() {
     return map
   }, [entries])
 
-  const finishMap = useMemo(() => {
+  const checkpointsSorted = useMemo(() => {
+    return [...checkpoints].sort((a, b) => a.checkpoint_order - b.checkpoint_order)
+  }, [checkpoints])
+
+  const finishCheckpoint = useMemo(() => {
+    if (!checkpointsSorted.length) return null
+    return checkpointsSorted[checkpointsSorted.length - 1]
+  }, [checkpointsSorted])
+
+  const displayCheckpoints = useMemo(() => {
+    return checkpointsSorted.map(cp => ({
+      ...cp,
+      isFinish: finishCheckpoint?.id === cp.id,
+    }))
+  }, [checkpointsSorted, finishCheckpoint])
+
+  const finishMapFromTable = useMemo(() => {
     const map = {}
     finishes.forEach(f => {
       if (f.bib_number) map[f.bib_number] = f
@@ -489,8 +635,35 @@ export default function LiveResults() {
     return Array.from(vals).sort((a, b) => a.localeCompare(b))
   }, [entries, laps, finishes, entriesByBib])
 
-  const progressRows = useMemo(() => {
-    const splitMap = {}
+  const splitMap = useMemo(() => {
+    const map = {}
+
+    laps.forEach(l => {
+      if (!l.bib_number || l.status === 'void') return
+      const key = `${l.bib_number}:${l.checkpoint_id}`
+      map[key] = choosePreferredSplit(map[key], l)
+    })
+
+    return map
+  }, [laps])
+
+  const getEffectiveStartMsForBib = bib => {
+    const entriesForBib = entriesByBib[bib] || []
+    const primaryEntry = getPrimaryEntry(entriesForBib)
+    const wave = primaryEntry?.wave_id ? wavesById[primaryEntry.wave_id] : null
+
+    const effectiveStart =
+      wave?.actual_start_time ||
+      wave?.planned_start_time ||
+      event?.race_started_at ||
+      null
+
+    if (!effectiveStart) return null
+    const ms = new Date(effectiveStart).getTime()
+    return Number.isNaN(ms) ? null : ms
+  }
+
+  const baseProgressRows = useMemo(() => {
     const allBibs = new Set()
 
     entries.forEach(entry => {
@@ -498,160 +671,166 @@ export default function LiveResults() {
     })
 
     laps.forEach(l => {
-      if (!l.bib_number) return
-      allBibs.add(l.bib_number)
-
-      const key = `${l.bib_number}:${l.checkpoint_id}`
-      splitMap[key] = choosePreferredSplit(splitMap[key], l)
+      if (l.bib_number) allBibs.add(l.bib_number)
     })
 
     finishes.forEach(f => {
       if (f.bib_number) allBibs.add(f.bib_number)
     })
 
-    return Array.from(allBibs)
-      .map(bib => {
-        const entriesForBib = entriesByBib[bib] || []
-        const primaryEntry = getPrimaryEntry(entriesForBib)
-        const splits = {}
-
-        let latestCheckpointOrder = 0
-        let latestCheckpointElapsedMs = null
-
-        checkpoints.forEach(cp => {
-          const key = `${bib}:${cp.id}`
-          const split = splitMap[key]
-
-          if (split && split.status !== 'void') {
-            splits[cp.id] = split
-
-            if (
-              cp.checkpoint_order > latestCheckpointOrder ||
-              (
-                cp.checkpoint_order === latestCheckpointOrder &&
-                (latestCheckpointElapsedMs == null || split.elapsed_ms < latestCheckpointElapsedMs)
-              )
-            ) {
-              latestCheckpointOrder = cp.checkpoint_order
-              latestCheckpointElapsedMs = split.elapsed_ms
-            }
-          }
-        })
-
-        return {
-          id: primaryEntry?.id || `bib-${bib}`,
-          bib_number: bib,
-          name: getDisplayNameForBib(entriesForBib, bib),
-          division: primaryEntry?.division || null,
-          splits,
-          finish: finishMap[bib] || null,
-          latestCheckpointOrder,
-          latestCheckpointElapsedMs,
-        }
-      })
-      .sort((a, b) => {
-        const aFinished = !!a.finish
-        const bFinished = !!b.finish
-
-        if (aFinished && bFinished) {
-          return (a.finish.place ?? Infinity) - (b.finish.place ?? Infinity)
-        }
-
-        if (aFinished && !bFinished) return -1
-        if (!aFinished && bFinished) return 1
-
-        if (a.latestCheckpointOrder !== b.latestCheckpointOrder) {
-          return b.latestCheckpointOrder - a.latestCheckpointOrder
-        }
-
-        if (a.latestCheckpointElapsedMs != null && b.latestCheckpointElapsedMs != null) {
-          if (a.latestCheckpointElapsedMs !== b.latestCheckpointElapsedMs) {
-            return a.latestCheckpointElapsedMs - b.latestCheckpointElapsedMs
-          }
-        }
-
-        if (a.latestCheckpointElapsedMs != null && b.latestCheckpointElapsedMs == null) return -1
-        if (a.latestCheckpointElapsedMs == null && b.latestCheckpointElapsedMs != null) return 1
-
-        return String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
-      })
-  }, [entries, laps, finishes, checkpoints, entriesByBib, finishMap])
-
-  const resultsRows = useMemo(() => {
-    return finishes.map(f => {
-      const entriesForBib = entriesByBib[f.bib_number] || []
+    return Array.from(allBibs).map(bib => {
+      const entriesForBib = entriesByBib[bib] || []
       const primaryEntry = getPrimaryEntry(entriesForBib)
+      const splits = {}
+      const lapTimes = {}
+
+      const startMs = getEffectiveStartMsForBib(bib)
+
+      let previousElapsed = null
+      let latestCheckpointOrder = 0
+      let latestCheckpointElapsedMs = null
+
+      displayCheckpoints.forEach(cp => {
+        const key = `${bib}:${cp.id}`
+        const split = splitMap[key]
+        if (!split) return
+
+        const capturedMs = split.captured_at ? new Date(split.captured_at).getTime() : null
+        const effectiveElapsed =
+          capturedMs != null && startMs != null
+            ? Math.max(0, capturedMs - startMs)
+            : split.elapsed_ms
+
+        const effectiveSplit = { ...split, elapsed_ms: effectiveElapsed }
+
+        splits[cp.id] = effectiveSplit
+        lapTimes[cp.id] = previousElapsed == null ? effectiveElapsed : effectiveElapsed - previousElapsed
+        previousElapsed = effectiveElapsed
+
+        if (
+          cp.checkpoint_order > latestCheckpointOrder ||
+          (
+            cp.checkpoint_order === latestCheckpointOrder &&
+            (latestCheckpointElapsedMs == null || effectiveElapsed < latestCheckpointElapsedMs)
+          )
+        ) {
+          latestCheckpointOrder = cp.checkpoint_order
+          latestCheckpointElapsedMs = effectiveElapsed
+        }
+      })
 
       return {
-        ...f,
-        name: getDisplayNameForBib(entriesForBib, f.bib_number),
+        id: primaryEntry?.id || `bib-${bib}`,
+        bib_number: bib,
+        name: getDisplayNameForBib(entriesForBib, bib),
         division: primaryEntry?.division || null,
+        wave_code: primaryEntry?.wave_id ? (wavesById[primaryEntry.wave_id]?.wave_code || null) : null,
+        splits,
+        lapTimes,
+        latestCheckpointOrder,
+        latestCheckpointElapsedMs,
       }
     })
-  }, [finishes, entriesByBib])
+  }, [entries, laps, finishes, displayCheckpoints, entriesByBib, splitMap, wavesById, event?.race_started_at])
 
-  const teamRows = useMemo(() => {
-    const grouped = {}
+  const baseResultsRows = useMemo(() => {
+    const bibsWithFinishSplit = new Set()
 
-    entries.forEach(e => {
-      if (!e.team) return
-      const key = `${e.team}::${e.division || ''}`
-      if (!grouped[key]) {
-        grouped[key] = {
-          team: e.team,
-          division: e.division || null,
-          teamColor: teamMap[e.team] || null,
-          entries: 0,
-          finished: 0,
-          bestPlace: null,
-          bestTime: null,
+    if (finishCheckpoint) {
+      laps.forEach(l => {
+        if (l.status === 'void' || !l.bib_number) return
+        if (l.checkpoint_id === finishCheckpoint.id) bibsWithFinishSplit.add(l.bib_number)
+      })
+    }
+
+    const allFinisherBibs = new Set([
+      ...Object.keys(finishMapFromTable),
+      ...Array.from(bibsWithFinishSplit),
+    ])
+
+    const rows = Array.from(allFinisherBibs).map(bib => {
+      const entriesForBib = entriesByBib[bib] || []
+      const primaryEntry = getPrimaryEntry(entriesForBib)
+      const finishFromTable = finishMapFromTable[bib] || null
+      const finishSplit = finishCheckpoint ? splitMap[`${bib}:${finishCheckpoint.id}`] : null
+
+      const startMs = getEffectiveStartMsForBib(bib)
+      const finishCapturedMs =
+        finishSplit?.captured_at ? new Date(finishSplit.captured_at).getTime() : null
+
+      const derivedFinishMs =
+        finishCapturedMs != null && startMs != null
+          ? Math.max(0, finishCapturedMs - startMs)
+          : finishSplit?.elapsed_ms ?? null
+
+      const timeMs = finishFromTable?.time_ms ?? derivedFinishMs ?? null
+
+      return {
+        id: finishFromTable?.id || `finish-${bib}`,
+        bib_number: bib,
+        name: getDisplayNameForBib(entriesForBib, bib),
+        division: primaryEntry?.division || null,
+        wave_code: primaryEntry?.wave_id ? (wavesById[primaryEntry.wave_id]?.wave_code || null) : null,
+        time_ms: timeMs,
+      }
+    })
+      .filter(r => r.time_ms != null)
+      .sort((a, b) => {
+        if (a.time_ms !== b.time_ms) return a.time_ms - b.time_ms
+        return String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
+      })
+      .map((r, idx, arr) => {
+        const leader = arr[0]?.time_ms ?? null
+        return {
+          ...r,
+          place: idx + 1,
+          gap_ms: leader != null ? r.time_ms - leader : null,
         }
-      }
-      grouped[key].entries += 1
-    })
+      })
 
-    finishes.forEach(f => {
-      const primaryEntry = getPrimaryEntry(entriesByBib[f.bib_number] || [])
-      if (!primaryEntry?.team) return
-
-      const key = `${primaryEntry.team}::${primaryEntry.division || ''}`
-      const g = grouped[key]
-      if (!g) return
-
-      g.finished += 1
-      if (g.bestPlace == null || f.place < g.bestPlace) g.bestPlace = f.place
-      if (g.bestTime == null || f.time_ms < g.bestTime) g.bestTime = f.time_ms
-    })
-
-    return Object.values(grouped).sort((a, b) => {
-      const aPlace = a.bestPlace ?? Infinity
-      const bPlace = b.bestPlace ?? Infinity
-      if (aPlace !== bPlace) return aPlace - bPlace
-      return a.team.localeCompare(b.team)
-    })
-  }, [entries, finishes, entriesByBib, teamMap])
+    return rows
+  }, [finishCheckpoint, laps, finishMapFromTable, entriesByBib, splitMap, wavesById, event?.race_started_at])
 
   const filteredProgressRows = useMemo(() => {
-    if (divisionFilter === 'all') return progressRows
-    if (divisionFilter === 'unknown') return progressRows.filter(r => !r.division)
-    return progressRows.filter(r => r.division === divisionFilter)
-  }, [progressRows, divisionFilter])
+    let rows = baseProgressRows
+
+    if (divisionFilter === 'unknown') rows = rows.filter(r => !r.division)
+    else if (divisionFilter !== 'all') rows = rows.filter(r => r.division === divisionFilter)
+
+    return [...rows].sort((a, b) => {
+      const { key, dir, type } = progressSort
+
+      if (key.startsWith('cp:')) {
+        const [, checkpointId, metric] = key.split(':')
+        const aVal = metric === 'lap' ? a.lapTimes?.[checkpointId] : a.splits?.[checkpointId]?.elapsed_ms
+        const bVal = metric === 'lap' ? b.lapTimes?.[checkpointId] : b.splits?.[checkpointId]?.elapsed_ms
+        const cmp = compareValues(aVal, bVal, dir, 'number')
+        if (cmp !== 0) return cmp
+      } else {
+        const cmp = compareValues(a[key], b[key], dir, type)
+        if (cmp !== 0) return cmp
+      }
+
+      return compareValues(a.bib_number, b.bib_number, 'asc', 'number')
+    })
+  }, [baseProgressRows, divisionFilter, progressSort])
 
   const filteredResultsRows = useMemo(() => {
-    if (divisionFilter === 'all') return resultsRows
-    if (divisionFilter === 'unknown') return resultsRows.filter(r => !r.division)
-    return resultsRows.filter(r => r.division === divisionFilter)
-  }, [resultsRows, divisionFilter])
+    let rows = baseResultsRows
 
-  const filteredTeamRows = useMemo(() => {
-    if (divisionFilter === 'all') return teamRows
-    if (divisionFilter === 'unknown') return teamRows.filter(r => !r.division)
-    return teamRows.filter(r => r.division === divisionFilter)
-  }, [teamRows, divisionFilter])
+    if (divisionFilter === 'unknown') rows = rows.filter(r => !r.division)
+    else if (divisionFilter !== 'all') rows = rows.filter(r => r.division === divisionFilter)
+
+    return [...rows].sort((a, b) => {
+      const cmp = compareValues(a[resultsSort.key], b[resultsSort.key], resultsSort.dir, resultsSort.type)
+      if (cmp !== 0) return cmp
+      return compareValues(a.bib_number, b.bib_number, 'asc', 'number')
+    })
+  }, [baseResultsRows, divisionFilter, resultsSort])
 
   const hasUnknownDivisionRows = useMemo(() => {
-    return progressRows.some(r => !r.division)
-  }, [progressRows])
+    return baseProgressRows.some(r => !r.division)
+  }, [baseProgressRows])
 
   const tabBtn = active => ({
     padding: '10px 16px',
@@ -680,6 +859,22 @@ export default function LiveResults() {
     color: active ? C.blue : C.muted,
     borderBottom: active ? `2px solid ${C.blue}` : '2px solid transparent',
   })
+
+  const handleProgressSort = (key, type = 'string') => {
+    setProgressSort(prev => ({
+      key,
+      type,
+      dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc',
+    }))
+  }
+
+  const handleResultsSort = (key, type = 'string') => {
+    setResultsSort(prev => ({
+      key,
+      type,
+      dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc',
+    }))
+  }
 
   return (
     <div style={{ minHeight: '100dvh', background: C.bg, color: C.text, fontFamily: fontBody }}>
@@ -720,82 +915,85 @@ export default function LiveResults() {
             </div>
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <div
-              style={{
-                fontSize: 10,
-                color: isLive ? C.red : event?.status === 'finished' ? C.muted : C.yellow,
-                letterSpacing: 2,
-                fontFamily: fontHead,
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                marginBottom: 4,
-              }}
-            >
-              {isLive ? 'Race Clock' : event?.status === 'finished' ? 'Final Time' : 'Waiting For Start'}
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            <ThemeToggle theme={theme} setTheme={setTheme} C={C} />
 
-            <div
-              style={{
-                fontSize: 'clamp(28px, 4vw, 42px)',
-                fontWeight: 900,
-                fontFamily: fontHead,
-                letterSpacing: -1.5,
-                lineHeight: 1,
-                color: event?.race_started_at ? C.text : '#374151',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {formatRaceClock(raceElapsedMs)}
-            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: isLive ? C.red : event?.status === 'finished' ? C.muted : C.yellow,
+                  letterSpacing: 2,
+                  fontFamily: fontHead,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  marginBottom: 4,
+                }}
+              >
+                {isLive ? 'Race Clock' : event?.status === 'finished' ? 'Final Time' : 'Waiting For Start'}
+              </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, marginTop: 6 }}>
-              {isLive && (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    fontSize: 9,
-                    fontWeight: 700,
-                    color: C.red,
-                    letterSpacing: 2,
-                    fontFamily: fontHead,
-                    textTransform: 'uppercase',
-                  }}
-                >
+              <div
+                style={{
+                  fontSize: 'clamp(28px, 4vw, 42px)',
+                  fontWeight: 900,
+                  fontFamily: fontHead,
+                  letterSpacing: -1.5,
+                  lineHeight: 1,
+                  color: event?.race_started_at ? C.text : C.dim,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {formatRaceClock(raceElapsedMs)}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, marginTop: 6 }}>
+                {isLive && (
                   <span
                     style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      background: C.red,
-                      display: 'inline-block',
-                      animation: 'livePulse 1.2s ease-in-out infinite',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      color: C.red,
+                      letterSpacing: 2,
+                      fontFamily: fontHead,
+                      textTransform: 'uppercase',
                     }}
-                  />
-                  LIVE
-                </span>
-              )}
+                  >
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: C.red,
+                        display: 'inline-block',
+                        animation: 'livePulse 1.2s ease-in-out infinite',
+                      }}
+                    />
+                    LIVE
+                  </span>
+                )}
 
-              {lastUpdate && (
-                <div style={{ fontSize: 10, color: C.muted }}>
-                  Updated {lastUpdate.toLocaleTimeString()}
-                </div>
-              )}
+                {lastUpdate && (
+                  <div style={{ fontSize: 10, color: C.muted }}>
+                    Updated {lastUpdate.toLocaleTimeString()}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
           {[
-            { label: 'Entries / Bibs', value: progressRows.length, color: C.text },
+            { label: 'Entries / Bibs', value: baseProgressRows.length, color: C.text },
             { label: 'Checkpoints', value: checkpoints.length, color: C.muted },
             { label: 'Assigned splits', value: laps.filter(l => l.status !== 'void' && !!l.bib_number).length, color: C.green },
-            { label: 'Finishers', value: finishes.filter(f => !!f.bib_number).length, color: C.blue },
-            { label: 'Teams', value: Object.keys(teamMap).length, color: C.muted },
+            { label: 'Finishers', value: baseResultsRows.length, color: C.blue },
           ].map((s, idx, arr) => (
             <div
               key={s.label}
@@ -819,9 +1017,6 @@ export default function LiveResults() {
           </button>
           <button style={tabBtn(tab === 'results')} onClick={() => setTab('results')}>
             Results
-          </button>
-          <button style={tabBtn(tab === 'teams')} onClick={() => setTab('teams')}>
-            Teams
           </button>
         </div>
       </div>
@@ -848,19 +1043,26 @@ export default function LiveResults() {
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 20px' }}>
         {tab === 'progress' && (
-          <ProgressTable rows={filteredProgressRows} checkpoints={checkpoints} />
+          <ProgressTable
+            rows={filteredProgressRows}
+            displayCheckpoints={displayCheckpoints}
+            sortConfig={progressSort}
+            onSort={handleProgressSort}
+            C={C}
+          />
         )}
 
         {tab === 'results' && (
-          <ResultsTable rows={filteredResultsRows} />
-        )}
-
-        {tab === 'teams' && (
-          <TeamsTable rows={filteredTeamRows} />
+          <ResultsTable
+            rows={filteredResultsRows}
+            sortConfig={resultsSort}
+            onSort={handleResultsSort}
+            C={C}
+          />
         )}
       </div>
 
-      <div style={{ textAlign: 'center', color: '#1f2937', fontSize: 11, padding: '24px 0', letterSpacing: 1, fontFamily: fontHead }}>
+      <div style={{ textAlign: 'center', color: C.footer, fontSize: 11, padding: '24px 0', letterSpacing: 1, fontFamily: fontHead }}>
         POWERED BY ATHLETEOS
       </div>
 

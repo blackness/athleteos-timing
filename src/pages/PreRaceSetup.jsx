@@ -1,18 +1,50 @@
+// PreRaceSetup.jsx
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { exportRawLapEvents, exportLapSummary } from '../lib/exportLapResults'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
 
-// ── CSV parsing ────────────────────────────────────────────
+function parseDelimitedLine(line, sep) {
+  const cells = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    const next = line[i + 1]
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (char === sep && !inQuotes) {
+      cells.push(current.trim())
+      current = ''
+    } else {
+      current += char
+    }
+  }
+
+  cells.push(current.trim())
+  return cells.map(c => c.replace(/^"|"$/g, ''))
+}
+
 function parseCSV(text) {
-  const lines = text.trim().split(/\r?\n/).filter(l => l.trim())
+  const lines = text
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean)
+
   if (lines.length < 2) return { headers: [], rows: [] }
+
   const sep = lines[0].includes('\t') ? '\t' : ','
-  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ''))
-  const rows = lines.slice(1).map(line =>
-    line.split(sep).map(c => c.trim().replace(/^"|"$/g, ''))
-  )
+  const headers = parseDelimitedLine(lines[0], sep).map(h => h.trim())
+  const rows = lines.slice(1).map(line => parseDelimitedLine(line, sep))
+
   return { headers, rows }
 }
 
@@ -25,12 +57,16 @@ const FIELD_LABELS = {
   division: 'Division',
   age: 'Age',
   gender: 'Gender',
+  wave_code: 'Wave Code',
+  wave_name: 'Wave Name',
+  planned_start_time: 'Planned Start Time',
   skip: '— Skip —',
 }
 
 function autoMap(headers) {
   const map = {}
   const lower = headers.map(h => h.toLowerCase())
+
   const guess = (field, patterns) => {
     const i = lower.findIndex(h => patterns.some(p => h.includes(p)))
     if (i >= 0 && !Object.values(map).includes(headers[i])) map[field] = headers[i]
@@ -39,11 +75,14 @@ function autoMap(headers) {
   guess('bib_number', ['bib', 'number', 'num', '#'])
   guess('first_name', ['first'])
   guess('last_name', ['last', 'surname'])
-  guess('full_name', ['name', 'athlete', 'runner', 'full'])
+  guess('full_name', ['full name', 'athlete name', 'runner name', 'name'])
   guess('team', ['team', 'club', 'school', 'org'])
   guess('division', ['division', 'category', 'class'])
   guess('age', ['age', 'dob', 'born'])
   guess('gender', ['gender', 'sex', 'm/f'])
+  guess('wave_code', ['wave_code', 'wave code', 'wave'])
+  guess('wave_name', ['wave_name', 'wave name'])
+  guess('planned_start_time', ['planned_start_time', 'planned start', 'start_time', 'start time'])
 
   return map
 }
@@ -53,14 +92,36 @@ function splitFullName(name = '') {
   return { first_name: parts[0] ?? '', last_name: parts.slice(1).join(' ') }
 }
 
+function normalizeCell(value) {
+  const v = String(value ?? '').trim()
+  return v || ''
+}
+
+function normalizeWaveCode(value) {
+  return normalizeCell(value).toUpperCase()
+}
+
+function normalizeWaveName(value) {
+  return normalizeCell(value)
+}
+
+function parsePlannedStartTime(value) {
+  const raw = normalizeCell(value)
+  if (!raw) return { raw: '', iso: null, error: null }
+
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) {
+    return { raw, iso: null, error: `Invalid planned start time: "${raw}"` }
+  }
+
+  return { raw, iso: d.toISOString(), error: null }
+}
+
 function getDisplayName(entry) {
   if (!entry) return null
-
   const personName = `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim()
   if (personName) return personName
-
   if (entry.team) return entry.team
-
   return null
 }
 
@@ -70,7 +131,21 @@ function isTeamOnlyEntry(entry) {
   return !personName && !!entry.team
 }
 
-// ── styles ─────────────────────────────────────────────────
+function formatDateTimeLocal(value) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString()
+}
+
+function toLocalInputValue(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 const F = "'Barlow Condensed', sans-serif"
 const FB = "'Barlow', sans-serif"
 
@@ -173,21 +248,6 @@ const S = {
     borderBottom: '1px solid #0d1117',
     fontSize: 13,
   },
-  bibBadge: adhoc => ({
-    width: 34,
-    height: 34,
-    background: adhoc ? '#0f1f3a' : '#1a2030',
-    border: `1px solid ${adhoc ? '#3b82f6' : '#2a3444'}`,
-    borderRadius: 6,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 11,
-    fontWeight: 700,
-    color: adhoc ? '#60a5fa' : '#f97316',
-    flexShrink: 0,
-    fontFamily: F,
-  }),
 }
 
 const adhocLabelStyle = {
@@ -212,11 +272,8 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
   const commit = async () => {
     setEditing(false)
     const trimmed = name.trim()
-    if (trimmed && trimmed !== checkpoint.name) {
-      await onSave(checkpoint.id, trimmed)
-    } else {
-      setName(checkpoint.name)
-    }
+    if (trimmed && trimmed !== checkpoint.name) await onSave(checkpoint.id, trimmed)
+    else setName(checkpoint.name)
   }
 
   return (
@@ -266,6 +323,95 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
       </span>
 
       <button style={S.removeBtn} onClick={() => onDelete(checkpoint.id)}>×</button>
+    </div>
+  )
+}
+
+function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
+  const [editing, setEditing] = useState(false)
+  const [draftActual, setDraftActual] = useState(toLocalInputValue(wave.actual_start_time))
+
+  useEffect(() => {
+    setDraftActual(toLocalInputValue(wave.actual_start_time))
+  }, [wave.actual_start_time])
+
+  const commit = async () => {
+    setEditing(false)
+    await onSaveActualTime(wave.id, draftActual)
+  }
+
+  return (
+    <div style={{ ...S.row, background: zebra ? '#0a0f16' : 'transparent', alignItems: 'center' }}>
+      <span style={{ width: 70, color: '#60a5fa', fontWeight: 800, fontFamily: F }}>
+        {wave.wave_code}
+      </span>
+
+      <span style={{ flex: 1, color: '#e2e8f0' }}>
+        {wave.wave_name || wave.wave_code}
+      </span>
+
+      <span style={{ width: 190, color: '#94a3b8', fontSize: 12 }}>
+        {formatDateTimeLocal(wave.planned_start_time)}
+      </span>
+
+      <div style={{ width: 220 }}>
+        {editing ? (
+          <input
+            type="datetime-local"
+            value={draftActual}
+            onChange={e => setDraftActual(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commit()
+              if (e.key === 'Escape') {
+                setDraftActual(toLocalInputValue(wave.actual_start_time))
+                setEditing(false)
+              }
+            }}
+            autoFocus
+            style={{ ...S.input, height: 34, padding: '6px 10px' }}
+          />
+        ) : (
+          <button
+            onClick={() => setEditing(true)}
+            style={{
+              background: 'transparent',
+              border: '1px solid #1e2730',
+              color: wave.actual_start_time ? '#10b981' : '#4a5568',
+              borderRadius: 6,
+              padding: '6px 10px',
+              width: '100%',
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontFamily: FB,
+            }}
+            title="Click to edit actual wave start time"
+          >
+            {wave.actual_start_time ? formatDateTimeLocal(wave.actual_start_time) : 'Set actual start time'}
+          </button>
+        )}
+      </div>
+
+      <button
+        onClick={() => onStartNow(wave.id)}
+        style={{
+          height: 34,
+          padding: '0 12px',
+          borderRadius: 8,
+          border: 'none',
+          background: '#16a34a',
+          color: '#fff',
+          cursor: 'pointer',
+          fontFamily: F,
+          fontWeight: 800,
+          fontSize: 11,
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+        }}
+      >
+        Start Now
+      </button>
     </div>
   )
 }
@@ -518,9 +664,7 @@ function EditableCellInput({
       }}
       onBlur={commit}
       onKeyDown={e => {
-        if (e.key === 'Enter') {
-          e.currentTarget.blur()
-        }
+        if (e.key === 'Enter') e.currentTarget.blur()
         if (e.key === 'Escape') {
           setDraft(value ?? '')
           e.currentTarget.blur()
@@ -537,9 +681,126 @@ function EditableCellInput({
         fontFamily: FB,
         outline: 'none',
         boxSizing: 'border-box',
-        transition: 'border-color 0.15s ease, background 0.15s ease',
       }}
     />
+  )
+}
+
+function EditableSuggestInput({
+  value,
+  options = [],
+  onSave,
+  placeholder,
+  width = '100%',
+  title,
+}) {
+  const [draft, setDraft] = useState(value ?? '')
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    setDraft(value ?? '')
+  }, [value])
+
+  const filtered = options.filter(opt =>
+    String(opt).toLowerCase().includes(String(draft ?? '').toLowerCase())
+  )
+
+  const commit = nextValue => {
+    const finalValue = nextValue ?? draft
+    const normalized = finalValue?.trim?.() ?? ''
+    const original = value ?? ''
+    if (normalized !== original) onSave(normalized || null)
+    setOpen(false)
+  }
+
+  return (
+    <div style={{ position: 'relative', width }}>
+      <input
+        value={draft}
+        title={title}
+        placeholder={placeholder}
+        onFocus={() => setOpen(true)}
+        onChange={e => {
+          setDraft(e.target.value)
+          setOpen(true)
+        }}
+        onBlur={() => {
+          setTimeout(() => {
+            commit()
+          }, 120)
+        }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit()
+            e.currentTarget.blur()
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            setDraft(value ?? '')
+            setOpen(false)
+            e.currentTarget.blur()
+          }
+          if (e.key === 'ArrowDown') setOpen(true)
+        }}
+        style={{
+          width: '100%',
+          padding: '6px 8px',
+          background: '#080b0f',
+          border: '1px solid #1e2730',
+          borderRadius: 6,
+          color: '#e2e8f0',
+          fontSize: 12,
+          fontFamily: FB,
+          outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+
+      {open && filtered.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            background: '#0e1318',
+            border: '1px solid #1e2730',
+            borderRadius: 8,
+            boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
+            zIndex: 20,
+            maxHeight: 180,
+            overflowY: 'auto',
+          }}
+        >
+          {filtered.slice(0, 12).map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onMouseDown={async e => {
+                e.preventDefault()
+                setDraft(opt)
+                commit(opt)
+              }}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: '8px 10px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: '1px solid #141920',
+                color: '#e2e8f0',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontFamily: FB,
+              }}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -587,20 +848,53 @@ function EditableEntryRow({
   teamOptions,
   divisionOptions,
   genderOptions,
+  waveOptions,
+  wavesById,
+  eventId,
+  onWavesChanged,
   saveState,
   isRaceLocked,
+  waveLabel,
 }) {
   const displayLabel = getDisplayName(entry)
   const showTeamBadge = isTeamOnlyEntry(entry)
 
+  const saveWaveCode = async nextWaveCode => {
+    const normalized = String(nextWaveCode ?? '').trim().toUpperCase()
+
+    if (!normalized) {
+      onSaveField(entry.id, 'wave_id', null)
+      return
+    }
+
+    let waveId = Object.values(wavesById).find(w => w.wave_code === normalized)?.id || null
+
+    if (!waveId) {
+      const { data, error } = await supabase
+        .from('race_waves')
+        .insert({
+          event_id: eventId,
+          wave_code: normalized,
+          wave_name: normalized,
+          display_order: Object.keys(wavesById).length + 1,
+        })
+        .select()
+        .single()
+
+      if (error || !data) {
+        window.alert(error?.message || 'Could not create wave.')
+        return
+      }
+
+      waveId = data.id
+      await onWavesChanged?.()
+    }
+
+    onSaveField(entry.id, 'wave_id', waveId)
+  }
+
   return (
-    <div
-      style={{
-        ...S.row,
-        background: zebra ? '#0a0f16' : 'transparent',
-        alignItems: 'center',
-      }}
-    >
+    <div style={{ ...S.row, background: zebra ? '#0a0f16' : 'transparent', alignItems: 'center' }}>
       <div style={{ width: 54 }}>
         <EditableCellInput
           value={entry.bib_number ?? ''}
@@ -670,6 +964,16 @@ function EditableEntryRow({
         />
       </div>
 
+      <div style={{ width: 90 }}>
+        <EditableSuggestInput
+          value={waveLabel ?? ''}
+          options={waveOptions}
+          onSave={saveWaveCode}
+          placeholder="Wave"
+          title="Select an existing wave or type a new wave code"
+        />
+      </div>
+
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-start', flexWrap: 'wrap' }}>
           {entry.is_adhoc && (
@@ -684,6 +988,26 @@ function EditableEntryRow({
               }}
             >
               DAY-OF
+            </span>
+          )}
+
+          {waveLabel && (
+            <span
+              style={{
+                fontSize: 9,
+                background: 'rgba(59,130,246,0.10)',
+                color: '#60a5fa',
+                padding: '1px 6px',
+                borderRadius: 999,
+                letterSpacing: 1,
+                border: '1px solid rgba(59,130,246,0.25)',
+                fontFamily: F,
+                fontWeight: 800,
+                textTransform: 'uppercase',
+              }}
+              title={`Wave: ${waveLabel}`}
+            >
+              {waveLabel}
             </span>
           )}
 
@@ -716,128 +1040,6 @@ function EditableEntryRow({
   )
 }
 
-function EditableSuggestInput({
-  value,
-  options = [],
-  onSave,
-  placeholder,
-  width = '100%',
-  title,
-}) {
-  const [draft, setDraft] = useState(value ?? '')
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    setDraft(value ?? '')
-  }, [value])
-
-  const filtered = options.filter(opt =>
-    String(opt).toLowerCase().includes(String(draft ?? '').toLowerCase())
-  )
-
-  const commit = nextValue => {
-    const finalValue = nextValue ?? draft
-    const normalized = finalValue?.trim?.() ?? ''
-    const original = value ?? ''
-    if (normalized !== original) {
-      onSave(normalized || null)
-    }
-    setOpen(false)
-  }
-
-  return (
-    <div style={{ position: 'relative', width }}>
-      <input
-        value={draft}
-        title={title}
-        placeholder={placeholder}
-        onFocus={() => setOpen(true)}
-        onChange={e => {
-          setDraft(e.target.value)
-          setOpen(true)
-        }}
-        onBlur={() => {
-          setTimeout(() => {
-            commit()
-          }, 120)
-        }}
-        onKeyDown={e => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            commit()
-            e.currentTarget.blur()
-          }
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            setDraft(value ?? '')
-            setOpen(false)
-            e.currentTarget.blur()
-          }
-          if (e.key === 'ArrowDown') {
-            setOpen(true)
-          }
-        }}
-        style={{
-          width: '100%',
-          padding: '6px 8px',
-          background: '#080b0f',
-          border: '1px solid #1e2730',
-          borderRadius: 6,
-          color: '#e2e8f0',
-          fontSize: 12,
-          fontFamily: FB,
-          outline: 'none',
-          boxSizing: 'border-box',
-        }}
-      />
-
-      {open && filtered.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            background: '#0e1318',
-            border: '1px solid #1e2730',
-            borderRadius: 8,
-            boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
-            zIndex: 20,
-            maxHeight: 180,
-            overflowY: 'auto',
-          }}
-        >
-          {filtered.slice(0, 12).map(opt => (
-            <button
-              key={opt}
-              type="button"
-              onMouseDown={e => {
-                e.preventDefault()
-                setDraft(opt)
-                commit(opt)
-              }}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: '8px 10px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: '1px solid #141920',
-                color: '#e2e8f0',
-                cursor: 'pointer',
-                fontSize: 12,
-                fontFamily: FB,
-              }}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function PreRaceSetup() {
   const { id: eventId } = useParams()
   const navigate = useNavigate()
@@ -845,6 +1047,7 @@ export default function PreRaceSetup() {
   const [event, setEvent] = useState(null)
   const [entries, setEntries] = useState([])
   const [checkpoints, setCheckpoints] = useState([])
+  const [waves, setWaves] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingCheckpoint, setSavingCheckpoint] = useState(false)
@@ -878,27 +1081,35 @@ export default function PreRaceSetup() {
       supabase.from('race_events').select('*').eq('id', eventId).single(),
       supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
       supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
-    ]).then(([{ data: ev }, { data: ent }, { data: cps }]) => {
+      supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
+    ]).then(([{ data: ev }, { data: ent }, { data: cps }, { data: wvs }]) => {
       setEvent(ev)
       setEntries(ent ?? [])
       setCheckpoints(cps ?? [])
+      setWaves(wvs ?? [])
       setLoading(false)
     })
   }, [eventId])
 
-  const teamOptions = useMemo(() => {
-    return Array.from(new Set(entries.map(e => e.team).filter(Boolean))).sort((a, b) => a.localeCompare(b))
-  }, [entries])
+  const wavesById = useMemo(() => Object.fromEntries(waves.map(w => [w.id, w])), [waves])
 
-  const divisionOptions = useMemo(() => {
-    return Array.from(new Set(entries.map(e => e.division).filter(Boolean))).sort((a, b) => a.localeCompare(b))
-  }, [entries])
+  const teamOptions = useMemo(
+    () => Array.from(new Set(entries.map(e => e.team).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [entries]
+  )
+
+  const divisionOptions = useMemo(
+    () => Array.from(new Set(entries.map(e => e.division).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [entries]
+  )
 
   const genderOptions = useMemo(() => {
     const base = ['M', 'F', 'NB', 'Non-Binary', 'Open']
     const existing = entries.map(e => e.gender).filter(Boolean)
     return Array.from(new Set([...base, ...existing]))
   }, [entries])
+
+  const waveOptions = useMemo(() => waves.map(w => w.wave_code).filter(Boolean), [waves])
 
   const loadCheckpoints = async () => {
     const { data } = await supabase
@@ -909,16 +1120,21 @@ export default function PreRaceSetup() {
     setCheckpoints(data ?? [])
   }
 
+  const loadWaves = async () => {
+    const { data } = await supabase
+      .from('race_waves')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('display_order', { ascending: true })
+    setWaves(data ?? [])
+  }
+
   const addCheckpoint = async () => {
     const name = checkpointName.trim()
     if (!name || savingCheckpoint) return
 
     setSavingCheckpoint(true)
-    const nextOrder =
-      checkpoints.length > 0
-        ? Math.max(...checkpoints.map(c => c.checkpoint_order)) + 1
-        : 1
-
+    const nextOrder = checkpoints.length > 0 ? Math.max(...checkpoints.map(c => c.checkpoint_order)) + 1 : 1
     const shortCode = `CP${nextOrder}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
 
     const { error } = await supabase.from('race_checkpoints').insert({
@@ -980,6 +1196,32 @@ export default function PreRaceSetup() {
     loadCheckpoints()
   }
 
+  const startWaveNow = async waveId => {
+    const ok = window.confirm('Record actual start time for this wave as now?')
+    if (!ok) return
+
+    const now = new Date().toISOString()
+    const { error } = await supabase.from('race_waves').update({ actual_start_time: now }).eq('id', waveId)
+    if (!error) loadWaves()
+  }
+
+  const saveWaveActualTime = async (waveId, localValue) => {
+    const trimmed = String(localValue ?? '').trim()
+
+    let iso = null
+    if (trimmed) {
+      const d = new Date(trimmed)
+      if (Number.isNaN(d.getTime())) {
+        window.alert('Invalid actual start time.')
+        return
+      }
+      iso = d.toISOString()
+    }
+
+    const { error } = await supabase.from('race_waves').update({ actual_start_time: iso }).eq('id', waveId)
+    if (!error) loadWaves()
+  }
+
   const startRace = async () => {
     if (startingRace) return
 
@@ -993,9 +1235,7 @@ export default function PreRaceSetup() {
       return
     }
 
-    const ok = window.confirm(
-      'Start race now?\n\nThis will activate all checkpoint timers and begin the public live clock.'
-    )
+    const ok = window.confirm('Start race now?\n\nThis will activate all checkpoint timers and begin the public live clock.')
     if (!ok) return
 
     setStartingRace(true)
@@ -1028,13 +1268,10 @@ export default function PreRaceSetup() {
       return
     }
 
-    const ok = window.confirm(
-      'Mark race as finished?\n\nThis will stop checkpoint lap capture for timer devices.'
-    )
+    const ok = window.confirm('Mark race as finished?\n\nThis will stop checkpoint lap capture for timer devices.')
     if (!ok) return
 
     setFinishingRace(true)
-
     const finishedAt = new Date().toISOString()
 
     const { data, error } = await supabase
@@ -1050,7 +1287,6 @@ export default function PreRaceSetup() {
     setFinishingRace(false)
 
     if (error) {
-      console.error('finishRace error:', error)
       window.alert(`Could not finish race: ${error.message}`)
       return
     }
@@ -1105,69 +1341,183 @@ export default function PreRaceSetup() {
     }
 
     setImporting(true)
-    const toInsert = []
 
-    for (const row of csvData.rows) {
-      const get = field => {
+    try {
+      const getCell = (row, field) => {
         const col = mapping[field]
         if (!col) return ''
         const idx = csvData.headers.indexOf(col)
         return idx >= 0 ? (row[idx] ?? '').trim() : ''
       }
 
-      const bib = get('bib_number')
-      if (!bib) continue
+      const waveMetaByCode = new Map()
+      const bibWaveByBib = new Map()
+      const toInsertDraft = []
 
-      let first = get('first_name')
-      let last = get('last_name')
-      const team = get('team') || null
+      for (const row of csvData.rows) {
+        const bib = normalizeCell(getCell(row, 'bib_number'))
+        if (!bib) continue
 
-      if (!first && !last && mapping.full_name) {
-        const split = splitFullName(get('full_name'))
-        first = split.first_name
-        last = split.last_name
+        let first = normalizeCell(getCell(row, 'first_name'))
+        let last = normalizeCell(getCell(row, 'last_name'))
+        const team = normalizeCell(getCell(row, 'team')) || null
+
+        if (!first && !last && mapping.full_name) {
+          const split = splitFullName(getCell(row, 'full_name'))
+          first = normalizeCell(split.first_name)
+          last = normalizeCell(split.last_name)
+        }
+
+        const hasPersonName = !!(first || last)
+        if (!hasPersonName && !team) continue
+
+        const waveCode = normalizeWaveCode(getCell(row, 'wave_code'))
+        const waveName = normalizeWaveName(getCell(row, 'wave_name')) || null
+        const plannedStart = parsePlannedStartTime(getCell(row, 'planned_start_time'))
+
+        if (plannedStart.error) {
+          setCsvError(plannedStart.error)
+          setImporting(false)
+          return
+        }
+
+        if (bibWaveByBib.has(bib)) {
+          const existingBibWave = bibWaveByBib.get(bib)
+          if ((existingBibWave || '') !== (waveCode || '')) {
+            setCsvError(`Bib ${bib} has inconsistent wave codes in the import.`)
+            setImporting(false)
+            return
+          }
+        } else {
+          bibWaveByBib.set(bib, waveCode || '')
+        }
+
+        if (waveCode) {
+          if (waveMetaByCode.has(waveCode)) {
+            const existing = waveMetaByCode.get(waveCode)
+
+            if ((existing.wave_name || '') !== (waveName || '')) {
+              if (existing.wave_name && waveName && existing.wave_name !== waveName) {
+                setCsvError(`Wave ${waveCode} has inconsistent wave names in the import.`)
+                setImporting(false)
+                return
+              }
+            }
+
+            if ((existing.planned_start_time || '') !== (plannedStart.iso || '')) {
+              if (existing.planned_start_time && plannedStart.iso && existing.planned_start_time !== plannedStart.iso) {
+                setCsvError(`Wave ${waveCode} has inconsistent planned start times in the import.`)
+                setImporting(false)
+                return
+              }
+            }
+
+            waveMetaByCode.set(waveCode, {
+              wave_code: waveCode,
+              wave_name: existing.wave_name || waveName || null,
+              planned_start_time: existing.planned_start_time || plannedStart.iso || null,
+            })
+          } else {
+            waveMetaByCode.set(waveCode, {
+              wave_code: waveCode,
+              wave_name: waveName,
+              planned_start_time: plannedStart.iso,
+            })
+          }
+        }
+
+        toInsertDraft.push({
+          bib_number: bib,
+          first_name: first || null,
+          last_name: last || null,
+          team,
+          division: normalizeCell(getCell(row, 'division')) || null,
+          age: getCell(row, 'age') ? parseInt(getCell(row, 'age'), 10) || null : null,
+          gender: normalizeCell(getCell(row, 'gender')) || null,
+          is_adhoc: false,
+          wave_code: waveCode || null,
+        })
       }
 
-      const hasPersonName = !!(first || last)
+      if (!toInsertDraft.length) {
+        setCsvError('No valid rows to import.')
+        setImporting(false)
+        return
+      }
 
-      if (!hasPersonName && !team) continue
+      let waveCodeToId = {}
 
-      toInsert.push({
+      const waveRows = Array.from(waveMetaByCode.values()).map((w, idx) => ({
         event_id: eventId,
-        bib_number: bib,
-        first_name: first || null,
-        last_name: last || null,
-        team,
-        division: get('division') || null,
-        age: get('age') ? parseInt(get('age'), 10) || null : null,
-        gender: get('gender') || null,
-        is_adhoc: false,
-      })
-    }
+        wave_code: w.wave_code,
+        wave_name: w.wave_name || w.wave_code,
+        planned_start_time: w.planned_start_time || null,
+        display_order: idx + 1,
+      }))
 
-    if (!toInsert.length) {
-      setCsvError('No valid rows to import.')
-      setImporting(false)
-      return
-    }
+      if (waveRows.length > 0) {
+        const { error: upsertWaveError } = await supabase
+          .from('race_waves')
+          .upsert(waveRows, { onConflict: 'event_id,wave_code' })
 
-    const { data, error } = await supabase.from('event_entries').insert(toInsert).select()
-    setImporting(false)
+        if (upsertWaveError) {
+          setCsvError(upsertWaveError.message)
+          setImporting(false)
+          return
+        }
 
-    if (error) {
-      setCsvError(error.message)
-      return
-    }
+        const { data: savedWaves, error: fetchWaveError } = await supabase
+          .from('race_waves')
+          .select('id, wave_code')
+          .eq('event_id', eventId)
 
-    setEntries(prev =>
-      [...prev, ...(data || [])].sort((a, b) =>
-        String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
+        if (fetchWaveError) {
+          setCsvError(fetchWaveError.message)
+          setImporting(false)
+          return
+        }
+
+        waveCodeToId = Object.fromEntries((savedWaves || []).map(w => [w.wave_code, w.id]))
+      }
+
+      const toInsert = toInsertDraft.map(row => ({
+        event_id: eventId,
+        bib_number: row.bib_number,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        team: row.team,
+        division: row.division,
+        age: row.age,
+        gender: row.gender,
+        is_adhoc: row.is_adhoc,
+        wave_id: row.wave_code ? (waveCodeToId[row.wave_code] || null) : null,
+      }))
+
+      const { data, error } = await supabase.from('event_entries').insert(toInsert).select()
+
+      if (error) {
+        setCsvError(error.message)
+        setImporting(false)
+        return
+      }
+
+      setEntries(prev =>
+        [...prev, ...(data || [])].sort((a, b) =>
+          String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
+        )
       )
-    )
 
-    setCsvStep('idle')
-    setCsvData(null)
-    setMapping({})
+      await loadWaves()
+
+      setCsvStep('idle')
+      setCsvData(null)
+      setMapping({})
+      setCsvError('')
+      setImporting(false)
+    } catch (err) {
+      setCsvError(err?.message || 'Import failed.')
+      setImporting(false)
+    }
   }
 
   const addAdHoc = async () => {
@@ -1232,7 +1582,6 @@ export default function PreRaceSetup() {
 
     const currentValue = existing[field] ?? null
     const nextValue = value ?? null
-
     if (currentValue === nextValue) return
 
     if (field === 'bib_number' && event?.status !== 'draft') {
@@ -1306,31 +1655,16 @@ export default function PreRaceSetup() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            style={{ ...S.backBtn, color: '#60a5fa' }}
-            onClick={() => navigate(`/results/${eventId}`)}
-          >
+          <button style={{ ...S.backBtn, color: '#60a5fa' }} onClick={() => navigate(`/results/${eventId}`)}>
             Live Results ↗
           </button>
-
-          <button
-            style={{ ...S.backBtn, color: '#a78bfa' }}
-            onClick={() => navigate(`/race/${eventId}/corrections`)}
-          >
+          <button style={{ ...S.backBtn, color: '#a78bfa' }} onClick={() => navigate(`/race/${eventId}/corrections`)}>
             Corrections
           </button>
-
-          <button
-            style={{ ...S.backBtn, color: '#f97316' }}
-            onClick={() => navigate(`/race/${eventId}/checkpoints`)}
-          >
+          <button style={{ ...S.backBtn, color: '#f97316' }} onClick={() => navigate(`/race/${eventId}/checkpoints`)}>
             Checkpoints
           </button>
-
-          <button
-            style={{ ...S.backBtn, color: '#3b82f6' }}
-            onClick={() => navigate(`/race/${eventId}/monitor`)}
-          >
+          <button style={{ ...S.backBtn, color: '#3b82f6' }} onClick={() => navigate(`/race/${eventId}/monitor`)}>
             Monitor
           </button>
         </div>
@@ -1440,19 +1774,21 @@ export default function PreRaceSetup() {
                     const idx = csvData.headers.indexOf(col)
                     return idx >= 0 ? row[idx] || '—' : '—'
                   }
+
                   const personName = mapping.first_name
                     ? `${get('first_name')} ${get('last_name')}`.trim()
                     : get('full_name')
 
                   const name = personName || get('team') || '—'
+
                   return (
                     <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 12px', borderBottom: '1px solid #0d1117', fontSize: 12, alignItems: 'center' }}>
                       <span style={{ color: '#f97316', fontWeight: 700, width: 36, fontFamily: F }}>{get('bib_number')}</span>
                       <span style={{ color: '#e2e8f0', flex: 1 }}>{name}</span>
                       <span style={{ color: '#4a5568' }}>{get('team')}</span>
                       <span style={{ color: '#4a5568' }}>{get('division')}</span>
-                      <span style={{ color: '#4a5568', width: 24 }}>{get('age')}</span>
-                      <span style={{ color: '#4a5568', width: 40 }}>{get('gender')}</span>
+                      <span style={{ color: '#4a5568', width: 40 }}>{get('wave_code')}</span>
+                      <span style={{ color: '#4a5568', width: 120 }}>{get('planned_start_time')}</span>
                     </div>
                   )
                 })}
@@ -1464,13 +1800,57 @@ export default function PreRaceSetup() {
                 <button onClick={importCSV} disabled={importing} style={{ ...S.addBtn, flex: 1, opacity: importing ? 0.6 : 1 }}>
                   {importing ? 'Importing…' : `Import ${csvData.rows.length} Rows`}
                 </button>
-                <button onClick={() => { setCsvStep('idle'); setCsvData(null); setCsvError('') }} style={{ ...S.backBtn }}>
+                <button onClick={() => { setCsvStep('idle'); setCsvData(null); setCsvError('') }} style={S.backBtn}>
                   Cancel
                 </button>
               </div>
             </div>
           )}
         </div>
+
+        {waves.length > 0 && (
+          <div style={S.section}>
+            <div style={S.sLabel}>Waves ({waves.length})</div>
+
+            <div style={{ ...S.card, overflow: 'hidden' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  padding: '6px 14px',
+                  borderBottom: '1px solid #1a2030',
+                  fontSize: 10,
+                  color: '#374151',
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  fontFamily: F,
+                  fontWeight: 700,
+                  alignItems: 'center',
+                }}
+              >
+                <span style={{ width: 70 }}>Code</span>
+                <span style={{ flex: 1 }}>Name</span>
+                <span style={{ width: 190 }}>Planned</span>
+                <span style={{ width: 220 }}>Actual</span>
+                <span style={{ width: 90 }}></span>
+              </div>
+
+              {waves.map((wave, i) => (
+                <WaveSetupRow
+                  key={wave.id}
+                  wave={wave}
+                  zebra={i % 2 === 1}
+                  onStartNow={startWaveNow}
+                  onSaveActualTime={saveWaveActualTime}
+                />
+              ))}
+            </div>
+
+            <div style={{ color: '#4a5568', fontSize: 12, marginTop: 10 }}>
+              Use <strong style={{ color: '#94a3b8' }}>Start Now</strong> when the wave gun goes off, or click the actual time field to correct it manually.
+            </div>
+          </div>
+        )}
 
         <div style={S.section}>
           <div style={S.sLabel}>Checkpoints</div>
@@ -1534,17 +1914,10 @@ export default function PreRaceSetup() {
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-              <button
-                onClick={() => exportRawLapEvents(eventId)}
-                style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}
-              >
+              <button onClick={() => exportRawLapEvents(eventId)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
                 Export Raw Lap CSV
               </button>
-
-              <button
-                onClick={() => exportLapSummary(eventId)}
-                style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}
-              >
+              <button onClick={() => exportLapSummary(eventId)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
                 Export Lap Summary CSV
               </button>
             </div>
@@ -1556,21 +1929,14 @@ export default function PreRaceSetup() {
             <div style={S.sLabel}>Roster ({entries.length})</div>
 
             {event?.status !== 'draft' && (
-              <div
-                style={{
-                  marginBottom: 10,
-                  color: '#eab308',
-                  fontSize: 12,
-                  fontFamily: FB,
-                }}
-              >
+              <div style={{ marginBottom: 10, color: '#eab308', fontSize: 12, fontFamily: FB }}>
                 Bib edits are sensitive once the race has started. Team, division, gender, and names can still be corrected inline.
               </div>
             )}
 
             <div style={{ ...S.card, overflow: 'hidden' }}>
               <div style={{ overflowX: 'auto' }}>
-                <div style={{ minWidth: 860 }}>
+                <div style={{ minWidth: 950 }}>
                   <div
                     style={{
                       display: 'flex',
@@ -1591,15 +1957,14 @@ export default function PreRaceSetup() {
                       boxShadow: '0 2px 0 rgba(0,0,0,0.2)',
                     }}
                   >
-                    <span style={{ width: 54, color: event?.status !== 'draft' ? '#eab308' : '#374151' }}>
-                      Bib
-                    </span>
+                    <span style={{ width: 54, color: event?.status !== 'draft' ? '#eab308' : '#374151' }}>Bib</span>
                     <span style={{ width: 120 }}>First</span>
                     <span style={{ width: 120 }}>Last</span>
                     <span style={{ width: 140 }}>Team</span>
                     <span style={{ width: 110 }}>Division</span>
                     <span style={{ width: 60 }}>Age</span>
                     <span style={{ width: 90 }}>Gender</span>
+                    <span style={{ width: 90 }}>Wave</span>
                     <span style={{ flex: 1 }}></span>
                     <span style={{ width: 24 }}></span>
                   </div>
@@ -1615,8 +1980,13 @@ export default function PreRaceSetup() {
                         teamOptions={teamOptions}
                         divisionOptions={divisionOptions}
                         genderOptions={genderOptions}
+                        waveOptions={waveOptions}
+                        wavesById={wavesById}
+                        eventId={eventId}
+                        onWavesChanged={loadWaves}
                         saveState={saveStateByEntryId[entry.id] || 'idle'}
                         isRaceLocked={event?.status !== 'draft'}
+                        waveLabel={entry.wave_id ? (wavesById[entry.wave_id]?.wave_code || null) : null}
                       />
                     ))}
                   </div>
@@ -1636,13 +2006,7 @@ export default function PreRaceSetup() {
               </div>
             )}
 
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr 1fr',
-                gap: 10,
-              }}
-            >
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
               <div>
                 <label style={adhocLabelStyle}>Bib # *</label>
                 <input
@@ -1746,7 +2110,7 @@ export default function PreRaceSetup() {
                     gender: '',
                   })
                 }}
-                style={{ ...S.backBtn }}
+                style={S.backBtn}
               >
                 Cancel
               </button>

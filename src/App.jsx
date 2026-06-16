@@ -14,6 +14,7 @@ import CheckpointRedirect from './pages/CheckpointRedirect'
 import CheckpointQrSheet from './pages/CheckpointQrSheet'
 import RaceMonitor from './pages/RaceMonitor'
 import RaceCorrections from './pages/RaceCorrections'
+//import { Analytics } from '@vercel/analytics/react'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
