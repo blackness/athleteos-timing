@@ -50,14 +50,14 @@ function AppRoutes() {
       <Route path="/cv/:id" element={<ProtectedRoute><CVDashboard /></ProtectedRoute>} />
       <Route path="/race/:id/setup" element={<ProtectedRoute><PreRaceSetup /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoints" element={<ProtectedRoute><CheckpointSelect /></ProtectedRoute>} />
-      <Route path="/race/:id/checkpoint/:checkpointId" element={<ProtectedRoute><CheckpointTimer /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoint-qr" element={<ProtectedRoute><CheckpointQrSheet /></ProtectedRoute>} />
       <Route path="/race/:id/time" element={<ProtectedRoute><RaceDay /></ProtectedRoute>} />
       <Route path="/race/:id/assign" element={<ProtectedRoute><BibAssign /></ProtectedRoute>} />
-      <Route path="/c/:code" element={<ProtectedRoute><CheckpointRedirect /></ProtectedRoute>} />
+      <Route path="/c/:code" element={<CheckpointRedirect />} />
       <Route path="*" element={<Navigate to="/" replace />} />
       <Route path="/race/:id/monitor" element={<ProtectedRoute><RaceMonitor /></ProtectedRoute>} />
       <Route path="/race/:id/corrections" element={<RaceCorrections />} />
+      <Route path="/race/:id/checkpoint/:checkpointId" element={<CheckpointTimer />} />
     </Routes>
   )
 }

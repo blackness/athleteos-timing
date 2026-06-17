@@ -1,31 +1,31 @@
-bib_number,first_name,last_name,team,division,age,gender
-101,Ava,Smith,,1 Person,29,F
-102,Noah,Johnson,,1 Person,34,M
-103,Emma,Brown,,1 Person,27,F
-104,Liam,Davis,,1 Person,31,M
-201,Mason,Lee,North Stride Duo,2 Person,33,M
-201,Sophia,Lee,North Stride Duo,2 Person,30,F
-202,Lucas,Wilson,River Run Duo,2 Person,28,M
-202,Isla,Wilson,River Run Duo,2 Person,27,F
-301,Olivia,Martin,Trail Blazers Trio,3 Person,26,F
-301,Ethan,Martin,Trail Blazers Trio,3 Person,32,M
-301,Chloe,Martin,Trail Blazers Trio,3 Person,24,F
-302,James,Anderson,Summit Pace Trio,3 Person,35,M
-302,Grace,Anderson,Summit Pace Trio,3 Person,33,F
-302,Benjamin,Anderson,Summit Pace Trio,3 Person,22,M
-401,Harper,Thomas,Iron Ridge Four,4 Person,29,F
-401,Elijah,Thomas,Iron Ridge Four,4 Person,31,M
-401,Amelia,Thomas,Iron Ridge Four,4 Person,25,F
-401,Henry,Thomas,Iron Ridge Four,4 Person,28,M
-501,Evelyn,Moore,Peak Five,5 Person,30,F
-501,Jack,Moore,Peak Five,5 Person,34,M
-501,Abigail,Moore,Peak Five,5 Person,27,F
-501,Daniel,Moore,Peak Five,5 Person,26,M
-501,Scarlett,Moore,Peak Five,5 Person,23,F
-601,Michael,Taylor,Endurance Six,6 Person,36,M
-601,Emily,Taylor,Endurance Six,6 Person,32,F
-601,Alexander,Taylor,Endurance Six,6 Person,28,M
-601,Madison,Taylor,Endurance Six,6 Person,24,F
-601,Logan,Taylor,Endurance Six,6 Person,21,M
-601,Charlotte,Taylor,Endurance Six,6 Person,20,F
-602,Nora,Walker,Fast Lane Six,6 Person,29,F
+bib_number,first_name,last_name,team,division,age,gender,wave_code,wave_name,planned_start_time
+101,Ava,Smith,,1 Person,29,F,W1,Wave 1,2026-06-20T08:00:00
+102,Noah,Johnson,,1 Person,34,M,W1,Wave 1,2026-06-20T08:00:00
+103,Emma,Brown,,1 Person,27,F,W1,Wave 1,2026-06-20T08:00:00
+104,Liam,Davis,,1 Person,31,M,W1,Wave 1,2026-06-20T08:00:00
+201,Mason,Lee,North Stride Duo,2 Person,33,M,W1,Wave 1,2026-06-20T08:00:00
+201,Sophia,Lee,North Stride Duo,2 Person,30,F,W1,Wave 1,2026-06-20T08:00:00
+202,Lucas,Wilson,River Run Duo,2 Person,28,M,W1,Wave 1,2026-06-20T08:00:00
+202,Isla,Wilson,River Run Duo,2 Person,27,F,W1,Wave 1,2026-06-20T08:00:00
+301,Olivia,Martin,Trail Blazers Trio,3 Person,26,F,W2,Wave 2,2026-06-20T08:20:00
+301,Ethan,Martin,Trail Blazers Trio,3 Person,32,M,W2,Wave 2,2026-06-20T08:20:00
+301,Chloe,Martin,Trail Blazers Trio,3 Person,24,F,W2,Wave 2,2026-06-20T08:20:00
+302,James,Anderson,Summit Pace Trio,3 Person,35,M,W2,Wave 2,2026-06-20T08:20:00
+302,Grace,Anderson,Summit Pace Trio,3 Person,33,F,W2,Wave 2,2026-06-20T08:20:00
+302,Benjamin,Anderson,Summit Pace Trio,3 Person,22,M,W2,Wave 2,2026-06-20T08:20:00
+401,Harper,Thomas,Iron Ridge Four,4 Person,29,F,W2,Wave 2,2026-06-20T08:20:00
+401,Elijah,Thomas,Iron Ridge Four,4 Person,31,M,W2,Wave 2,2026-06-20T08:20:00
+401,Amelia,Thomas,Iron Ridge Four,4 Person,25,F,W2,Wave 2,2026-06-20T08:20:00
+401,Henry,Thomas,Iron Ridge Four,4 Person,28,M,W2,Wave 2,2026-06-20T08:20:00
+501,Evelyn,Moore,Peak Five,5 Person,30,F,W3,Wave 3,2026-06-20T08:40:00
+501,Jack,Moore,Peak Five,5 Person,34,M,W3,Wave 3,2026-06-20T08:40:00
+501,Abigail,Moore,Peak Five,5 Person,27,F,W3,Wave 3,2026-06-20T08:40:00
+501,Daniel,Moore,Peak Five,5 Person,26,M,W3,Wave 3,2026-06-20T08:40:00
+501,Scarlett,Moore,Peak Five,5 Person,23,F,W3,Wave 3,2026-06-20T08:40:00
+601,Michael,Taylor,Endurance Six,6 Person,36,M,W3,Wave 3,2026-06-20T08:40:00
+601,Emily,Taylor,Endurance Six,6 Person,32,F,W3,Wave 3,2026-06-20T08:40:00
+601,Alexander,Taylor,Endurance Six,6 Person,28,M,W3,Wave 3,2026-06-20T08:40:00
+601,Madison,Taylor,Endurance Six,6 Person,24,F,W3,Wave 3,2026-06-20T08:40:00
+601,Logan,Taylor,Endurance Six,6 Person,21,M,W3,Wave 3,2026-06-20T08:40:00
+601,Charlotte,Taylor,Endurance Six,6 Person,20,F,W3,Wave 3,2026-06-20T08:40:00
+602,Nora,Walker,Fast Lane Six,6 Person,29,F,W3,Wave 3,2026-06-20T08:40:00

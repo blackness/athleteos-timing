@@ -1,4 +1,3 @@
-// LiveResults.jsx
 import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -461,7 +460,7 @@ export default function LiveResults() {
   const [now, setNow] = useState(Date.now())
   const [theme, setTheme] = useState('light')
 
-  const [progressSort, setProgressSort] = useState({ key: 'name', dir: 'asc', type: 'string' })
+  const [progressSort, setProgressSort] = useState({ key: 'progress_rank', dir: 'asc', type: 'number' })
   const [resultsSort, setResultsSort] = useState({ key: 'place', dir: 'asc', type: 'number' })
 
   const C = THEMES[theme]
@@ -488,7 +487,7 @@ export default function LiveResults() {
   useEffect(() => {
     if (!eventId) return
 
-    async function load() {
+    async function loadAll() {
       const [
         { data: eventData },
         { data: entryData },
@@ -511,64 +510,48 @@ export default function LiveResults() {
       setWaves(waveData || [])
       setLaps(lapData || [])
       setFinishes(finishData || [])
-
-      if ((lapData?.length || 0) > 0 || (finishData?.length || 0) > 0) {
-        setLastUpdate(new Date())
-      }
+      setLastUpdate(new Date())
     }
 
-    load()
+    loadAll()
 
     const ch = supabase
       .channel(`live-results:${eventId}`)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
-        payload => {
-          setEvent(payload.new)
-          setLastUpdate(new Date())
-        }
+        { event: '*', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
+        () => loadAll()
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` },
-        async () => {
-          const { data } = await supabase.from('lap_events').select('*').eq('event_id', eventId)
-          setLaps(data || [])
-          setLastUpdate(new Date())
-        }
+        () => loadAll()
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'race_finishes', filter: `event_id=eq.${eventId}` },
-        async () => {
-          const { data } = await supabase
-            .from('race_finishes')
-            .select('*')
-            .eq('event_id', eventId)
-            .order('place', { ascending: true })
-
-          setFinishes(data || [])
-          setLastUpdate(new Date())
-        }
+        () => loadAll()
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'race_waves', filter: `event_id=eq.${eventId}` },
-        async () => {
-          const { data } = await supabase
-            .from('race_waves')
-            .select('*')
-            .eq('event_id', eventId)
-            .order('display_order', { ascending: true })
-
-          setWaves(data || [])
-          setLastUpdate(new Date())
-        }
+        () => loadAll()
       )
-      .subscribe()
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'event_entries', filter: `event_id=eq.${eventId}` },
+        () => loadAll()
+      )
+      .subscribe((status) => {
+        console.log('LiveResults realtime status:', status)
+      })
 
-    return () => supabase.removeChannel(ch)
+    const fallbackPoll = setInterval(loadAll, 5000)
+
+    return () => {
+      clearInterval(fallbackPoll)
+      supabase.removeChannel(ch)
+    }
   }, [eventId])
 
   const raceElapsedMs = getRaceElapsedMs(event, now)
@@ -800,10 +783,25 @@ export default function LiveResults() {
     return [...rows].sort((a, b) => {
       const { key, dir, type } = progressSort
 
+      if (key === 'progress_rank') {
+        if (a.latestCheckpointOrder !== b.latestCheckpointOrder) {
+          return b.latestCheckpointOrder - a.latestCheckpointOrder
+        }
+
+        const aElapsed = a.latestCheckpointElapsedMs == null ? Infinity : a.latestCheckpointElapsedMs
+        const bElapsed = b.latestCheckpointElapsedMs == null ? Infinity : b.latestCheckpointElapsedMs
+
+        if (aElapsed !== bElapsed) {
+          return aElapsed - bElapsed
+        }
+
+        return compareValues(a.bib_number, b.bib_number, 'asc', 'number')
+      }
+
       if (key.startsWith('cp:')) {
-        const [, checkpointId, metric] = key.split(':')
-        const aVal = metric === 'lap' ? a.lapTimes?.[checkpointId] : a.splits?.[checkpointId]?.elapsed_ms
-        const bVal = metric === 'lap' ? b.lapTimes?.[checkpointId] : b.splits?.[checkpointId]?.elapsed_ms
+        const [, checkpointId] = key.split(':')
+        const aVal = a.splits?.[checkpointId]?.elapsed_ms
+        const bVal = b.splits?.[checkpointId]?.elapsed_ms
         const cmp = compareValues(aVal, bVal, dir, 'number')
         if (cmp !== 0) return cmp
       } else {

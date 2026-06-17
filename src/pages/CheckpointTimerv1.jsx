@@ -132,7 +132,6 @@ export default function CheckpointTimer() {
   const { id: eventId, checkpointId } = useParams()
   const navigate = useNavigate()
 
-  const [session, setSession] = useState(null)
   const [event, setEvent] = useState(null)
   const [checkpoint, setCheckpoint] = useState(null)
   const [entries, setEntries] = useState({})
@@ -142,7 +141,6 @@ export default function CheckpointTimer() {
 
   const [bibInput, setBibInput] = useState('')
   const [preview, setPreview] = useState(null)
-  const [bibEntryActive, setBibEntryActive] = useState(false)
 
   const [inputMode, setInputMode] = useState('capture_first')
   const [repeatGuardMs, setRepeatGuardMs] = useState(0)
@@ -166,7 +164,6 @@ export default function CheckpointTimer() {
   const lastCaptureAtRef = useRef(0)
 
   const T = THEMES[theme]
-  const isAdmin = !!session?.user
 
   const modeBtn = active => ({
     flex: 1,
@@ -238,20 +235,6 @@ export default function CheckpointTimer() {
     lap => lap?.status !== 'void' && !lap?.bib_number,
     []
   )
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session ?? null)
-    })
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession ?? null)
-    })
-
-    return () => {
-      listener.subscription.unsubscribe()
-    }
-  }, [])
 
   useEffect(() => {
     const savedMode = localStorage.getItem(getModeStorageKey(checkpointId))
@@ -503,14 +486,6 @@ export default function CheckpointTimer() {
 
   const nextPending = pending[0] || null
 
-  const showAssignMainButton = useMemo(() => {
-    return (
-      inputMode === 'capture_first' &&
-      !!nextPending &&
-      (bibEntryActive || !!bibInput.trim())
-    )
-  }, [inputMode, nextPending, bibEntryActive, bibInput])
-
   const duplicateBibAtCheckpoint = useMemo(() => {
     const bib = bibInput.trim()
     if (!bib) return false
@@ -550,7 +525,6 @@ export default function CheckpointTimer() {
     }
 
     setInputMode(nextMode)
-    setBibEntryActive(false)
 
     setTimeout(() => {
       if (nextMode === 'bib_first') {
@@ -674,7 +648,7 @@ export default function CheckpointTimer() {
 
   const voidLastPending = useCallback(async () => {
     const target = [...pending].reverse()[0]
-    if (!target || !isAdmin) return
+    if (!target) return
 
     const update = {
       status: 'void',
@@ -697,11 +671,9 @@ export default function CheckpointTimer() {
       setMessage('Void saved locally, waiting to sync')
       setTimeout(() => setMessage(''), 1500)
     }
-  }, [pending, eventId, checkpointId, isAdmin])
+  }, [pending, eventId, checkpointId])
 
   const voidLap = useCallback(async (lap) => {
-    if (!isAdmin) return
-
     const update = {
       status: 'void',
       is_corrected: true,
@@ -726,11 +698,9 @@ export default function CheckpointTimer() {
     }
 
     setTimeout(() => setMessage(''), 1500)
-  }, [eventId, checkpointId, isAdmin])
+  }, [eventId, checkpointId])
 
   const restoreLap = useCallback(async (lap) => {
-    if (!isAdmin) return
-
     const update = {
       status: 'pending',
       bib_number: null,
@@ -758,11 +728,9 @@ export default function CheckpointTimer() {
     }
 
     setTimeout(() => setMessage(''), 1500)
-  }, [eventId, checkpointId, isAdmin])
+  }, [eventId, checkpointId])
 
   const saveEditedBib = useCallback(async (lap) => {
-    if (!isAdmin) return
-
     const bib = editingBib.trim()
 
     const duplicate = laps.some(
@@ -788,265 +756,202 @@ export default function CheckpointTimer() {
 
     setEditingLapId(null)
     setEditingBib('')
-  }, [editingBib, entries, laps, isAdmin])
+  }, [editingBib, entries, laps])
 
   useEffect(() => {
     const h = e => {
       if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
         e.preventDefault()
-        if (showAssignMainButton) {
-          assignBib()
-        } else if (canCapture && inputMode === 'capture_first') {
-          captureLap()
-        }
+        if (canCapture && inputMode === 'capture_first') captureLap()
       }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [captureLap, assignBib, canCapture, inputMode, showAssignMainButton])
+  }, [captureLap, canCapture, inputMode])
 
   return (
     <div style={{ minHeight: '100dvh', background: T.bg, color: T.text, fontFamily: FB, display: 'flex', flexDirection: 'column' }}>
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
-      {isAdmin ? (
-        <>
-          <div
-            style={{
-              padding: '10px 14px',
-              borderBottom: `1px solid ${T.border}`,
-              background: T.pageAlt,
-            }}
-          >
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '72px 1fr 1fr',
-                alignItems: 'center',
-                gap: 10,
-              }}
-            >
-              <button
-                onClick={() => navigate(`/race/${eventId}/checkpoints`)}
-                style={{
-                  background: 'none',
-                  border: `1px solid ${T.border2}`,
-                  color: T.muted2,
-                  borderRadius: 8,
-                  padding: '8px 10px',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontFamily: F,
-                  fontWeight: 700,
-                  letterSpacing: 1,
-                  textTransform: 'uppercase',
-                  minHeight: 40,
-                }}
-              >
-                ← Back
-              </button>
-
-              <div style={{ textAlign: 'center', minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 34,
-                    fontWeight: 900,
-                    letterSpacing: -1,
-                    color: event?.race_started_at ? T.textStrong : T.dim,
-                    fontVariantNumeric: 'tabular-nums',
-                    fontFamily: F,
-                    lineHeight: 1,
-                  }}
-                >
-                  {fmt(elapsed)}
-                </div>
-                <div
-                  style={{
-                    fontSize: 9,
-                    color: syncing ? T.warning : T.dim,
-                    letterSpacing: 1,
-                    textTransform: 'uppercase',
-                    marginTop: 2,
-                  }}
-                >
-                  {syncing ? 'Syncing…' : event?.status === 'finished' ? 'Race finished' : canCapture ? 'Race active' : 'Waiting'}
-                </div>
-              </div>
-
-              <div style={{ textAlign: 'right', minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 900,
-                    color: T.textStrong,
-                    fontFamily: F,
-                    lineHeight: 1,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {checkpoint?.name || 'Checkpoint'}
-                </div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: T.warning,
-                    letterSpacing: 1.5,
-                    fontFamily: F,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    marginTop: 3,
-                  }}
-                >
-                  CP {checkpoint?.checkpoint_order ?? '—'}
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                marginTop: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: T.textStrong,
-                    fontFamily: F,
-                    fontWeight: 700,
-                    letterSpacing: 1,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Checkpoints
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: T.muted,
-                    marginTop: 2,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    maxWidth: '60vw',
-                  }}
-                >
-                  {event?.name}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button style={themeBtn(theme === 'light')} onClick={() => setTheme('light')}>
-                  ☀ Light
-                </button>
-                <button style={themeBtn(theme === 'dark')} onClick={() => setTheme('dark')}>
-                  🌙 Dark
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, background: T.pageAlt }}>
-            {['timer', 'recent'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setMobileTab(tab)}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  border: 'none',
-                  background: 'none',
-                  cursor: 'pointer',
-                  fontFamily: F,
-                  fontWeight: 800,
-                  fontSize: 12,
-                  letterSpacing: 2,
-                  textTransform: 'uppercase',
-                  color: mobileTab === tab ? T.warning : T.dim,
-                  borderBottom: mobileTab === tab ? `2px solid ${T.warning}` : '2px solid transparent',
-                }}
-              >
-                {tab === 'timer'
-                  ? `⏱ Timer${pending.length ? ` (${pending.length})` : ''}`
-                  : `📋 Recent (${filteredRecentLaps.length})`}
-              </button>
-            ))}
-          </div>
-        </>
-      ) : (
+      <div
+        style={{
+          padding: '10px 14px',
+          borderBottom: `1px solid ${T.border}`,
+          background: T.pageAlt,
+        }}
+      >
         <div
           style={{
-            padding: '18px 16px 14px',
-            borderBottom: `1px solid ${T.border}`,
-            background: T.pageAlt,
-            textAlign: 'center',
+            display: 'grid',
+            gridTemplateColumns: '72px 1fr 1fr',
+            alignItems: 'center',
+            gap: 10,
           }}
         >
-          <div
+          <button
+            onClick={() => navigate(`/race/${eventId}/checkpoints`)}
             style={{
-              fontSize: 'clamp(28px, 6vw, 40px)',
-              fontWeight: 900,
-              color: T.textStrong,
-              fontFamily: F,
-              lineHeight: 1,
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-            }}
-          >
-            {checkpoint?.name || 'Checkpoint'}
-          </div>
-
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 'clamp(40px, 9vw, 64px)',
-              fontWeight: 900,
-              letterSpacing: -1.5,
-              color: event?.race_started_at ? T.textStrong : T.dim,
-              fontVariantNumeric: 'tabular-nums',
-              fontFamily: F,
-              lineHeight: 1,
-            }}
-          >
-            {fmt(elapsed)}
-          </div>
-
-          <div
-            style={{
-              marginTop: 6,
+              background: 'none',
+              border: `1px solid ${T.border2}`,
+              color: T.muted2,
+              borderRadius: 8,
+              padding: '8px 10px',
+              cursor: 'pointer',
               fontSize: 11,
-              color: syncing ? T.warning : T.muted,
-              letterSpacing: 1.2,
-              textTransform: 'uppercase',
               fontFamily: F,
               fontWeight: 700,
+              letterSpacing: 1,
+              textTransform: 'uppercase',
+              minHeight: 40,
             }}
           >
-            {syncing ? 'Syncing…' : event?.status === 'finished' ? 'Race finished' : canCapture ? 'Race active' : 'Waiting for start'}
+            ← Back
+          </button>
+
+          <div style={{ textAlign: 'center', minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 34,
+                fontWeight: 900,
+                letterSpacing: -1,
+                color: event?.race_started_at ? T.textStrong : T.dim,
+                fontVariantNumeric: 'tabular-nums',
+                fontFamily: F,
+                lineHeight: 1,
+              }}
+            >
+              {fmt(elapsed)}
+            </div>
+            <div
+              style={{
+                fontSize: 9,
+                color: syncing ? T.warning : T.dim,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                marginTop: 2,
+              }}
+            >
+              {syncing ? 'Syncing…' : event?.status === 'finished' ? 'Race finished' : canCapture ? 'Race active' : 'Waiting'}
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'right', minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 24,
+                fontWeight: 900,
+                color: T.textStrong,
+                fontFamily: F,
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {checkpoint?.name || 'Checkpoint'}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: T.warning,
+                letterSpacing: 1.5,
+                fontFamily: F,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                marginTop: 3,
+              }}
+            >
+              CP {checkpoint?.checkpoint_order ?? '—'}
+            </div>
           </div>
         </div>
-      )}
+
+        <div
+          style={{
+            marginTop: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 12,
+                color: T.textStrong,
+                fontFamily: F,
+                fontWeight: 700,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+              }}
+            >
+              Checkpoints
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: T.muted,
+                marginTop: 2,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: '60vw',
+              }}
+            >
+              {event?.name}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button style={themeBtn(theme === 'light')} onClick={() => setTheme('light')}>
+              ☀ Light
+            </button>
+            <button style={themeBtn(theme === 'dark')} onClick={() => setTheme('dark')}>
+              🌙 Dark
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, background: T.pageAlt }}>
+        {['timer', 'recent'].map(tab => (
+          <button
+            key={tab}
+            onClick={() => setMobileTab(tab)}
+            style={{
+              flex: 1,
+              padding: '10px',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              fontFamily: F,
+              fontWeight: 800,
+              fontSize: 12,
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+              color: mobileTab === tab ? T.warning : T.dim,
+              borderBottom: mobileTab === tab ? `2px solid ${T.warning}` : '2px solid transparent',
+            }}
+          >
+            {tab === 'timer'
+              ? `⏱ Timer${pending.length ? ` (${pending.length})` : ''}`
+              : `📋 Recent (${filteredRecentLaps.length})`}
+          </button>
+        ))}
+      </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div
           className="timer-panel"
           style={{
-            width: isAdmin ? 420 : '100%',
-            flex: 1,
+            width: 420,
             flexShrink: 0,
-            borderRight: isAdmin ? `1px solid ${T.border}` : 'none',
-            display: isAdmin ? (mobileTab === 'timer' ? 'flex' : 'none') : 'flex',
+            borderRight: `1px solid ${T.border}`,
+            display: mobileTab === 'timer' ? 'flex' : 'none',
             flexDirection: 'column',
             background: T.bg,
-            maxWidth: isAdmin ? 420 : '100%',
-            margin: isAdmin ? 0 : '0 auto',
           }}
         >
           <div style={{ padding: '14px 16px 12px' }}>
@@ -1134,7 +1039,6 @@ export default function CheckpointTimer() {
                     type="number"
                     inputMode="numeric"
                     value={bibInput}
-                    onFocus={() => setBibEntryActive(true)}
                     onChange={e => setBibInput(e.target.value)}
                     onKeyDown={e => {
                       if (e.key === 'Enter') assignBib()
@@ -1159,39 +1063,25 @@ export default function CheckpointTimer() {
                   />
                   <button
                     onPointerDown={e => e.preventDefault()}
-                    onClick={showAssignMainButton ? captureLap : assignBib}
-                    disabled={
-                      showAssignMainButton
-                        ? !canCapture
-                        : (!bibInput.trim() || !nextPending || savingAssign)
-                    }
+                    onClick={assignBib}
+                    disabled={!bibInput.trim() || !nextPending || savingAssign}
                     style={{
                       width: 100,
                       height: 58,
-                      background: showAssignMainButton ? T.accent : T.success,
+                      background: T.success,
                       border: 'none',
                       borderRadius: 12,
                       color: T.buttonText,
                       fontSize: 15,
                       fontWeight: 900,
-                      cursor:
-                        showAssignMainButton
-                          ? (canCapture ? 'pointer' : 'not-allowed')
-                          : (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer'),
+                      cursor: 'pointer',
                       fontFamily: F,
                       letterSpacing: 1.2,
-                      opacity:
-                        showAssignMainButton
-                          ? (canCapture ? 1 : 0.35)
-                          : (!bibInput.trim() || !nextPending || savingAssign ? 0.35 : 1),
+                      opacity: !bibInput.trim() || !nextPending || savingAssign ? 0.35 : 1,
                       textTransform: 'uppercase',
                     }}
                   >
-                    {showAssignMainButton
-                      ? 'Lap'
-                      : savingAssign
-                        ? '…'
-                        : 'Assign'}
+                    {savingAssign ? '…' : 'Assign'}
                   </button>
                 </div>
               </div>
@@ -1246,61 +1136,47 @@ export default function CheckpointTimer() {
 
             <div className="capture-row" style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 12, alignItems: 'stretch' }}>
               <button
-                onPointerDown={e => {
-                  e.preventDefault()
-                  if (showAssignMainButton) {
-                    assignBib()
-                  } else if (canCapture) {
-                    captureLap()
-                  }
-                }}
-                disabled={
-                  showAssignMainButton
-                    ? (!bibInput.trim() || !nextPending || savingAssign)
-                    : (!canCapture || (inputMode === 'bib_first' && !bibInput.trim()))
+                onPointerDown={
+                  canCapture
+                    ? e => {
+                        e.preventDefault()
+                        captureLap()
+                      }
+                    : undefined
                 }
+                disabled={!canCapture || (inputMode === 'bib_first' && !bibInput.trim())}
                 style={{
                   width: '100%',
                   minHeight: 180,
                   borderRadius: 20,
                   border: 'none',
-                  background: showAssignMainButton
-                    ? T.success
-                    : !canCapture
-                      ? T.dim
-                      : flash
-                        ? T.flash
-                        : inputMode === 'bib_first'
-                          ? T.accentAlt
-                          : T.accent,
+                  background: !canCapture
+                    ? T.dim
+                    : flash
+                      ? T.flash
+                      : inputMode === 'bib_first'
+                        ? T.accentAlt
+                        : T.accent,
                   color: T.buttonText,
                   fontSize: 34,
                   fontWeight: 900,
                   letterSpacing: 3,
-                  cursor:
-                    showAssignMainButton
-                      ? (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer')
-                      : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 'pointer' : 'not-allowed'),
+                  cursor: canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 'pointer' : 'not-allowed',
                   fontFamily: F,
                   textTransform: 'uppercase',
                   transform: flash ? 'scale(0.97)' : 'scale(1)',
                   transition: 'background 0.08s, transform 0.08s',
                   touchAction: 'manipulation',
-                  opacity:
-                    showAssignMainButton
-                      ? (!bibInput.trim() || !nextPending || savingAssign ? 0.6 : 1)
-                      : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 1 : 0.6),
+                  opacity: canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 1 : 0.6,
                 }}
               >
-                {showAssignMainButton
-                  ? (savingAssign ? 'Assigning…' : 'Assign')
-                  : event?.status === 'finished'
-                    ? 'Race Ended'
-                    : !canCapture
-                      ? 'Waiting'
-                      : inputMode === 'bib_first'
-                        ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : 'Enter Bib')
-                        : 'Lap'}
+                {event?.status === 'finished'
+                  ? 'Race Ended'
+                  : !canCapture
+                    ? 'Waiting'
+                    : inputMode === 'bib_first'
+                      ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : 'Enter Bib')
+                      : 'Lap'}
               </button>
 
               <div
@@ -1348,15 +1224,13 @@ export default function CheckpointTimer() {
                 </div>
 
                 <div style={{ textAlign: 'center', fontSize: 11, color: T.muted2, marginTop: 10 }}>
-                  {showAssignMainButton
-                    ? 'Assign bib to the next pending lap'
-                    : event?.status === 'finished'
-                      ? 'Race ended'
-                      : !canCapture
-                        ? 'Waiting for official race start'
-                        : inputMode === 'bib_first'
-                          ? `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Enter bib then tap`
-                          : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Tap or spacebar`}
+                  {event?.status === 'finished'
+                    ? 'Race ended'
+                    : !canCapture
+                      ? 'Waiting for official race start'
+                      : inputMode === 'bib_first'
+                        ? `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Enter bib then tap`
+                        : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Tap or spacebar`}
                 </div>
               </div>
             </div>
@@ -1368,30 +1242,30 @@ export default function CheckpointTimer() {
             )}
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', borderTop: `1px solid ${T.faint}` }}>
-            <div
-              style={{
-                padding: '8px 14px 2px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-              }}
-            >
+          {inputMode === 'capture_first' && (
+            <div style={{ flex: 1, overflowY: 'auto', borderTop: `1px solid ${T.faint}` }}>
               <div
                 style={{
-                  fontSize: 9,
-                  color: T.dim,
-                  textTransform: 'uppercase',
-                  letterSpacing: 2,
-                  fontFamily: F,
-                  fontWeight: 700,
+                  padding: '8px 14px 2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
                 }}
               >
-                Pending ({pending.length})
-              </div>
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: T.dim,
+                    textTransform: 'uppercase',
+                    letterSpacing: 2,
+                    fontFamily: F,
+                    fontWeight: 700,
+                  }}
+                >
+                  Pending ({pending.length})
+                </div>
 
-              {isAdmin && inputMode === 'capture_first' && (
                 <button
                   onClick={voidLastPending}
                   disabled={pending.length === 0}
@@ -1414,239 +1288,245 @@ export default function CheckpointTimer() {
                 >
                   Void Last Tap
                 </button>
+              </div>
+
+              <div
+                style={{
+                  padding: '0 14px 6px',
+                  fontSize: 10,
+                  color: T.muted2,
+                  lineHeight: 1.3,
+                }}
+              >
+                Voided taps can be restored from the Recent tab.
+              </div>
+
+              {pending.length === 0 ? (
+                <div style={{ padding: '20px 14px', color: T.dim, fontSize: 12, textAlign: 'center' }}>
+                  No pending laps
+                </div>
+              ) : (
+                pending.map((l, i) => (
+                  <div
+                    key={l.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '10px 14px',
+                      borderBottom: `1px solid ${T.faint}`,
+                      background: i === 0 ? T.pendingNext : 'transparent',
+                    }}
+                  >
+                    <span style={{ color: T.dim, width: 40, fontSize: 11, fontFamily: F }}>
+                      {i === 0 ? 'NEXT' : `${i + 1}`}
+                    </span>
+                    <span style={{ color: T.textStrong, fontWeight: 900, flex: 1, fontSize: 20, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
+                      {fmt(l.elapsed_ms, true)}
+                    </span>
+                  </div>
+                ))
               )}
             </div>
+          )}
 
-            <div
-              style={{
-                padding: '0 14px 6px',
-                fontSize: 10,
-                color: T.muted2,
-                lineHeight: 1.3,
-              }}
-            >
-              {isAdmin
-                ? 'Voided taps can be restored from the Recent tab.'
-                : 'Assign bibs to pending taps as racers are identified.'}
+          {inputMode === 'bib_first' && (
+            <div style={{ flex: 1, overflowY: 'auto', borderTop: `1px solid ${T.faint}` }}>
+              <div style={{ padding: '14px', color: T.muted, fontSize: 12, lineHeight: 1.5 }}>
+                Bib First mode records laps immediately with the entered bib.
+                <br />
+                Use the Recent tab to correct bibs, void mistakes, or restore voided rows.
+              </div>
             </div>
+          )}
+        </div>
 
-            {pending.length === 0 ? (
-              <div style={{ padding: '20px 14px', color: T.dim, fontSize: 12, textAlign: 'center' }}>
-                No pending laps
+        <div
+          className="recent-panel"
+          style={{
+            flex: 1,
+            display: mobileTab === 'recent' ? 'flex' : 'none',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            background: T.bg,
+          }}
+        >
+          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, background: T.pageAlt }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button style={filterBtn(recentFilter === 'all')} onClick={() => setRecentFilter('all')}>
+                All ({laps.length})
+              </button>
+              <button style={filterBtn(recentFilter === 'pending')} onClick={() => setRecentFilter('pending')}>
+                Pending ({pending.length})
+              </button>
+              <button style={filterBtn(recentFilter === 'assigned')} onClick={() => setRecentFilter('assigned')}>
+                Assigned ({assigned.length})
+              </button>
+              <button style={filterBtn(recentFilter === 'void')} onClick={() => setRecentFilter('void')}>
+                Voided ({voided.length})
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '90px 70px 1fr 90px 96px',
+              padding: '8px 14px',
+              borderBottom: `1px solid ${T.border}`,
+              fontSize: 9,
+              color: T.dim,
+              textTransform: 'uppercase',
+              letterSpacing: 1.5,
+              fontFamily: F,
+              fontWeight: 700,
+              flexShrink: 0,
+              background: T.pageAlt,
+            }}
+          >
+            <span>Time</span>
+            <span>Bib</span>
+            <span>Name</span>
+            <span>Status</span>
+            <span>Action</span>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {filteredRecentLaps.length === 0 ? (
+              <div style={{ textAlign: 'center', color: T.dim, padding: '48px 0', fontSize: 13 }}>
+                No laps in this filter
               </div>
             ) : (
-              pending.map((l, i) => (
-                <div
-                  key={l.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '10px 14px',
-                    borderBottom: `1px solid ${T.faint}`,
-                    background: i === 0 ? T.pendingNext : 'transparent',
-                  }}
-                >
-                  <span style={{ color: T.dim, width: 40, fontSize: 11, fontFamily: F }}>
-                    {i === 0 ? 'NEXT' : `${i + 1}`}
-                  </span>
-                  <span style={{ color: T.textStrong, fontWeight: 900, flex: 1, fontSize: 20, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
-                    {fmt(l.elapsed_ms, true)}
-                  </span>
-                </div>
-              ))
+              filteredRecentLaps.map((l, i) => {
+                const entry = l.bib_number ? entries[l.bib_number] : null
+                const name = entry
+                  ? (`${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim() || entry.team || null)
+                  : null
+                const isPending = isPendingLap(l)
+
+                return (
+                  <div
+                    key={l.id}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '90px 70px 1fr 90px 96px',
+                      padding: '8px 14px',
+                      borderBottom: `1px solid ${T.faint}`,
+                      background: l.status === 'void' ? T.voidBg : isPending ? T.pendingBg : i % 2 === 0 ? 'transparent' : T.zebra,
+                      opacity: l.status === 'void' ? 0.7 : isPending ? 0.9 : 1,
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, color: T.textStrong, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
+                      {fmt(l.elapsed_ms, true)}
+                    </span>
+
+                    {editingLapId === l.id ? (
+                      <input
+                        value={editingBib}
+                        onChange={e => setEditingBib(e.target.value)}
+                        onBlur={() => saveEditedBib(l)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') saveEditedBib(l)
+                          if (e.key === 'Escape') {
+                            setEditingLapId(null)
+                            setEditingBib('')
+                          }
+                        }}
+                        autoFocus
+                        style={{
+                          width: 56,
+                          height: 28,
+                          background: T.inputBg,
+                          border: `1px solid ${T.warning}`,
+                          borderRadius: 6,
+                          color: T.textStrong,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          textAlign: 'center',
+                          fontFamily: F,
+                          outline: 'none',
+                        }}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setEditingLapId(l.id)
+                          setEditingBib(l.bib_number ?? '')
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: l.bib_number ? T.warning : T.dim,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          fontFamily: F,
+                          cursor: 'pointer',
+                          padding: 0,
+                          textAlign: 'left',
+                        }}
+                        title="Click to edit bib"
+                      >
+                        {l.bib_number ?? '—'}
+                      </button>
+                    )}
+
+                    <span style={{ fontSize: 13, color: name ? T.text : T.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {name ?? (l.status === 'void' ? 'voided' : isPending ? 'awaiting bib' : 'not in roster')}
+                    </span>
+
+                    <span style={{ fontSize: 11, color: l.status === 'void' ? T.danger : isPending ? T.warning : T.successBright, textTransform: 'uppercase', letterSpacing: 1 }}>
+                      {l.status}
+                    </span>
+
+                    <div>
+                      {l.status === 'void' ? (
+                        <button
+                          onClick={() => restoreLap(l)}
+                          style={{
+                            minWidth: 78,
+                            height: 30,
+                            borderRadius: 8,
+                            border: `1px solid ${T.success}`,
+                            background: 'transparent',
+                            color: T.success,
+                            fontFamily: F,
+                            fontWeight: 700,
+                            fontSize: 11,
+                            letterSpacing: 1,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Restore
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => voidLap(l)}
+                          style={{
+                            minWidth: 78,
+                            height: 30,
+                            borderRadius: 8,
+                            border: `1px solid ${T.dangerBorder}`,
+                            background: 'transparent',
+                            color: T.danger,
+                            fontFamily: F,
+                            fontWeight: 700,
+                            fontSize: 11,
+                            letterSpacing: 1,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Void
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
             )}
           </div>
         </div>
-
-        {isAdmin && (
-          <div
-            className="recent-panel"
-            style={{
-              flex: 1,
-              display: mobileTab === 'recent' ? 'flex' : 'none',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              background: T.bg,
-            }}
-          >
-            <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, background: T.pageAlt }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button style={filterBtn(recentFilter === 'all')} onClick={() => setRecentFilter('all')}>
-                  All ({laps.length})
-                </button>
-                <button style={filterBtn(recentFilter === 'pending')} onClick={() => setRecentFilter('pending')}>
-                  Pending ({pending.length})
-                </button>
-                <button style={filterBtn(recentFilter === 'assigned')} onClick={() => setRecentFilter('assigned')}>
-                  Assigned ({assigned.length})
-                </button>
-                <button style={filterBtn(recentFilter === 'void')} onClick={() => setRecentFilter('void')}>
-                  Voided ({voided.length})
-                </button>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '90px 70px 1fr 90px 96px',
-                padding: '8px 14px',
-                borderBottom: `1px solid ${T.border}`,
-                fontSize: 9,
-                color: T.dim,
-                textTransform: 'uppercase',
-                letterSpacing: 1.5,
-                fontFamily: F,
-                fontWeight: 700,
-                flexShrink: 0,
-                background: T.pageAlt,
-              }}
-            >
-              <span>Time</span>
-              <span>Bib</span>
-              <span>Name</span>
-              <span>Status</span>
-              <span>Action</span>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              {filteredRecentLaps.length === 0 ? (
-                <div style={{ textAlign: 'center', color: T.dim, padding: '48px 0', fontSize: 13 }}>
-                  No laps in this filter
-                </div>
-              ) : (
-                filteredRecentLaps.map((l, i) => {
-                  const entry = l.bib_number ? entries[l.bib_number] : null
-                  const name = entry
-                    ? (`${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim() || entry.team || null)
-                    : null
-                  const isPending = isPendingLap(l)
-
-                  return (
-                    <div
-                      key={l.id}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '90px 70px 1fr 90px 96px',
-                        padding: '8px 14px',
-                        borderBottom: `1px solid ${T.faint}`,
-                        background: l.status === 'void' ? T.voidBg : isPending ? T.pendingBg : i % 2 === 0 ? 'transparent' : T.zebra,
-                        opacity: l.status === 'void' ? 0.7 : isPending ? 0.9 : 1,
-                        alignItems: 'center',
-                        gap: 8,
-                      }}
-                    >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: T.textStrong, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
-                        {fmt(l.elapsed_ms, true)}
-                      </span>
-
-                      {editingLapId === l.id ? (
-                        <input
-                          value={editingBib}
-                          onChange={e => setEditingBib(e.target.value)}
-                          onBlur={() => saveEditedBib(l)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') saveEditedBib(l)
-                            if (e.key === 'Escape') {
-                              setEditingLapId(null)
-                              setEditingBib('')
-                            }
-                          }}
-                          autoFocus
-                          style={{
-                            width: 56,
-                            height: 28,
-                            background: T.inputBg,
-                            border: `1px solid ${T.warning}`,
-                            borderRadius: 6,
-                            color: T.textStrong,
-                            fontSize: 13,
-                            fontWeight: 700,
-                            textAlign: 'center',
-                            fontFamily: F,
-                            outline: 'none',
-                          }}
-                        />
-                      ) : (
-                        <button
-                          onClick={() => {
-                            setEditingLapId(l.id)
-                            setEditingBib(l.bib_number ?? '')
-                          }}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: l.bib_number ? T.warning : T.dim,
-                            fontSize: 13,
-                            fontWeight: 700,
-                            fontFamily: F,
-                            cursor: 'pointer',
-                            padding: 0,
-                            textAlign: 'left',
-                          }}
-                          title="Click to edit bib"
-                        >
-                          {l.bib_number ?? '—'}
-                        </button>
-                      )}
-
-                      <span style={{ fontSize: 13, color: name ? T.text : T.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {name ?? (l.status === 'void' ? 'voided' : isPending ? 'awaiting bib' : 'not in roster')}
-                      </span>
-
-                      <span style={{ fontSize: 11, color: l.status === 'void' ? T.danger : isPending ? T.warning : T.successBright, textTransform: 'uppercase', letterSpacing: 1 }}>
-                        {l.status}
-                      </span>
-
-                      <div>
-                        {l.status === 'void' ? (
-                          <button
-                            onClick={() => restoreLap(l)}
-                            style={{
-                              minWidth: 78,
-                              height: 30,
-                              borderRadius: 8,
-                              border: `1px solid ${T.success}`,
-                              background: 'transparent',
-                              color: T.success,
-                              fontFamily: F,
-                              fontWeight: 700,
-                              fontSize: 11,
-                              letterSpacing: 1,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Restore
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => voidLap(l)}
-                            style={{
-                              minWidth: 78,
-                              height: 30,
-                              borderRadius: 8,
-                              border: `1px solid ${T.dangerBorder}`,
-                              background: 'transparent',
-                              color: T.danger,
-                              fontFamily: F,
-                              fontWeight: 700,
-                              fontSize: 11,
-                              letterSpacing: 1,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Void
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       <style>{`

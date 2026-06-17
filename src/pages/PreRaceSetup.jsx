@@ -1,4 +1,3 @@
-// PreRaceSetup.jsx
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -281,7 +280,6 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
       <span style={{ width: 60, color: '#f97316', fontWeight: 700, fontFamily: F }}>
         CP {checkpoint.checkpoint_order}
       </span>
-
       <div style={{ flex: 1 }}>
         {editing ? (
           <input
@@ -311,17 +309,14 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
               textAlign: 'left',
               fontFamily: FB,
             }}
-            title="Click to rename"
           >
             {checkpoint.name}
           </button>
         )}
       </div>
-
       <span style={{ width: 90, color: '#4a5568', fontSize: 12 }}>
         {checkpoint.short_code ?? checkpoint.code ?? '—'}
       </span>
-
       <button style={S.removeBtn} onClick={() => onDelete(checkpoint.id)}>×</button>
     </div>
   )
@@ -345,15 +340,12 @@ function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
       <span style={{ width: 70, color: '#60a5fa', fontWeight: 800, fontFamily: F }}>
         {wave.wave_code}
       </span>
-
       <span style={{ flex: 1, color: '#e2e8f0' }}>
         {wave.wave_name || wave.wave_code}
       </span>
-
       <span style={{ width: 190, color: '#94a3b8', fontSize: 12 }}>
         {formatDateTimeLocal(wave.planned_start_time)}
       </span>
-
       <div style={{ width: 220 }}>
         {editing ? (
           <input
@@ -386,13 +378,11 @@ function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
               fontSize: 12,
               fontFamily: FB,
             }}
-            title="Click to edit actual wave start time"
           >
             {wave.actual_start_time ? formatDateTimeLocal(wave.actual_start_time) : 'Set actual start time'}
           </button>
         )}
       </div>
-
       <button
         onClick={() => onStartNow(wave.id)}
         style={{
@@ -424,6 +414,7 @@ function RaceControlPanel({
   onStartRace,
   onFinishRace,
   navigate,
+  hasStartedWave = false,
 }) {
   const [now, setNow] = useState(Date.now())
 
@@ -437,6 +428,7 @@ function RaceControlPanel({
   const isFinished = event?.status === 'finished'
   const hasStarted = !!event?.race_started_at
   const elapsedMs = getRaceElapsedMs(event, now)
+  const raceAlreadyStarted = isActive || isFinished || hasStartedWave
 
   const status = isActive
     ? { label: 'LIVE', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.25)' }
@@ -495,7 +487,9 @@ function RaceControlPanel({
             ? 'Race is live. Checkpoint timers are active and the public clock is running.'
             : isFinished
               ? 'Race is marked finished. Checkpoint capture should be stopped.'
-              : 'Race has not started yet. Starting race activates checkpoint timers and the public live clock.'}
+              : hasStartedWave
+                ? 'A wave has already started. The race activates from the first started wave.'
+                : 'Race has not started yet. Starting race activates checkpoint timers and the public live clock.'}
         </div>
         <div style={{ fontSize: 12, color: '#4a5568' }}>
           Use these controls carefully — they affect all timer devices and the public results site.
@@ -505,24 +499,31 @@ function RaceControlPanel({
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 10 }}>
         <button
           onClick={onStartRace}
-          disabled={startingRace || isActive || isFinished}
+          disabled={startingRace || raceAlreadyStarted}
           style={{
             height: 50,
             borderRadius: 10,
             border: 'none',
-            background: startingRace || isActive || isFinished ? '#1e2730' : 'linear-gradient(135deg, #16a34a, #15803d)',
+            background: startingRace || raceAlreadyStarted ? '#1e2730' : 'linear-gradient(135deg, #16a34a, #15803d)',
             color: '#fff',
-            cursor: startingRace || isActive || isFinished ? 'not-allowed' : 'pointer',
+            cursor: startingRace || raceAlreadyStarted ? 'not-allowed' : 'pointer',
             fontFamily: F,
             fontWeight: 900,
             fontSize: 15,
             letterSpacing: 2,
             textTransform: 'uppercase',
-            opacity: startingRace || isActive || isFinished ? 0.6 : 1,
-            boxShadow: startingRace || isActive || isFinished ? 'none' : '0 4px 18px rgba(22,163,74,0.25)',
+            opacity: startingRace || raceAlreadyStarted ? 0.6 : 1,
           }}
         >
-          {isActive ? 'Race Live' : isFinished ? 'Race Finished' : startingRace ? 'Starting…' : 'Start Race'}
+          {isActive
+            ? 'Race Live'
+            : isFinished
+              ? 'Race Finished'
+              : hasStartedWave
+                ? 'Wave Started'
+                : startingRace
+                  ? 'Starting…'
+                  : 'Start Race'}
         </button>
 
         <button
@@ -777,7 +778,7 @@ function EditableSuggestInput({
             <button
               key={opt}
               type="button"
-              onMouseDown={async e => {
+              onMouseDown={e => {
                 e.preventDefault()
                 setDraft(opt)
                 commit(opt)
@@ -1092,6 +1093,7 @@ export default function PreRaceSetup() {
   }, [eventId])
 
   const wavesById = useMemo(() => Object.fromEntries(waves.map(w => [w.id, w])), [waves])
+  const hasStartedWave = useMemo(() => waves.some(w => !!w.actual_start_time), [waves])
 
   const teamOptions = useMemo(
     () => Array.from(new Set(entries.map(e => e.team).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
@@ -1201,8 +1203,37 @@ export default function PreRaceSetup() {
     if (!ok) return
 
     const now = new Date().toISOString()
-    const { error } = await supabase.from('race_waves').update({ actual_start_time: now }).eq('id', waveId)
-    if (!error) loadWaves()
+
+    const { error: waveError } = await supabase
+      .from('race_waves')
+      .update({ actual_start_time: now })
+      .eq('id', waveId)
+
+    if (waveError) {
+      window.alert(`Could not start wave: ${waveError.message}`)
+      return
+    }
+
+    if (!event?.race_started_at || event?.status === 'draft') {
+      const { data: updatedEvent, error: eventError } = await supabase
+        .from('race_events')
+        .update({
+          race_started_at: now,
+          race_finished_at: null,
+          status: 'active',
+        })
+        .eq('id', eventId)
+        .select()
+        .single()
+
+      if (eventError) {
+        window.alert(`Wave started, but could not activate race: ${eventError.message}`)
+      } else if (updatedEvent) {
+        setEvent(updatedEvent)
+      }
+    }
+
+    await loadWaves()
   }
 
   const saveWaveActualTime = async (waveId, localValue) => {
@@ -1218,8 +1249,12 @@ export default function PreRaceSetup() {
       iso = d.toISOString()
     }
 
-    const { error } = await supabase.from('race_waves').update({ actual_start_time: iso }).eq('id', waveId)
-    if (!error) loadWaves()
+    const { error } = await supabase
+      .from('race_waves')
+      .update({ actual_start_time: iso })
+      .eq('id', waveId)
+
+    if (!error) await loadWaves()
   }
 
   const startRace = async () => {
@@ -1693,6 +1728,7 @@ export default function PreRaceSetup() {
           onStartRace={startRace}
           onFinishRace={finishRace}
           navigate={navigate}
+          hasStartedWave={hasStartedWave}
         />
 
         <div style={S.section}>
