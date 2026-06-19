@@ -586,7 +586,7 @@ function RaceControlPanel({
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 10 }}>
         <button
           onClick={() => navigate(`/results/${eventId}`)}
           style={{
@@ -604,6 +604,25 @@ function RaceControlPanel({
           }}
         >
           Live Results ↗
+        </button>
+
+        <button
+          onClick={() => navigate(`/race/${eventId}/corrections`)}
+          style={{
+            height: 44,
+            borderRadius: 10,
+            border: '1px solid #1e2730',
+            background: 'transparent',
+            color: '#a78bfa',
+            cursor: 'pointer',
+            fontFamily: F,
+            fontWeight: 700,
+            fontSize: 13,
+            letterSpacing: 1.2,
+            textTransform: 'uppercase',
+          }}
+        >
+          Corrections & Adjustments
         </button>
 
         <button
@@ -1076,6 +1095,12 @@ export default function PreRaceSetup() {
   })
   const [formError, setFormError] = useState('')
 
+  const [resetPin, setResetPin] = useState('')
+  const [resetConfirmText, setResetConfirmText] = useState('')
+  const [resettingRaceData, setResettingRaceData] = useState(false)
+
+  const RESET_PIN = '2468'
+
   useEffect(() => {
     if (!eventId) return
     Promise.all([
@@ -1334,6 +1359,77 @@ export default function PreRaceSetup() {
     setEvent(data)
   }
 
+  const resetRaceData = async () => {
+    if (resettingRaceData) return
+
+    if (resetPin !== RESET_PIN) {
+      window.alert('Incorrect PIN.')
+      return
+    }
+
+    if (resetConfirmText !== 'RESET') {
+      window.alert('Type RESET to confirm.')
+      return
+    }
+
+    const ok = window.confirm(
+      'Reset all race timing data for this event?\n\nThis will permanently delete captured splits and finishes, clear wave actual start times, and reset the event to draft.'
+    )
+
+    if (!ok) return
+
+    setResettingRaceData(true)
+
+    try {
+      const { error: lapError } = await supabase
+        .from('lap_events')
+        .delete()
+        .eq('event_id', eventId)
+
+      if (lapError) throw lapError
+
+      const { error: finishError } = await supabase
+        .from('race_finishes')
+        .delete()
+        .eq('event_id', eventId)
+
+      if (finishError) throw finishError
+
+      const { error: waveError } = await supabase
+        .from('race_waves')
+        .update({ actual_start_time: null })
+        .eq('event_id', eventId)
+
+      if (waveError) throw waveError
+
+      const { data: updatedEvent, error: eventError } = await supabase
+        .from('race_events')
+        .update({
+          race_started_at: null,
+          race_finished_at: null,
+          status: 'draft',
+        })
+        .eq('id', eventId)
+        .select()
+        .single()
+
+      if (eventError) throw eventError
+
+      await loadWaves()
+
+      setEvent(updatedEvent)
+      setResetPin('')
+      setResetConfirmText('')
+
+      window.alert('Race timing data reset successfully.')
+    } catch (err) {
+      console.error('Reset race data failed:', err)
+      window.alert(`Reset failed: ${err.message || 'Unknown error'}`)
+    } finally {
+      setResettingRaceData(false)
+    }
+  }
+
   const handleFile = e => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1538,7 +1634,7 @@ export default function PreRaceSetup() {
 
       setEntries(prev =>
         [...prev, ...(data || [])].sort((a, b) =>
-          String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
+          Number(a.bib_number) - Number(b.bib_number)
         )
       )
 
@@ -1595,7 +1691,7 @@ export default function PreRaceSetup() {
 
     setEntries(prev =>
       [...prev, data].sort((a, b) =>
-        String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
+        Number(a.bib_number) - Number(b.bib_number)
       )
     )
 
@@ -1647,7 +1743,7 @@ export default function PreRaceSetup() {
       prev
         .map(e => (e.id === entryId ? data : e))
         .sort((a, b) =>
-          String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
+          Number(a.bib_number) - Number(b.bib_number)
         )
     )
 
@@ -1682,7 +1778,7 @@ export default function PreRaceSetup() {
 
         <div style={{ flex: 1, padding: '0 16px', minWidth: 220 }}>
           <div style={{ fontSize: 11, color: '#f97316', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
-            PRE-RACE SETUP
+            RACE SETUP
           </div>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', fontFamily: F }}>
             {event?.name}
@@ -1694,7 +1790,7 @@ export default function PreRaceSetup() {
             Live Results ↗
           </button>
           <button style={{ ...S.backBtn, color: '#a78bfa' }} onClick={() => navigate(`/race/${eventId}/corrections`)}>
-            Corrections
+            Corrections & Adjustments
           </button>
           <button style={{ ...S.backBtn, color: '#f97316' }} onClick={() => navigate(`/race/${eventId}/checkpoints`)}>
             Checkpoints
@@ -1947,6 +2043,9 @@ export default function PreRaceSetup() {
               <button onClick={() => navigate(`/results/${eventId}`)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
                 View Live Results
               </button>
+              <button onClick={() => navigate(`/race/${eventId}/corrections`)} style={{ ...S.backBtn, flex: 1, color: '#a78bfa' }}>
+                Corrections & Adjustments
+              </button>
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
@@ -2171,6 +2270,89 @@ export default function PreRaceSetup() {
             + Add Day-Of Competitor / Team
           </button>
         )}
+
+        <div style={S.section}>
+          <div style={{ ...S.card, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.10)' }}>
+            <div style={{ padding: 18 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: '#f87171',
+                  textTransform: 'uppercase',
+                  letterSpacing: 2,
+                  marginBottom: 8,
+                  fontFamily: F,
+                  fontWeight: 800,
+                }}
+              >
+                Danger Zone
+              </div>
+
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#fecaca', marginBottom: 8, fontFamily: F }}>
+                Reset All Race Timing Data
+              </div>
+
+              <div style={{ fontSize: 13, color: '#fca5a5', marginBottom: 14, lineHeight: 1.5 }}>
+                This permanently deletes all captured splits and finishes for this race,
+                clears wave actual start times, and resets the race back to draft.
+                Entries, checkpoints, and waves will remain.
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+                <div>
+                  <label style={adhocLabelStyle}>PIN</label>
+                  <input
+                    type="password"
+                    value={resetPin}
+                    onChange={e => setResetPin(e.target.value)}
+                    placeholder="Enter PIN"
+                    style={{
+                      ...S.input,
+                      border: '1px solid rgba(248,113,113,0.35)',
+                      background: '#120b0b',
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={adhocLabelStyle}>Type RESET to confirm</label>
+                  <input
+                    value={resetConfirmText}
+                    onChange={e => setResetConfirmText(e.target.value)}
+                    placeholder="RESET"
+                    style={{
+                      ...S.input,
+                      border: '1px solid rgba(248,113,113,0.35)',
+                      background: '#120b0b',
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={resetRaceData}
+                  disabled={resettingRaceData}
+                  style={{
+                    height: 44,
+                    padding: '0 16px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: resettingRaceData ? '#7f1d1d' : '#dc2626',
+                    color: '#fff',
+                    cursor: resettingRaceData ? 'not-allowed' : 'pointer',
+                    fontFamily: F,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    letterSpacing: 1.5,
+                    textTransform: 'uppercase',
+                    opacity: resettingRaceData ? 0.75 : 1,
+                  }}
+                >
+                  {resettingRaceData ? 'Resetting…' : 'Reset Race Data'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {entries.length === 0 && (
           <p style={{ textAlign: 'center', color: '#374151', fontSize: 12, marginTop: 10 }}>

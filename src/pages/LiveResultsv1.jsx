@@ -2,12 +2,6 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
-import AdjustmentMarker from '../components/AdjustmentMarker'
-import {
-  groupAdjustmentsByEntryOrBib,
-  getAdjustmentKey,
-  sumAdjustments,
-} from '../lib/raceAdjustments'
 
 const THEMES = {
   dark: {
@@ -48,10 +42,8 @@ const fontHead = "'Barlow Condensed', sans-serif"
 const fontBody = "'Barlow', sans-serif"
 const fontMono = "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace"
 
-const DESKTOP_NAME_COL_WIDTH = 130
-const MOBILE_NAME_COL_WIDTH = 96
+const NAME_COL_WIDTH = 130
 const THEME_STORAGE_KEY = 'live_results_theme'
-const SURF_TURF_TAGLINE = '5 Legs. Tons of fun.'
 
 function fmtTime(ms) {
   if (ms == null) return '—'
@@ -61,22 +53,6 @@ function fmtTime(ms) {
   const cs = Math.floor((ms % 1000) / 10)
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
-}
-
-function formatCountdown(ms) {
-  if (ms == null || ms <= 0) return '00:00:00'
-
-  const totalSeconds = Math.floor(ms / 1000)
-  const days = Math.floor(totalSeconds / 86400)
-  const hours = Math.floor((totalSeconds % 86400) / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-
-  if (days > 0) {
-    return `${days}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`
-  }
-
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
 function getDisplayName(entry) {
@@ -139,22 +115,22 @@ function emptyStateStyle(C) {
     background: C.surface,
     border: `1px solid ${C.border}`,
     borderRadius: 10,
-    padding: '40px 0',
+    padding: '48px 0',
     textAlign: 'center',
     color: C.muted,
     fontFamily: fontBody,
-    fontSize: 13,
+    fontSize: 14,
   }
 }
 
 function thBase(C) {
   return {
-    padding: '7px 10px',
+    padding: '8px 12px',
     textAlign: 'left',
     fontFamily: fontHead,
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: 700,
-    letterSpacing: 1.8,
+    letterSpacing: 2,
     textTransform: 'uppercase',
     color: C.muted,
     whiteSpace: 'nowrap',
@@ -167,9 +143,9 @@ function thBase(C) {
 
 function tdBase(C, mono = false) {
   return {
-    padding: '6px 10px',
+    padding: '7px 12px',
     fontFamily: mono ? fontMono : fontBody,
-    fontSize: 11,
+    fontSize: 12,
     color: C.text,
     whiteSpace: 'nowrap',
     verticalAlign: 'middle',
@@ -205,9 +181,8 @@ function compareValues(a, b, dir = 'asc', type = 'string') {
   const mul = dir === 'asc' ? 1 : -1
 
   if (type === 'number') {
-    const av = a == null || a === '' ? Infinity : Number(a)
-    const bv = b == null || b === '' ? Infinity : Number(b)
-
+    const av = a == null ? Infinity : a
+    const bv = b == null ? Infinity : b
     if (av < bv) return -1 * mul
     if (av > bv) return 1 * mul
     return 0
@@ -245,21 +220,16 @@ function ThemeToggle({ theme, setTheme, C }) {
   )
 }
 
-function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobile, nameColWidth }) {
+function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C }) {
   if (!rows.length) {
-    return <div style={emptyStateStyle(C)}>No racers in this segment yet…</div>
+    return <div style={emptyStateStyle(C)}>No finishers in this segment yet…</div>
   }
 
   const medals = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' }
-  const tableMinWidth = isMobile ? 760 : 960
-  const checkpointMinWidth = isMobile ? 88 : 120
-  const bibMinWidth = isMobile ? 60 : 72
-  const finishMinWidth = isMobile ? 96 : 120
-  const waveMinWidth = isMobile ? 72 : 90
 
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: tableMinWidth }}>
+      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: 960 }}>
         <thead>
           <tr>
             <th onClick={() => onSort('place', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 5), minWidth: 64 }}>
@@ -268,16 +238,16 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
 
             <th
               onClick={() => onSort('name', 'string')}
-              style={{ ...thBase(C), ...stickyHeader(64, 6), left: 64, minWidth: nameColWidth, maxWidth: nameColWidth, width: nameColWidth }}
+              style={{ ...thBase(C), ...stickyHeader(64, 6), left: 64, minWidth: NAME_COL_WIDTH, maxWidth: NAME_COL_WIDTH, width: NAME_COL_WIDTH }}
             >
               Name{sortIndicator(sortConfig.key === 'name', sortConfig.dir)}
             </th>
 
-            <th onClick={() => onSort('bib_number', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: bibMinWidth }}>
+            <th onClick={() => onSort('bib_number', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 72 }}>
               Bib{sortIndicator(sortConfig.key === 'bib_number', sortConfig.dir)}
             </th>
 
-            <th onClick={() => onSort('time_ms', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: finishMinWidth }}>
+            <th onClick={() => onSort('time_ms', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 120 }}>
               Finish Time{sortIndicator(sortConfig.key === 'time_ms', sortConfig.dir)}
             </th>
 
@@ -285,14 +255,14 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
               <th
                 key={cp.id}
                 onClick={() => onSort(`cp:${cp.id}`, 'number')}
-                style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: checkpointMinWidth }}
+                style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 100 }}
               >
-                {cp.name || cp.display_name || cp.label || (cp.isFinish ? 'Finish' : `CP${cp.checkpoint_order}`)}
+                {cp.isFinish ? 'Finish' : `CP${cp.checkpoint_order}`}
                 {sortIndicator(sortConfig.key === `cp:${cp.id}`, sortConfig.dir)}
               </th>
             ))}
 
-            <th onClick={() => onSort('wave_code', 'string')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: waveMinWidth }}>
+            <th onClick={() => onSort('wave_code', 'string')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: 90 }}>
               Wave{sortIndicator(sortConfig.key === 'wave_code', sortConfig.dir)}
             </th>
           </tr>
@@ -300,7 +270,7 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
 
         <tbody>
           {rows.map((r, i) => {
-            const medal = r.is_finished ? medals[r.place] : null
+            const medal = medals[r.place]
             const rowBg = i % 2 === 0 ? C.surface : C.surface2
 
             return (
@@ -311,22 +281,22 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      minWidth: 26,
-                      height: 26,
+                      minWidth: 28,
+                      height: 28,
                       padding: '0 8px',
                       borderRadius: 999,
                       background: medal ?? C.medalFallback,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 800,
                       fontFamily: fontHead,
                       color: medal ? '#000' : C.text,
                     }}
                   >
-                    {r.place ?? '—'}
+                    {r.place}
                   </span>
                 </td>
 
-                <td style={{ ...tdBase(C), ...stickyCell(64, rowBg, 3), minWidth: nameColWidth, maxWidth: nameColWidth, width: nameColWidth }}>
+                <td style={{ ...tdBase(C), ...stickyCell(64, rowBg, 3), minWidth: NAME_COL_WIDTH, maxWidth: NAME_COL_WIDTH, width: NAME_COL_WIDTH }}>
                   <span
                     style={{
                       color: r.name ? C.text : C.muted,
@@ -339,47 +309,24 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
                     }}
                     title={r.name ?? `Bib ${r.bib_number}`}
                   >
-                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                      {r.name ?? `Bib ${r.bib_number}`}
-                      <AdjustmentMarker adjustments={r.adjustments} />
-                    </span>
+                    {r.name ?? `Bib ${r.bib_number}`}
                   </span>
                 </td>
 
                 <td style={tdBase(C, true)}>{r.bib_number ?? '—'}</td>
+                <td style={{ ...tdBase(C, true), fontWeight: 700, color: C.green }}>{fmtTime(r.time_ms)}</td>
 
-                <td style={{ ...tdBase(C, true), fontWeight: 700, color: r.is_finished ? C.green : C.muted }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span>{fmtTime(r.adjusted_time_ms ?? r.time_ms)}</span>
-                   {r.has_adjustment && r.time_ms != null && (
-                    <span style={{ color: C.orange, fontSize: 10 }}>
-                      raw {fmtTime(r.time_ms)}
-                    </span>
-                  )}
-                  </div>
-                </td>
-
-                {displayCheckpoints.map(cp => {
-                  const splitMs = r.checkpoint_split_times?.[cp.id]
-                  const cumulativeMs = r.checkpoint_times?.[cp.id]
-
-                  return (
-                    <td key={cp.id} style={tdBase(C, true)}>
-                      {cumulativeMs != null ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <span style={{ color: cp.isFinish ? C.green : C.text, fontWeight: 700 }}>
-                            {fmtTime(splitMs)}
-                          </span>
-                          <span style={{ color: C.muted, fontSize: 10 }}>
-                            ({fmtTime(cumulativeMs)})
-                          </span>
-                        </div>
-                      ) : (
-                        <span style={{ color: C.dim }}>—</span>
-                      )}
-                    </td>
-                  )
-                })}
+                {displayCheckpoints.map(cp => (
+                  <td key={cp.id} style={tdBase(C, true)}>
+                    {r.checkpoint_times?.[cp.id] != null ? (
+                      <span style={{ color: cp.isFinish ? C.green : C.text }}>
+                        {fmtTime(r.checkpoint_times[cp.id])}
+                      </span>
+                    ) : (
+                      <span style={{ color: C.dim }}>—</span>
+                    )}
+                  </td>
+                ))}
 
                 <td style={tdBase(C)}>
                   <span style={{ color: r.wave_code ? C.text : C.muted }}>
@@ -404,19 +351,15 @@ export default function LiveResults() {
   const [waves, setWaves] = useState([])
   const [laps, setLaps] = useState([])
   const [finishes, setFinishes] = useState([])
-  const [adjustments, setAdjustments] = useState([])
   const [resultsGenderFilter, setResultsGenderFilter] = useState('Overall')
   const [resultsDivisionFilter, setResultsDivisionFilter] = useState('all')
-  const [checkpointSortMode, setCheckpointSortMode] = useState('cumulative')
   const [lastUpdate, setLastUpdate] = useState(null)
   const [now, setNow] = useState(Date.now())
   const [theme, setTheme] = useState('light')
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
 
   const [resultsSort, setResultsSort] = useState({ key: 'place', dir: 'asc', type: 'number' })
 
   const C = THEMES[theme]
-  const nameColWidth = isMobile ? MOBILE_NAME_COL_WIDTH : DESKTOP_NAME_COL_WIDTH
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY)
@@ -432,15 +375,10 @@ export default function LiveResults() {
   }, [theme])
 
   useEffect(() => {
+    if (event?.status !== 'active') return
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
-  }, [])
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth <= 768)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
+  }, [event?.status])
 
   useEffect(() => {
     if (!eventId) return
@@ -453,7 +391,6 @@ export default function LiveResults() {
         { data: waveData },
         { data: lapData },
         { data: finishData },
-        { data: adjustmentData },
       ] = await Promise.all([
         supabase.from('race_events').select('*').eq('id', eventId).single(),
         supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
@@ -461,7 +398,6 @@ export default function LiveResults() {
         supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
         supabase.from('lap_events').select('*').eq('event_id', eventId),
         supabase.from('race_finishes').select('*').eq('event_id', eventId).order('place', { ascending: true }),
-        supabase.from('race_result_adjustments').select('*').eq('event_id', eventId).order('created_at', { ascending: true }),
       ])
 
       setEvent(eventData || null)
@@ -470,7 +406,6 @@ export default function LiveResults() {
       setWaves(waveData || [])
       setLaps(lapData || [])
       setFinishes(finishData || [])
-      setAdjustments(adjustmentData || [])
       setLastUpdate(new Date())
     }
 
@@ -501,11 +436,6 @@ export default function LiveResults() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'event_entries', filter: `event_id=eq.${eventId}` },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'race_result_adjustments', filter: `event_id=eq.${eventId}` },
         () => loadAll()
       )
       .subscribe((status) => {
@@ -560,10 +490,6 @@ export default function LiveResults() {
     return map
   }, [finishes])
 
-  const adjustmentMap = useMemo(() => {
-    return groupAdjustmentsByEntryOrBib(adjustments || [])
-  }, [adjustments])
-
   const divisions = useMemo(() => {
     const vals = new Set()
 
@@ -616,31 +542,22 @@ export default function LiveResults() {
     return Number.isNaN(ms) ? null : ms
   }
 
-  const countdownTargetMs = useMemo(() => {
-    const target = new Date('2026-06-18T09:30:00')
-    return target.getTime()
-  }, [])
-
-  const countdownMs = useMemo(() => {
-    return countdownTargetMs ? Math.max(0, countdownTargetMs - now) : null
-  }, [countdownTargetMs, now])
-
   const baseResultsRows = useMemo(() => {
-    const allBibs = new Set()
+    const bibsWithFinishSplit = new Set()
 
-    entries.forEach(entry => {
-      if (entry.bib_number) allBibs.add(entry.bib_number)
-    })
+    if (finishCheckpoint) {
+      laps.forEach(l => {
+        if (l.status === 'void' || !l.bib_number) return
+        if (l.checkpoint_id === finishCheckpoint.id) bibsWithFinishSplit.add(l.bib_number)
+      })
+    }
 
-    laps.forEach(l => {
-      if (l.bib_number) allBibs.add(l.bib_number)
-    })
+    const allFinisherBibs = new Set([
+      ...Object.keys(finishMapFromTable),
+      ...Array.from(bibsWithFinishSplit),
+    ])
 
-    finishes.forEach(f => {
-      if (f.bib_number) allBibs.add(f.bib_number)
-    })
-
-    const rows = Array.from(allBibs).map(bib => {
+    const rows = Array.from(allFinisherBibs).map(bib => {
       const entriesForBib = entriesByBib[bib] || []
       const primaryEntry = getPrimaryEntry(entriesForBib)
       const finishFromTable = finishMapFromTable[bib] || null
@@ -655,13 +572,9 @@ export default function LiveResults() {
           ? Math.max(0, finishCapturedMs - startMs)
           : finishSplit?.elapsed_ms ?? null
 
-      const time_ms = finishFromTable?.time_ms ?? derivedFinishMs ?? null
+      const timeMs = finishFromTable?.time_ms ?? derivedFinishMs ?? null
 
       const checkpoint_times = {}
-      const checkpoint_split_times = {}
-      let latestCheckpointOrder = 0
-      let latestCheckpointElapsedMs = null
-      let previousCumulative = null
 
       displayCheckpoints.forEach(cp => {
         const split = splitMap[`${bib}:${cp.id}`]
@@ -674,81 +587,28 @@ export default function LiveResults() {
             : split.elapsed_ms
 
         checkpoint_times[cp.id] = effectiveElapsed
-        checkpoint_split_times[cp.id] =
-          previousCumulative == null ? effectiveElapsed : effectiveElapsed - previousCumulative
-
-        previousCumulative = effectiveElapsed
-
-        if (
-          cp.checkpoint_order > latestCheckpointOrder ||
-          (
-            cp.checkpoint_order === latestCheckpointOrder &&
-            (latestCheckpointElapsedMs == null || effectiveElapsed < latestCheckpointElapsedMs)
-          )
-        ) {
-          latestCheckpointOrder = cp.checkpoint_order
-          latestCheckpointElapsedMs = effectiveElapsed
-        }
       })
 
-      const baseRow = {
-        id: finishFromTable?.id || primaryEntry?.id || `row-${bib}`,
-        entry_id: primaryEntry?.id || null,
+      return {
+        id: finishFromTable?.id || `finish-${bib}`,
         bib_number: bib,
         name: getDisplayNameForBib(entriesForBib, bib),
         division: primaryEntry?.division || null,
         gender: primaryEntry?.gender || null,
         normalizedGender: normalizeGender(primaryEntry?.gender),
         wave_code: primaryEntry?.wave_id ? (wavesById[primaryEntry.wave_id]?.wave_code || null) : null,
-        time_ms,
+        time_ms: timeMs,
         checkpoint_times,
-        checkpoint_split_times,
-        latestCheckpointOrder,
-        latestCheckpointElapsedMs,
-        is_finished: time_ms != null,
-      }
-
-      const adjustmentKey = getAdjustmentKey(baseRow)
-      const rowAdjustments = adjustmentMap.get(adjustmentKey) || []
-      const totalAdjustmentMs = sumAdjustments(rowAdjustments)
-
-      return {
-        ...baseRow,
-        adjustments: rowAdjustments,
-        total_adjustment_ms: totalAdjustmentMs,
-        adjusted_time_ms: time_ms != null ? time_ms + totalAdjustmentMs : null,
-        has_adjustment: rowAdjustments.length > 0,
       }
     })
-
-    rows.sort((a, b) => {
-      const aFinished = a.is_finished
-      const bFinished = b.is_finished
-
-      if (aFinished && bFinished) {
-        const aSortTime = a.adjusted_time_ms ?? a.time_ms
-        const bSortTime = b.adjusted_time_ms ?? b.time_ms
-        if (aSortTime !== bSortTime) return aSortTime - bSortTime
+      .filter(r => r.time_ms != null)
+      .sort((a, b) => {
+        if (a.time_ms !== b.time_ms) return a.time_ms - b.time_ms
         return String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
-      }
-
-      if (aFinished) return -1
-      if (bFinished) return 1
-
-      if (a.latestCheckpointOrder !== b.latestCheckpointOrder) {
-        return b.latestCheckpointOrder - a.latestCheckpointOrder
-      }
-
-      const aElapsed = a.latestCheckpointElapsedMs == null ? Infinity : a.latestCheckpointElapsedMs
-      const bElapsed = b.latestCheckpointElapsedMs == null ? Infinity : b.latestCheckpointElapsedMs
-
-      if (aElapsed !== bElapsed) return aElapsed - bElapsed
-
-      return String(a.bib_number).localeCompare(String(b.bib_number), undefined, { numeric: true })
-    })
+      })
 
     return rows
-  }, [entries, laps, finishes, entriesByBib, finishMapFromTable, finishCheckpoint, splitMap, displayCheckpoints, wavesById, event?.race_started_at, adjustmentMap])
+  }, [finishCheckpoint, laps, finishMapFromTable, entriesByBib, splitMap, wavesById, event?.race_started_at, displayCheckpoints])
 
   const resultsGenderTabs = useMemo(() => {
     const found = new Set()
@@ -785,17 +645,8 @@ export default function LiveResults() {
     const sorted = [...rows].sort((a, b) => {
       if (resultsSort.key.startsWith('cp:')) {
         const checkpointId = resultsSort.key.split(':')[1]
-        const aVal = checkpointSortMode === 'split'
-          ? a.checkpoint_split_times?.[checkpointId]
-          : a.checkpoint_times?.[checkpointId]
-        const bVal = checkpointSortMode === 'split'
-          ? b.checkpoint_split_times?.[checkpointId]
-          : b.checkpoint_times?.[checkpointId]
-        const cmp = compareValues(aVal, bVal, resultsSort.dir, 'number')
-        if (cmp !== 0) return cmp
-      } else if (resultsSort.key === 'place') {
-        const aVal = a.is_finished ? (a.adjusted_time_ms ?? a.time_ms) : null
-        const bVal = b.is_finished ? (b.adjusted_time_ms ?? b.time_ms) : null
+        const aVal = a.checkpoint_times?.[checkpointId]
+        const bVal = b.checkpoint_times?.[checkpointId]
         const cmp = compareValues(aVal, bVal, resultsSort.dir, 'number')
         if (cmp !== 0) return cmp
       } else {
@@ -803,51 +654,35 @@ export default function LiveResults() {
         if (cmp !== 0) return cmp
       }
 
-      if (a.is_finished && b.is_finished) {
-        const aSortTime = a.adjusted_time_ms ?? a.time_ms
-        const bSortTime = b.adjusted_time_ms ?? b.time_ms
-        if (aSortTime !== bSortTime) return aSortTime - bSortTime
-      } else if (a.is_finished) {
-        return -1
-      } else if (b.is_finished) {
-        return 1
-      } else {
-        if (a.latestCheckpointOrder !== b.latestCheckpointOrder) {
-          return b.latestCheckpointOrder - a.latestCheckpointOrder
-        }
-
-        const aElapsed = a.latestCheckpointElapsedMs == null ? Infinity : a.latestCheckpointElapsedMs
-        const bElapsed = b.latestCheckpointElapsedMs == null ? Infinity : b.latestCheckpointElapsedMs
-
-        if (aElapsed !== bElapsed) return aElapsed - bElapsed
-      }
-
       return compareValues(a.bib_number, b.bib_number, 'asc', 'number')
     })
+
+    const leaderTime = sorted.length ? sorted[0].time_ms : null
 
     return sorted.map((r, idx) => ({
       ...r,
       place: idx + 1,
+      gap_ms: leaderTime != null ? r.time_ms - leaderTime : null,
     }))
-  }, [baseResultsRows, resultsGenderFilter, resultsDivisionFilter, resultsSort, checkpointSortMode])
+  }, [baseResultsRows, resultsGenderFilter, resultsDivisionFilter, resultsSort])
 
   const hasUnknownResultsDivisionRows = useMemo(() => {
     return baseResultsRows.some(r => !r.division)
   }, [baseResultsRows])
 
   const leaderRow = useMemo(() => {
-    return filteredResultsRows.find(r => (r.latestCheckpointOrder || 0) > 0) || null
+    return filteredResultsRows[0] || null
   }, [filteredResultsRows])
 
   const subTabBtn = active => ({
-    padding: isMobile ? '7px 12px' : '8px 14px',
+    padding: '8px 14px',
     border: 'none',
     background: 'none',
     cursor: 'pointer',
     fontFamily: fontHead,
-    fontSize: isMobile ? 9 : 10,
+    fontSize: 10,
     fontWeight: 700,
-    letterSpacing: 1.1,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
     color: active ? C.blue : C.muted,
     borderBottom: active ? `2px solid ${C.blue}` : '2px solid transparent',
@@ -865,15 +700,15 @@ export default function LiveResults() {
     <div style={{ minHeight: '100dvh', background: C.bg, color: C.text, fontFamily: fontBody }}>
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: isMobile ? '12px 14px' : '14px 20px' }}>
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '14px 20px' }}>
         <div
           style={{
             maxWidth: 1200,
             margin: '0 auto',
             display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : '1fr auto',
+            gridTemplateColumns: '1fr auto',
             alignItems: 'center',
-            gap: 14,
+            gap: 16,
           }}
         >
           <div>
@@ -881,11 +716,11 @@ export default function LiveResults() {
               AthleteOS · Live Results
             </div>
 
-            <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 900, fontFamily: fontHead, letterSpacing: 0.5, marginBottom: 4 }}>
+            <div style={{ fontSize: 24, fontWeight: 900, fontFamily: fontHead, letterSpacing: 0.5, marginBottom: 4 }}>
               {event?.name ?? '…'}
             </div>
 
-            <div style={{ fontSize: 12, color: C.muted, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12, color: C.muted, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {event?.distance && <span>{event.distance}</span>}
               {event?.location && <span>📍 {event.location}</span>}
               {event?.event_date && (
@@ -900,10 +735,10 @@ export default function LiveResults() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'flex-end', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
             <ThemeToggle theme={theme} setTheme={setTheme} C={C} />
 
-            <div style={{ textAlign: isMobile ? 'left' : 'right' }}>
+            <div style={{ textAlign: 'right' }}>
               <div
                 style={{
                   fontSize: 10,
@@ -915,32 +750,24 @@ export default function LiveResults() {
                   marginBottom: 4,
                 }}
               >
-                {event?.status === 'finished'
-                  ? 'Final Time'
-                  : event?.race_started_at
-                    ? 'Race Clock'
-                    : 'Event Status'}
+                {isLive ? 'Race Clock' : event?.status === 'finished' ? 'Final Time' : 'Waiting For Start'}
               </div>
 
               <div
                 style={{
-                  fontSize: isMobile ? 'clamp(24px, 6vw, 34px)' : 'clamp(28px, 4vw, 42px)',
+                  fontSize: 'clamp(28px, 4vw, 42px)',
                   fontWeight: 900,
                   fontFamily: fontHead,
                   letterSpacing: -1.5,
                   lineHeight: 1,
-                  color: event?.race_started_at ? C.text : C.muted,
+                  color: event?.race_started_at ? C.text : C.dim,
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                {event?.status === 'finished'
-                  ? 'Finished'
-                  : event?.race_started_at
-                    ? formatRaceClock(raceElapsedMs)
-                    : 'Awaiting Start'}
+                {formatRaceClock(raceElapsedMs)}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'flex-end', gap: 4, marginTop: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, marginTop: 6 }}>
                 {isLive && (
                   <span
                     style={{
@@ -980,111 +807,10 @@ export default function LiveResults() {
         </div>
       </div>
 
-      {!event?.race_started_at && (
-        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
-          <div
-            className="hero-grid"
-            style={{
-              maxWidth: 1200,
-              margin: '0 auto',
-              padding: isMobile ? '14px' : '18px 20px',
-              display: 'grid',
-              gridTemplateColumns: '1.2fr 0.8fr',
-              gap: 16,
-              alignItems: 'stretch',
-            }}
-          >
-            <div
-              style={{
-                border: `1px solid ${C.border}`,
-                background: C.surface2,
-                borderRadius: 14,
-                padding: isMobile ? '16px 14px' : '20px 18px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  color: C.orange,
-                  letterSpacing: 2,
-                  fontFamily: fontHead,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  marginBottom: 8,
-                }}
-              >
-                Surf'n Turf
-              </div>
-
-              <div
-                style={{
-                  fontSize: isMobile ? 'clamp(24px, 8vw, 34px)' : 'clamp(30px, 5vw, 46px)',
-                  lineHeight: 1,
-                  fontWeight: 900,
-                  fontFamily: fontHead,
-                  color: C.text,
-                }}
-              >
-                {SURF_TURF_TAGLINE}
-              </div>
-            </div>
-
-            <div
-              style={{
-                border: `1px solid ${C.border}`,
-                background: C.surface2,
-                borderRadius: 14,
-                padding: isMobile ? '16px 14px' : '20px 18px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                textAlign: 'center',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  color: C.orange,
-                  letterSpacing: 2,
-                  fontFamily: fontHead,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  marginBottom: 8,
-                }}
-              >
-                Countdown to Event
-              </div>
-
-              <div
-                style={{
-                  fontSize: isMobile ? 'clamp(30px, 9vw, 46px)' : 'clamp(40px, 6vw, 64px)',
-                  fontWeight: 900,
-                  fontFamily: fontHead,
-                  color: C.blue,
-                  lineHeight: 1,
-                  letterSpacing: -1.5,
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {formatCountdown(countdownMs)}
-              </div>
-
-              <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
-                Live results begin when the first wave starts.
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
           {[
-            { label: 'Finishers', value: baseResultsRows.filter(r => r.is_finished).length, color: C.blue },
+            { label: 'Finishers', value: baseResultsRows.length, color: C.blue },
             { label: 'Checkpoints', value: checkpoints.length, color: C.muted },
             { label: 'Assigned splits', value: laps.filter(l => l.status !== 'void' && !!l.bib_number).length, color: C.green },
             { label: 'Divisions', value: divisions.length, color: C.text },
@@ -1092,13 +818,13 @@ export default function LiveResults() {
             <div
               key={s.label}
               style={{
-                padding: isMobile ? '8px 8px' : '10px 12px',
+                padding: '10px 12px',
                 borderRight: idx < arr.length - 1 ? `1px solid ${C.border}` : 'none',
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, fontFamily: fontHead, color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: 8, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.3, marginTop: 2 }}>{s.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 900, fontFamily: fontHead, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 9, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -1110,17 +836,17 @@ export default function LiveResults() {
             style={{
               maxWidth: 1200,
               margin: '0 auto',
-              padding: isMobile ? '10px 14px' : '12px 20px',
+              padding: '12px 20px',
               display: 'grid',
-              gridTemplateColumns: isMobile ? 'auto 1fr' : 'auto 1fr auto auto',
-              gap: 12,
+              gridTemplateColumns: 'auto 1fr auto auto',
+              gap: 14,
               alignItems: 'center',
             }}
           >
             <div
               style={{
-                minWidth: 40,
-                height: 40,
+                minWidth: 42,
+                height: 42,
                 borderRadius: '50%',
                 background: '#FFD700',
                 display: 'flex',
@@ -1129,7 +855,7 @@ export default function LiveResults() {
                 fontFamily: fontHead,
                 fontWeight: 900,
                 color: '#000',
-                fontSize: 17,
+                fontSize: 18,
               }}
             >
               1
@@ -1141,7 +867,7 @@ export default function LiveResults() {
                   ? 'Current Leader'
                   : `${resultsGenderFilter === 'Overall' ? 'Overall' : resultsGenderFilter}${resultsDivisionFilter !== 'all' ? ` · ${resultsDivisionFilter}` : ''} Leader`}
               </div>
-              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, fontFamily: fontHead, color: C.text, lineHeight: 1 }}>
+              <div style={{ fontSize: 22, fontWeight: 900, fontFamily: fontHead, color: C.text, lineHeight: 1 }}>
                 {leaderRow.name || `Bib ${leaderRow.bib_number}`}
               </div>
               <div style={{ marginTop: 3, fontSize: 11, color: C.muted }}>
@@ -1149,27 +875,23 @@ export default function LiveResults() {
               </div>
             </div>
 
-            {!isMobile && (
-              <>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 10, color: C.muted, fontFamily: fontHead, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-                    Current Time
-                  </div>
-                  <div style={{ fontSize: 26, fontWeight: 900, fontFamily: fontHead, color: leaderRow.is_finished ? C.green : C.blue, lineHeight: 1 }}>
-                    {leaderRow.is_finished ? fmtTime(leaderRow.adjusted_time_ms ?? leaderRow.time_ms) : `Leg ${leaderRow.latestCheckpointOrder || '—'}`}
-                  </div>
-                </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: fontHead, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                Finish Time
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 900, fontFamily: fontHead, color: C.green, lineHeight: 1 }}>
+                {fmtTime(leaderRow.time_ms)}
+              </div>
+            </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 10, color: C.muted, fontFamily: fontHead, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-                    Visible Racers
-                  </div>
-                  <div style={{ fontSize: 26, fontWeight: 900, fontFamily: fontHead, color: C.blue, lineHeight: 1 }}>
-                    {filteredResultsRows.length}
-                  </div>
-                </div>
-              </>
-            )}
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: fontHead, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                Finishers
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 900, fontFamily: fontHead, color: C.blue, lineHeight: 1 }}>
+                {filteredResultsRows.length}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1215,62 +937,13 @@ export default function LiveResults() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobile ? '12px 14px' : '16px 20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              border: `1px solid ${C.border}`,
-              borderRadius: 999,
-              overflow: 'hidden',
-              background: C.surface,
-            }}
-          >
-            <button
-              onClick={() => setCheckpointSortMode('cumulative')}
-              style={{
-                padding: isMobile ? '6px 8px' : '6px 10px',
-                border: 'none',
-                background: checkpointSortMode === 'cumulative' ? C.surface2 : 'transparent',
-                color: checkpointSortMode === 'cumulative' ? C.text : C.muted,
-                cursor: 'pointer',
-                fontFamily: fontHead,
-                fontSize: isMobile ? 9 : 10,
-                fontWeight: 700,
-                letterSpacing: 1,
-                textTransform: 'uppercase',
-              }}
-            >
-              CP Sort: Cumulative
-            </button>
-            <button
-              onClick={() => setCheckpointSortMode('split')}
-              style={{
-                padding: isMobile ? '6px 8px' : '6px 10px',
-                border: 'none',
-                background: checkpointSortMode === 'split' ? C.surface2 : 'transparent',
-                color: checkpointSortMode === 'split' ? C.text : C.muted,
-                cursor: 'pointer',
-                fontFamily: fontHead,
-                fontSize: isMobile ? 9 : 10,
-                fontWeight: 700,
-                letterSpacing: 1,
-                textTransform: 'uppercase',
-              }}
-            >
-              CP Sort: Split
-            </button>
-          </div>
-        </div>
-
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 20px' }}>
         <ResultsTable
           rows={filteredResultsRows}
           displayCheckpoints={displayCheckpoints}
           sortConfig={resultsSort}
           onSort={handleResultsSort}
           C={C}
-          isMobile={isMobile}
-          nameColWidth={nameColWidth}
         />
       </div>
 
@@ -1282,12 +955,6 @@ export default function LiveResults() {
         @keyframes livePulse {
           0%, 100% { opacity: 1 }
           50% { opacity: 0.3 }
-        }
-
-        @media (max-width: 900px) {
-          .hero-grid {
-            grid-template-columns: 1fr !important;
-          }
         }
       `}</style>
     </div>

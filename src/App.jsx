@@ -14,7 +14,27 @@ import CheckpointRedirect from './pages/CheckpointRedirect'
 import CheckpointQrSheet from './pages/CheckpointQrSheet'
 import RaceMonitor from './pages/RaceMonitor'
 import RaceCorrections from './pages/RaceCorrections'
+import RaceLiveBoard from './pages/RaceLiveBoard'
 //import { Analytics } from '@vercel/analytics/react'
+
+function PublicLiveBoardTest() {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#080b0f',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'sans-serif',
+        fontSize: 24,
+      }}
+    >
+      Public live board route works
+    </div>
+  )
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -58,6 +78,7 @@ function AppRoutes() {
       <Route path="/race/:id/monitor" element={<ProtectedRoute><RaceMonitor /></ProtectedRoute>} />
       <Route path="/race/:id/corrections" element={<RaceCorrections />} />
       <Route path="/race/:id/checkpoint/:checkpointId" element={<CheckpointTimer />} />
+      <Route path="/public/race/:id/live-board" element={<RaceLiveBoard />} />
     </Routes>
   )
 }

@@ -27,22 +27,16 @@ const THEMES = {
     buttonText: '#ffffff',
     success: '#10b981',
     successBright: '#34d399',
-    successBg: 'rgba(16,185,129,0.10)',
-    successBorder: 'rgba(16,185,129,0.28)',
     warning: '#f59e0b',
     warningBg: 'rgba(245,158,11,0.10)',
     warningBorder: 'rgba(245,158,11,0.25)',
     danger: '#ef4444',
-    dangerBg: 'rgba(239,68,68,0.08)',
     dangerBorder: 'rgba(239,68,68,0.3)',
     pendingBg: 'rgba(245,158,11,0.06)',
     pendingNext: 'rgba(245,158,11,0.10)',
     voidBg: 'rgba(239,68,68,0.08)',
     zebra: '#0b1118',
     flash: '#fb923c',
-    info: '#38bdf8',
-    infoBg: 'rgba(56,189,248,0.10)',
-    infoBorder: 'rgba(56,189,248,0.22)',
   },
   light: {
     bg: '#f8fafc',
@@ -64,22 +58,16 @@ const THEMES = {
     buttonText: '#ffffff',
     success: '#16a34a',
     successBright: '#16a34a',
-    successBg: 'rgba(22,163,74,0.08)',
-    successBorder: 'rgba(22,163,74,0.22)',
     warning: '#d97706',
     warningBg: 'rgba(217,119,6,0.08)',
     warningBorder: 'rgba(217,119,6,0.2)',
     danger: '#dc2626',
-    dangerBg: 'rgba(220,38,38,0.06)',
     dangerBorder: 'rgba(220,38,38,0.25)',
     pendingBg: 'rgba(217,119,6,0.05)',
     pendingNext: 'rgba(217,119,6,0.10)',
     voidBg: 'rgba(220,38,38,0.06)',
     zebra: '#f8fafc',
     flash: '#fb923c',
-    info: '#0284c7',
-    infoBg: 'rgba(2,132,199,0.08)',
-    infoBorder: 'rgba(2,132,199,0.20)',
   },
 }
 
@@ -171,8 +159,6 @@ export default function CheckpointTimer() {
   const [editingLapId, setEditingLapId] = useState(null)
   const [editingBib, setEditingBib] = useState('')
 
-  const [lastAction, setLastAction] = useState(null)
-
   const tickRef = useRef(null)
   const retryRef = useRef(null)
   const inputRef = useRef(null)
@@ -184,7 +170,7 @@ export default function CheckpointTimer() {
 
   const modeBtn = active => ({
     flex: 1,
-    height: 40,
+    height: 38,
     borderRadius: 10,
     border: `1px solid ${T.border2}`,
     background: active ? T.accent : T.panel2,
@@ -239,56 +225,6 @@ export default function CheckpointTimer() {
     textTransform: 'uppercase',
   })
 
-  const statusPill = (tone = 'default') => {
-    if (tone === 'success') {
-      return {
-        background: T.successBg,
-        border: `1px solid ${T.successBorder}`,
-        color: T.successBright,
-      }
-    }
-    if (tone === 'warning') {
-      return {
-        background: T.warningBg,
-        border: `1px solid ${T.warningBorder}`,
-        color: T.warning,
-      }
-    }
-    if (tone === 'danger') {
-      return {
-        background: T.dangerBg,
-        border: `1px solid ${T.dangerBorder}`,
-        color: T.danger,
-      }
-    }
-    if (tone === 'info') {
-      return {
-        background: T.infoBg,
-        border: `1px solid ${T.infoBorder}`,
-        color: T.info,
-      }
-    }
-    return {
-      background: T.panel2,
-      border: `1px solid ${T.border2}`,
-      color: T.muted,
-    }
-  }
-
-  const setTransientMessage = useCallback((text, ms = 1500) => {
-    setMessage(text)
-    if (ms) {
-      window.setTimeout(() => setMessage(''), ms)
-    }
-  }, [])
-
-  const pushLastAction = useCallback((payload) => {
-    setLastAction({
-      at: Date.now(),
-      ...payload,
-    })
-  }, [])
-
   const refocusBibInput = useCallback(() => {
     requestAnimationFrame(() => {
       if (inputRef.current) {
@@ -302,28 +238,6 @@ export default function CheckpointTimer() {
     lap => lap?.status !== 'void' && !lap?.bib_number,
     []
   )
-
-  const getEntryDisplayName = useCallback((bib) => {
-    const entry = bib ? entries[bib] : null
-    if (!entry) return bib ? `Bib ${bib}` : 'Pending tap'
-    return `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim() || entry.team || `Bib ${bib}`
-  }, [entries])
-
-  const getEntryTeam = useCallback((bib) => {
-    const entry = bib ? entries[bib] : null
-    return entry?.team || ''
-  }, [entries])
-
-  const getLastActionTone = useCallback(() => {
-    if (!lastAction) return null
-    if (lastAction.status === 'failed') return { tone: 'danger', icon: '⚠', title: 'Action Failed' }
-    if (lastAction.status === 'local') return { tone: 'warning', icon: '☁', title: 'Saved Locally' }
-    if (lastAction.status === 'syncing') return { tone: 'info', icon: '↻', title: 'Saving' }
-    if (lastAction.type === 'undo') return { tone: 'warning', icon: '↩', title: 'Last Undo' }
-    if (lastAction.type === 'void') return { tone: 'warning', icon: '⛔', title: 'Voided' }
-    if (lastAction.type === 'assign') return { tone: 'success', icon: '✓', title: 'Last Assignment' }
-    return { tone: 'success', icon: '✓', title: 'Last Capture' }
-  }, [lastAction])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -493,13 +407,13 @@ export default function CheckpointTimer() {
     if (entry) {
       setPreview({
         found: true,
-        name: getEntryDisplayName(bib),
+        name: `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim() || entry.team || `Bib ${bib}`,
         team: entry.team || '',
       })
     } else {
       setPreview({ found: false })
     }
-  }, [bibInput, entries, getEntryDisplayName])
+  }, [bibInput, entries])
 
   useEffect(() => {
     if (!eventId || !checkpointId) return
@@ -520,17 +434,6 @@ export default function CheckpointTimer() {
               const withoutLocal = prev.filter(x => x.id !== local_id)
               if (withoutLocal.find(x => x.id === data.id)) return withoutLocal
               return [...withoutLocal, data].sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
-            })
-
-            pushLastAction({
-              type: 'capture',
-              status: 'saved',
-              lapId: data.id,
-              bib_number: data.bib_number || null,
-              name: data.bib_number ? getEntryDisplayName(data.bib_number) : 'Pending tap',
-              team: data.bib_number ? getEntryTeam(data.bib_number) : '',
-              elapsed_ms: data.elapsed_ms,
-              detail: 'Local save synced successfully',
             })
           } else {
             remaining.push(row)
@@ -570,7 +473,7 @@ export default function CheckpointTimer() {
     retryRef.current = setInterval(retryUnsynced, 5000)
 
     return () => clearInterval(retryRef.current)
-  }, [eventId, checkpointId, getEntryDisplayName, getEntryTeam, pushLastAction])
+  }, [eventId, checkpointId])
 
   const canCapture = event?.status === 'active' && !!raceStart
 
@@ -617,9 +520,15 @@ export default function CheckpointTimer() {
   const filteredRecentLaps = useMemo(() => {
     const sorted = [...laps].sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))
 
-    if (recentFilter === 'pending') return sorted.filter(isPendingLap)
-    if (recentFilter === 'assigned') return sorted.filter(l => l.status !== 'void' && !!l.bib_number)
-    if (recentFilter === 'void') return sorted.filter(l => l.status === 'void')
+    if (recentFilter === 'pending') {
+      return sorted.filter(isPendingLap)
+    }
+    if (recentFilter === 'assigned') {
+      return sorted.filter(l => l.status !== 'void' && !!l.bib_number)
+    }
+    if (recentFilter === 'void') {
+      return sorted.filter(l => l.status === 'void')
+    }
     return sorted
   }, [laps, recentFilter, isPendingLap])
 
@@ -627,27 +536,8 @@ export default function CheckpointTimer() {
     return [...laps]
       .filter(l => l.status !== 'void')
       .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))
-      .slice(0, 5)
+      .slice(0, 3)
   }, [laps])
-
-  const checkpointCount = useMemo(() => {
-    return laps.filter(l => l.status !== 'void').length
-  }, [laps])
-
-  const lastActiveLap = useMemo(() => {
-    return [...laps]
-      .filter(l => l.status !== 'void')
-      .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))[0] || null
-  }, [laps])
-
-  const currentSaveState = useMemo(() => {
-    const pendingLocal = eventId && checkpointId ? loadPendingLocal(eventId, checkpointId) : []
-    if (syncing) return { label: 'Syncing…', tone: 'info' }
-    if (pendingLocal.length > 0) return { label: 'Saved locally', tone: 'warning' }
-    if (canCapture) return { label: 'Ready', tone: 'success' }
-    if (event?.status === 'finished') return { label: 'Race finished', tone: 'default' }
-    return { label: 'Waiting', tone: 'default' }
-  }, [eventId, checkpointId, syncing, canCapture, event?.status])
 
   const changeMode = useCallback((nextMode) => {
     if (nextMode === inputMode) return
@@ -663,7 +553,9 @@ export default function CheckpointTimer() {
     setBibEntryActive(false)
 
     setTimeout(() => {
-      if (nextMode === 'bib_first') inputRef.current?.focus()
+      if (nextMode === 'bib_first') {
+        inputRef.current?.focus()
+      }
     }, 0)
   }, [inputMode, bibInput])
 
@@ -672,7 +564,8 @@ export default function CheckpointTimer() {
 
     const nowTs = Date.now()
     if (repeatGuardMs > 0 && nowTs - lastCaptureAtRef.current < repeatGuardMs) {
-      setTransientMessage('Repeat tap blocked', 900)
+      setMessage('Repeat tap blocked')
+      setTimeout(() => setMessage(''), 900)
       return
     }
 
@@ -685,25 +578,8 @@ export default function CheckpointTimer() {
       return
     }
 
-    if (isBibFirst && activeBib) {
-      const duplicateExists = laps.some(
-        l => l.status !== 'void' && l.bib_number === activeBib
-      )
-
-      if (duplicateExists) {
-        const ok = window.confirm(
-          `Bib ${activeBib} is already recorded at this checkpoint. Capture again anyway?`
-        )
-        if (!ok) {
-          refocusBibInput()
-          return
-        }
-      }
-    }
-
     lastCaptureAtRef.current = nowTs
     setSavingLap(true)
-
     const now = new Date()
     const entry = activeBib ? entries[activeBib] : null
 
@@ -727,17 +603,6 @@ export default function CheckpointTimer() {
     setFlash(true)
     setTimeout(() => setFlash(false), 160)
 
-    pushLastAction({
-      type: 'capture',
-      status: 'syncing',
-      lapId: local_id,
-      bib_number: row.bib_number || null,
-      name: row.bib_number ? getEntryDisplayName(row.bib_number) : 'Pending tap',
-      team: row.bib_number ? getEntryTeam(row.bib_number) : '',
-      elapsed_ms: row.elapsed_ms,
-      detail: row.bib_number ? 'Recording checkpoint…' : 'Recording pending tap…',
-    })
-
     const { data, error } = await supabase.from('lap_events').insert(row).select().single()
 
     if (!error && data) {
@@ -747,88 +612,42 @@ export default function CheckpointTimer() {
           .concat(data)
           .sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
       )
-
-      pushLastAction({
-        type: 'capture',
-        status: 'saved',
-        lapId: data.id,
-        bib_number: data.bib_number || null,
-        name: data.bib_number ? getEntryDisplayName(data.bib_number) : 'Pending tap',
-        team: data.bib_number ? getEntryTeam(data.bib_number) : '',
-        elapsed_ms: data.elapsed_ms,
-        detail: data.bib_number ? 'Checkpoint saved' : 'Tap saved — assign bib next',
-      })
     } else {
       const pendingLocal = loadPendingLocal(eventId, checkpointId)
       pendingLocal.push({ type: 'insert', local_id, ...row })
       savePendingLocal(eventId, checkpointId, pendingLocal)
-
-      pushLastAction({
-        type: 'capture',
-        status: 'local',
-        lapId: local_id,
-        bib_number: row.bib_number || null,
-        name: row.bib_number ? getEntryDisplayName(row.bib_number) : 'Pending tap',
-        team: row.bib_number ? getEntryTeam(row.bib_number) : '',
-        elapsed_ms: row.elapsed_ms,
-        detail: 'Saved locally — waiting to sync',
-      })
-
-      setTransientMessage(isBibFirst ? 'Checkpoint saved locally, waiting to sync' : 'Tap saved locally, waiting to sync', 2200)
+      setMessage(isBibFirst ? 'Lap saved locally, waiting to sync' : 'Tap saved locally, waiting to sync')
+      setTimeout(() => setMessage(''), 2000)
     }
 
     if (isBibFirst) {
+      setMessage(`Recorded bib ${activeBib}`)
       setBibInput('')
       setPreview(null)
-      setTimeout(() => refocusBibInput(), 0)
+      setTimeout(() => {
+        refocusBibInput()
+        setMessage('')
+      }, 1200)
     }
 
     setSavingLap(false)
-  }, [
-    canCapture,
-    savingLap,
-    raceStart,
-    repeatGuardMs,
-    bibInput,
-    inputMode,
-    laps,
-    entries,
-    eventId,
-    checkpointId,
-    getEntryDisplayName,
-    getEntryTeam,
-    pushLastAction,
-    refocusBibInput,
-    setTransientMessage,
-  ])
+  }, [canCapture, savingLap, eventId, checkpointId, raceStart, inputMode, bibInput, entries, repeatGuardMs, refocusBibInput])
 
   const assignBib = useCallback(async () => {
     const bib = bibInput.trim()
     if (!bib || !nextPending || savingAssign) return
 
-    const entry = entries[bib]
     setSavingAssign(true)
+    const entry = entries[bib]
 
     const update = {
       bib_number: bib,
       entry_id: entry?.id ?? null,
       assigned_at: new Date().toISOString(),
       status: 'assigned',
-      is_corrected: true,
     }
 
     setLaps(prev => prev.map(l => (l.id === nextPending.id ? { ...l, ...update } : l)))
-
-    pushLastAction({
-      type: 'assign',
-      status: 'syncing',
-      lapId: nextPending.id,
-      bib_number: bib,
-      name: getEntryDisplayName(bib),
-      team: getEntryTeam(bib),
-      elapsed_ms: nextPending.elapsed_ms,
-      detail: 'Assigning bib to pending tap…',
-    })
 
     const { error } = await supabase.from('lap_events').update(update).eq('id', nextPending.id)
 
@@ -841,51 +660,17 @@ export default function CheckpointTimer() {
         entry_id: entry?.id ?? null,
       })
       savePendingLocal(eventId, checkpointId, pendingLocal)
-
-      pushLastAction({
-        type: 'assign',
-        status: 'local',
-        lapId: nextPending.id,
-        bib_number: bib,
-        name: getEntryDisplayName(bib),
-        team: getEntryTeam(bib),
-        elapsed_ms: nextPending.elapsed_ms,
-        detail: 'Assignment saved locally — waiting to sync',
-      })
-
-      setTransientMessage('Assignment saved locally, waiting to sync', 2000)
+      setMessage('Assignment saved locally, waiting to sync')
     } else {
-      pushLastAction({
-        type: 'assign',
-        status: 'saved',
-        lapId: nextPending.id,
-        bib_number: bib,
-        name: getEntryDisplayName(bib),
-        team: getEntryTeam(bib),
-        elapsed_ms: nextPending.elapsed_ms,
-        detail: 'Bib assigned',
-      })
-
-      setTransientMessage(`Assigned bib ${bib}`, 1500)
+      setMessage(`Assigned bib ${bib}`)
     }
 
     setBibInput('')
     setPreview(null)
     setSavingAssign(false)
     refocusBibInput()
-  }, [
-    bibInput,
-    nextPending,
-    savingAssign,
-    entries,
-    eventId,
-    checkpointId,
-    getEntryDisplayName,
-    getEntryTeam,
-    pushLastAction,
-    refocusBibInput,
-    setTransientMessage,
-  ])
+    setTimeout(() => setMessage(''), 1500)
+  }, [bibInput, nextPending, savingAssign, entries, eventId, checkpointId, refocusBibInput])
 
   const voidLastPending = useCallback(async () => {
     const target = [...pending].reverse()[0]
@@ -909,88 +694,10 @@ export default function CheckpointTimer() {
         payload: update,
       })
       savePendingLocal(eventId, checkpointId, pendingLocal)
-
-      pushLastAction({
-        type: 'void',
-        status: 'local',
-        lapId: target.id,
-        bib_number: null,
-        name: 'Pending tap',
-        team: '',
-        elapsed_ms: target.elapsed_ms,
-        detail: 'Void saved locally — waiting to sync',
-      })
-
-      setTransientMessage('Void saved locally, waiting to sync', 1600)
-    } else {
-      pushLastAction({
-        type: 'void',
-        status: 'saved',
-        lapId: target.id,
-        bib_number: null,
-        name: 'Pending tap',
-        team: '',
-        elapsed_ms: target.elapsed_ms,
-        detail: 'Most recent pending tap voided',
-      })
-
-      setTransientMessage('Last pending tap voided', 1500)
+      setMessage('Void saved locally, waiting to sync')
+      setTimeout(() => setMessage(''), 1500)
     }
-  }, [pending, eventId, checkpointId, isAdmin, pushLastAction, setTransientMessage])
-
-  const undoLastCheckpoint = useCallback(async () => {
-    const target = [...laps]
-      .filter(l => l.status !== 'void')
-      .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))[0]
-
-    if (!target) return
-
-    const update = {
-      status: 'void',
-      is_corrected: true,
-      correction_note: 'Undo last checkpoint from timer',
-    }
-
-    setLaps(prev => prev.map(l => (l.id === target.id ? { ...l, ...update } : l)))
-
-    const { error } = await supabase.from('lap_events').update(update).eq('id', target.id)
-
-    if (error) {
-      const pendingLocal = loadPendingLocal(eventId, checkpointId)
-      pendingLocal.push({
-        type: 'status_update',
-        target_id: target.id,
-        payload: update,
-      })
-      savePendingLocal(eventId, checkpointId, pendingLocal)
-
-      pushLastAction({
-        type: 'undo',
-        status: 'local',
-        lapId: target.id,
-        bib_number: target.bib_number || null,
-        name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
-        team: target.bib_number ? getEntryTeam(target.bib_number) : '',
-        elapsed_ms: target.elapsed_ms,
-        detail: 'Undo saved locally — waiting to sync',
-      })
-
-      setTransientMessage('Undo saved locally, waiting to sync', 1800)
-    } else {
-      pushLastAction({
-        type: 'undo',
-        status: 'saved',
-        lapId: target.id,
-        bib_number: target.bib_number || null,
-        name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
-        team: target.bib_number ? getEntryTeam(target.bib_number) : '',
-        elapsed_ms: target.elapsed_ms,
-        detail: 'Last checkpoint undone',
-      })
-
-      setTransientMessage('Last checkpoint undone', 1500)
-    }
-  }, [laps, eventId, checkpointId, getEntryDisplayName, getEntryTeam, pushLastAction, setTransientMessage])
+  }, [pending, eventId, checkpointId, isAdmin])
 
   const voidLap = useCallback(async (lap) => {
     if (!isAdmin) return
@@ -1013,34 +720,13 @@ export default function CheckpointTimer() {
         payload: update,
       })
       savePendingLocal(eventId, checkpointId, pendingLocal)
-
-      pushLastAction({
-        type: 'void',
-        status: 'local',
-        lapId: lap.id,
-        bib_number: lap.bib_number || null,
-        name: lap.bib_number ? getEntryDisplayName(lap.bib_number) : 'Pending tap',
-        team: lap.bib_number ? getEntryTeam(lap.bib_number) : '',
-        elapsed_ms: lap.elapsed_ms,
-        detail: 'Void saved locally — waiting to sync',
-      })
-
-      setTransientMessage('Void saved locally, waiting to sync', 1600)
+      setMessage('Void saved locally, waiting to sync')
     } else {
-      pushLastAction({
-        type: 'void',
-        status: 'saved',
-        lapId: lap.id,
-        bib_number: lap.bib_number || null,
-        name: lap.bib_number ? getEntryDisplayName(lap.bib_number) : 'Pending tap',
-        team: lap.bib_number ? getEntryTeam(lap.bib_number) : '',
-        elapsed_ms: lap.elapsed_ms,
-        detail: 'Lap voided',
-      })
-
-      setTransientMessage('Lap voided', 1400)
+      setMessage('Lap voided')
     }
-  }, [eventId, checkpointId, isAdmin, getEntryDisplayName, getEntryTeam, pushLastAction, setTransientMessage])
+
+    setTimeout(() => setMessage(''), 1500)
+  }, [eventId, checkpointId, isAdmin])
 
   const restoreLap = useCallback(async (lap) => {
     if (!isAdmin) return
@@ -1066,34 +752,13 @@ export default function CheckpointTimer() {
         payload: update,
       })
       savePendingLocal(eventId, checkpointId, pendingLocal)
-
-      pushLastAction({
-        type: 'undo',
-        status: 'local',
-        lapId: lap.id,
-        bib_number: null,
-        name: 'Pending tap',
-        team: '',
-        elapsed_ms: lap.elapsed_ms,
-        detail: 'Restore saved locally — waiting to sync',
-      })
-
-      setTransientMessage('Restore saved locally, waiting to sync', 1600)
+      setMessage('Restore saved locally, waiting to sync')
     } else {
-      pushLastAction({
-        type: 'undo',
-        status: 'saved',
-        lapId: lap.id,
-        bib_number: null,
-        name: 'Pending tap',
-        team: '',
-        elapsed_ms: lap.elapsed_ms,
-        detail: 'Lap restored to pending',
-      })
-
-      setTransientMessage('Lap restored to pending', 1500)
+      setMessage('Lap restored to pending')
     }
-  }, [eventId, checkpointId, isAdmin, pushLastAction, setTransientMessage])
+
+    setTimeout(() => setMessage(''), 1500)
+  }, [eventId, checkpointId, isAdmin])
 
   const saveEditedBib = useCallback(async (lap) => {
     if (!isAdmin) return
@@ -1121,24 +786,13 @@ export default function CheckpointTimer() {
     setLaps(prev => prev.map(l => (l.id === lap.id ? { ...l, ...update } : l)))
     await supabase.from('lap_events').update(update).eq('id', lap.id)
 
-    pushLastAction({
-      type: 'assign',
-      status: 'saved',
-      lapId: lap.id,
-      bib_number: bib || null,
-      name: bib ? getEntryDisplayName(bib) : 'Pending tap',
-      team: bib ? getEntryTeam(bib) : '',
-      elapsed_ms: lap.elapsed_ms,
-      detail: bib ? 'Bib updated' : 'Bib cleared — tap returned to pending',
-    })
-
     setEditingLapId(null)
     setEditingBib('')
-  }, [editingBib, entries, laps, isAdmin, getEntryDisplayName, getEntryTeam, pushLastAction])
+  }, [editingBib, entries, laps, isAdmin])
 
   useEffect(() => {
     const h = e => {
-      if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+      if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
         e.preventDefault()
         if (showAssignMainButton) {
           assignBib()
@@ -1150,8 +804,6 @@ export default function CheckpointTimer() {
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [captureLap, assignBib, canCapture, inputMode, showAssignMainButton])
-
-  const lastActionTone = getLastActionTone()
 
   return (
     <div style={{ minHeight: '100dvh', background: T.bg, color: T.text, fontFamily: FB, display: 'flex', flexDirection: 'column' }}>
@@ -1217,7 +869,7 @@ export default function CheckpointTimer() {
                     marginTop: 2,
                   }}
                 >
-                  {event?.status === 'finished' ? 'Race finished' : canCapture ? 'Race active' : 'Waiting'}
+                  {syncing ? 'Syncing…' : event?.status === 'finished' ? 'Race finished' : canCapture ? 'Race active' : 'Waiting'}
                 </div>
               </div>
 
@@ -1273,7 +925,7 @@ export default function CheckpointTimer() {
                     textTransform: 'uppercase',
                   }}
                 >
-                  Checkpoints · {checkpointCount}
+                  Checkpoints
                 </div>
                 <div
                   style={{
@@ -1291,21 +943,6 @@ export default function CheckpointTimer() {
               </div>
 
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <div
-                  style={{
-                    ...statusPill(currentSaveState.tone),
-                    padding: '6px 10px',
-                    borderRadius: 999,
-                    fontSize: 10,
-                    fontFamily: F,
-                    fontWeight: 800,
-                    letterSpacing: 1.1,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {currentSaveState.label}
-                </div>
-
                 <button style={themeBtn(theme === 'light')} onClick={() => setTheme('light')}>
                   ☀ Light
                 </button>
@@ -1383,21 +1020,16 @@ export default function CheckpointTimer() {
 
           <div
             style={{
-              marginTop: 8,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              ...statusPill(currentSaveState.tone),
-              borderRadius: 999,
-              padding: '6px 10px',
-              fontSize: 10,
-              fontFamily: F,
-              fontWeight: 800,
-              letterSpacing: 1.1,
+              marginTop: 6,
+              fontSize: 11,
+              color: syncing ? T.warning : T.muted,
+              letterSpacing: 1.2,
               textTransform: 'uppercase',
+              fontFamily: F,
+              fontWeight: 700,
             }}
           >
-            {currentSaveState.label}
+            {syncing ? 'Syncing…' : event?.status === 'finished' ? 'Race finished' : canCapture ? 'Race active' : 'Waiting for start'}
           </div>
         </div>
       )}
@@ -1406,14 +1038,14 @@ export default function CheckpointTimer() {
         <div
           className="timer-panel"
           style={{
-            width: isAdmin ? 440 : '100%',
+            width: isAdmin ? 420 : '100%',
             flex: 1,
             flexShrink: 0,
             borderRight: isAdmin ? `1px solid ${T.border}` : 'none',
             display: isAdmin ? (mobileTab === 'timer' ? 'flex' : 'none') : 'flex',
             flexDirection: 'column',
             background: T.bg,
-            maxWidth: isAdmin ? 440 : '100%',
+            maxWidth: isAdmin ? 420 : '100%',
             margin: isAdmin ? 0 : '0 auto',
           }}
         >
@@ -1612,167 +1244,64 @@ export default function CheckpointTimer() {
               </div>
             )}
 
-            <div
-              className="capture-row"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '92px minmax(0, 1fr) 0.95fr',
-                gap: 12,
-                alignItems: 'stretch',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  alignItems: 'stretch',
-                }}
-              >
-                <button
-                  onPointerDown={e => {
-                    e.preventDefault()
-                    if (showAssignMainButton) {
-                      assignBib()
-                    } else if (canCapture) {
-                      captureLap()
-                    }
-                  }}
-                  disabled={
-                    showAssignMainButton
-                      ? (!bibInput.trim() || !nextPending || savingAssign)
-                      : (!canCapture || (inputMode === 'bib_first' && !bibInput.trim()))
+            <div className="capture-row" style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 12, alignItems: 'stretch' }}>
+              <button
+                onPointerDown={e => {
+                  e.preventDefault()
+                  if (showAssignMainButton) {
+                    assignBib()
+                  } else if (canCapture) {
+                    captureLap()
                   }
-                  style={{
-                    width: '100%',
-                    minHeight: 112,
-                    borderRadius: 18,
-                    border: 'none',
-                    background: showAssignMainButton
-                      ? T.success
-                      : !canCapture
-                        ? T.dim
-                        : flash
-                          ? T.flash
-                          : inputMode === 'bib_first'
-                            ? T.accentAlt
-                            : T.accent,
-                    color: T.buttonText,
-                    fontSize: 22,
-                    fontWeight: 900,
-                    letterSpacing: 1.8,
-                    cursor:
-                      showAssignMainButton
-                        ? (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer')
-                        : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 'pointer' : 'not-allowed'),
-                    fontFamily: F,
-                    textTransform: 'uppercase',
-                    transform: flash ? 'scale(0.97)' : 'scale(1)',
-                    transition: 'background 0.08s, transform 0.08s',
-                    touchAction: 'manipulation',
-                    opacity:
-                      showAssignMainButton
-                        ? (!bibInput.trim() || !nextPending || savingAssign ? 0.6 : 1)
-                        : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 1 : 0.6),
-                  }}
-                >
-                  {showAssignMainButton
-                    ? (savingAssign ? 'Assign…' : 'Assign')
-                    : event?.status === 'finished'
-                      ? 'Ended'
-                      : !canCapture
-                        ? 'Waiting'
-                        : inputMode === 'bib_first'
-                          ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : 'Tap')
-                          : 'Lap'}
-                </button>
-
-                <button
-                  onClick={undoLastCheckpoint}
-                  disabled={checkpointCount === 0}
-                  style={{
-                    width: '100%',
-                    minHeight: 44,
-                    borderRadius: 12,
-                    border: `1px solid ${T.dangerBorder}`,
-                    background: 'transparent',
-                    color: checkpointCount === 0 ? T.dim : T.danger,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    letterSpacing: 1.1,
-                    cursor: checkpointCount === 0 ? 'not-allowed' : 'pointer',
-                    fontFamily: F,
-                    textTransform: 'uppercase',
-                    opacity: checkpointCount === 0 ? 0.5 : 1,
-                  }}
-                  title="Undo the most recent checkpoint"
-                >
-                  Undo
-                </button>
-              </div>
-
-              <div
+                }}
+                disabled={
+                  showAssignMainButton
+                    ? (!bibInput.trim() || !nextPending || savingAssign)
+                    : (!canCapture || (inputMode === 'bib_first' && !bibInput.trim()))
+                }
                 style={{
-                  borderRadius: 16,
-                  border: `1px solid ${T.border2}`,
-                  background: T.panel,
-                  padding: '12px 14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  minHeight: 164,
+                  width: '100%',
+                  minHeight: 180,
+                  borderRadius: 20,
+                  border: 'none',
+                  background: showAssignMainButton
+                    ? T.success
+                    : !canCapture
+                      ? T.dim
+                      : flash
+                        ? T.flash
+                        : inputMode === 'bib_first'
+                          ? T.accentAlt
+                          : T.accent,
+                  color: T.buttonText,
+                  fontSize: 34,
+                  fontWeight: 900,
+                  letterSpacing: 3,
+                  cursor:
+                    showAssignMainButton
+                      ? (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer')
+                      : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 'pointer' : 'not-allowed'),
+                  fontFamily: F,
+                  textTransform: 'uppercase',
+                  transform: flash ? 'scale(0.97)' : 'scale(1)',
+                  transition: 'background 0.08s, transform 0.08s',
+                  touchAction: 'manipulation',
+                  opacity:
+                    showAssignMainButton
+                      ? (!bibInput.trim() || !nextPending || savingAssign ? 0.6 : 1)
+                      : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 1 : 0.6),
                 }}
               >
-                <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
-                  Checkpoint Summary
-                </div>
-
-                <div style={{ marginTop: 10 }}>
-                  <div
-                    style={{
-                      fontSize: 40,
-                      lineHeight: 1,
-                      fontWeight: 900,
-                      color: T.textStrong,
-                      fontFamily: F,
-                    }}
-                  >
-                    {checkpointCount}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: T.muted,
-                      textTransform: 'uppercase',
-                      letterSpacing: 1.4,
-                      fontFamily: F,
-                      fontWeight: 700,
-                    }}
-                  >
-                    Recorded Checkpoints
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 1.4, fontFamily: F, fontWeight: 700 }}>
-                    Last Time
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 24,
-                      lineHeight: 1,
-                      fontWeight: 900,
-                      color: T.textStrong,
-                      fontFamily: F,
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    {lastActiveLap ? fmt(lastActiveLap.elapsed_ms, true) : '—'}
-                  </div>
-                </div>
-              </div>
+                {showAssignMainButton
+                  ? (savingAssign ? 'Assigning…' : 'Assign')
+                  : event?.status === 'finished'
+                    ? 'Race Ended'
+                    : !canCapture
+                      ? 'Waiting'
+                      : inputMode === 'bib_first'
+                        ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : 'Enter Bib')
+                        : 'Lap'}
+              </button>
 
               <div
                 style={{
@@ -1783,7 +1312,7 @@ export default function CheckpointTimer() {
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
-                  minHeight: 164,
+                  minHeight: 180,
                 }}
               >
                 <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
@@ -1796,37 +1325,25 @@ export default function CheckpointTimer() {
                       No taps yet
                     </div>
                   ) : (
-                    recentCaptured.slice(0, 3).map((l, idx) => {
-                      const label = idx === 0 ? 'Last' : idx === 1 ? 'Prev' : 'Earlier'
-                      const bib = l.bib_number || '—'
-                      const name = l.bib_number ? getEntryDisplayName(l.bib_number) : 'Pending tap'
-
-                      return (
-                        <div key={l.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                            <span style={{ fontSize: 10, color: idx === 0 ? T.successBright : T.muted2, textTransform: 'uppercase', letterSpacing: 1.2, fontFamily: F, fontWeight: 800 }}>
-                              {label}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: idx === 0 ? 24 : 18,
-                                color: T.textStrong,
-                                fontWeight: 900,
-                                fontFamily: F,
-                                lineHeight: 1,
-                                fontVariantNumeric: 'tabular-nums',
-                              }}
-                            >
-                              {fmt(l.elapsed_ms, true)}
-                            </span>
-                          </div>
-
-                          <div style={{ fontSize: 12, color: T.textStrong, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            Bib {bib} · {name}
-                          </div>
-                        </div>
-                      )
-                    })
+                    recentCaptured.map((l, idx) => (
+                      <div key={l.id} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 10, color: idx === 0 ? T.successBright : T.muted2, textTransform: 'uppercase', letterSpacing: 1.2, fontFamily: F, fontWeight: 800 }}>
+                          {idx === 0 ? 'Last' : idx === 1 ? 'Prev' : 'Earlier'}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: idx === 0 ? 28 : 22,
+                            color: T.textStrong,
+                            fontWeight: 900,
+                            fontFamily: F,
+                            lineHeight: 1,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {fmt(l.elapsed_ms, true)}
+                        </span>
+                      </div>
+                    ))
                   )}
                 </div>
 
@@ -1844,87 +1361,8 @@ export default function CheckpointTimer() {
               </div>
             </div>
 
-            {lastAction && lastActionTone && (
-              <div
-                style={{
-                  marginTop: 12,
-                  marginBottom: 8,
-                  borderRadius: 14,
-                  border: statusPill(lastActionTone.tone).border,
-                  background: statusPill(lastActionTone.tone).background,
-                  padding: '12px 14px',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: statusPill(lastActionTone.tone).color,
-                    fontFamily: F,
-                    fontWeight: 900,
-                    letterSpacing: 1.5,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {lastActionTone.icon} {lastActionTone.title}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 6,
-                    fontSize: 24,
-                    color: T.textStrong,
-                    fontFamily: F,
-                    fontWeight: 900,
-                    lineHeight: 1,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {fmt(lastAction.elapsed_ms, true)}
-                </div>
-
-                <div style={{ marginTop: 4, fontSize: 14, color: T.textStrong, fontWeight: 700 }}>
-                  {lastAction.name}
-                  {lastAction.bib_number ? ` · Bib ${lastAction.bib_number}` : ''}
-                </div>
-
-                {!!lastAction.team && (
-                  <div style={{ marginTop: 2, fontSize: 12, color: T.muted }}>
-                    {lastAction.team}
-                  </div>
-                )}
-
-                <div style={{ marginTop: 5, fontSize: 12, color: T.muted }}>
-                  {lastAction.detail}
-                </div>
-
-                {(lastAction.type === 'capture' || lastAction.type === 'assign') && (
-                  <div style={{ marginTop: 10 }}>
-                    <button
-                      onClick={undoLastCheckpoint}
-                      style={{
-                        height: 34,
-                        padding: '0 12px',
-                        borderRadius: 999,
-                        border: `1px solid ${T.dangerBorder}`,
-                        background: 'transparent',
-                        color: T.danger,
-                        fontFamily: F,
-                        fontWeight: 800,
-                        fontSize: 11,
-                        letterSpacing: 1.1,
-                        textTransform: 'uppercase',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Undo Last
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
             {message && (
-              <div style={{ marginTop: 6, textAlign: 'center', fontSize: 11, color: T.warning }}>
+              <div style={{ marginTop: 10, textAlign: 'center', fontSize: 11, color: T.warning }}>
                 {message}
               </div>
             )}
@@ -2094,7 +1532,7 @@ export default function CheckpointTimer() {
                         padding: '8px 14px',
                         borderBottom: `1px solid ${T.faint}`,
                         background: l.status === 'void' ? T.voidBg : isPending ? T.pendingBg : i % 2 === 0 ? 'transparent' : T.zebra,
-                        opacity: l.status === 'void' ? 0.7 : isPending ? 0.95 : 1,
+                        opacity: l.status === 'void' ? 0.7 : isPending ? 0.9 : 1,
                         alignItems: 'center',
                         gap: 8,
                       }}
@@ -2214,21 +1652,13 @@ export default function CheckpointTimer() {
       <style>{`
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
-
         @media (min-width: 768px) {
           .timer-panel { display: flex !important; }
           .recent-panel { display: flex !important; }
         }
-
         @media (max-width: 900px) {
           .capture-row {
-            grid-template-columns: 92px 1fr !important;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .capture-row {
-            grid-template-columns: 84px 1fr !important;
+            grid-template-columns: 1fr !important;
           }
         }
       `}</style>

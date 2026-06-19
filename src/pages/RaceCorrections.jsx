@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useState, useMemo } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import RaceAdjustmentForm from '../components/RaceAdjustmentForm'
+import RaceAdjustmentList from '../components/RaceAdjustmentList'
 
 const F = "'Barlow Condensed', sans-serif"
 const FB = "'Barlow', sans-serif"
@@ -95,6 +97,8 @@ export default function RaceCorrections() {
     correction_note: '',
   })
 
+  const [adjustments, setAdjustments] = useState([])
+
   useEffect(() => {
     if (!eventId) return
 
@@ -104,28 +108,25 @@ export default function RaceCorrections() {
         { data: cps },
         { data: ents },
         { data: lapRows },
+        { data: adjustmentRows },
       ] = await Promise.all([
         supabase.from('race_events').select('*').eq('id', eventId).single(),
         supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
         supabase.from('event_entries').select('*').eq('event_id', eventId),
         supabase.from('lap_events').select('*').eq('event_id', eventId),
+        supabase.from('race_result_adjustments').select('*').eq('event_id', eventId).order('created_at', { ascending: false }),
       ])
 
       setEvent(ev || null)
       setCheckpoints(cps || [])
       setEntries(ents || [])
+      setAdjustments(adjustmentRows || [])
       setLaps(lapRows || [])
       setLoading(false)
     }
 
     load()
   }, [eventId])
-
-  const checkpointMap = useMemo(() => {
-    const map = {}
-    checkpoints.forEach(cp => { map[cp.id] = cp })
-    return map
-  }, [checkpoints])
 
   const entryMap = useMemo(() => {
     const map = {}
@@ -159,13 +160,6 @@ export default function RaceCorrections() {
       }
     })
   }, [checkpoints, splitMap, selectedBibValue])
-
-  const historyRows = useMemo(() => {
-    if (!selectedBibValue) return []
-    return laps
-      .filter(l => l.bib_number === selectedBibValue)
-      .sort((a, b) => splitSortStamp(b) - splitSortStamp(a))
-  }, [laps, selectedBibValue])
 
   const filteredBibOptions = useMemo(() => {
     const q = bibSearch.trim().toLowerCase()
@@ -241,6 +235,7 @@ export default function RaceCorrections() {
         .single()
 
       setSaving(false)
+
       if (error || !data) return setMessage(error?.message || 'Could not update split.')
 
       setLaps(prev => prev.map(l => (l.id === data.id ? data : l)))
@@ -259,6 +254,7 @@ export default function RaceCorrections() {
       .single()
 
     setSaving(false)
+
     if (error || !data) return setMessage(error?.message || 'Could not add split.')
 
     setLaps(prev => [...prev, data])
@@ -282,6 +278,37 @@ export default function RaceCorrections() {
     setLaps(prev => prev.map(l => (l.id === data.id ? data : l)))
     setMessage('Split voided.')
   }
+async function loadAdjustmentAdminData() {
+  const [
+    { data: entryRows, error: entriesError },
+    { data: adjustmentRows, error: adjustmentsError },
+  ] = await Promise.all([
+    supabase
+      .from('event_entries')
+      .select('id, bib_number, first_name, last_name, team')
+      .eq('event_id', eventId)
+      .order('bib_number', { ascending: true }),
+    supabase
+      .from('race_result_adjustments')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: false }),
+  ])
+
+  if (!entriesError) {
+    setEntries(
+      (entryRows || []).map((e) => ({
+        ...e,
+        display_name:
+          `${e.first_name || ''} ${e.last_name || ''}`.trim() || e.team || `Bib ${e.bib_number || ''}`,
+      }))
+    )
+  }
+
+  if (!adjustmentsError) {
+    setAdjustments(adjustmentRows || [])
+  }
+}
 
   const restoreSplit = async row => {
     const { data, error } = await supabase
@@ -313,7 +340,22 @@ export default function RaceCorrections() {
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderBottom: '1px solid #1a2030', background: '#0c1018', flexWrap: 'wrap' }}>
-        <button onClick={() => navigate(`/race/${eventId}/setup`)} style={backBtn()}>
+        <button
+          onClick={() => navigate(`/race/${eventId}/setup`)}
+          style={{
+            background: 'none',
+            border: '1px solid #1e2730',
+            color: '#4a5568',
+            borderRadius: 6,
+            padding: '6px 12px',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontFamily: F,
+            fontWeight: 700,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+          }}
+        >
           ← Back
         </button>
 
@@ -329,8 +371,10 @@ export default function RaceCorrections() {
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: 20 }}>
         <div className="rc-grid" style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20 }}>
-          <div style={card()}>
-            <div style={sectionLabel()}>Select Bib</div>
+          <div style={{ background: '#0e1318', border: '1px solid #1a2030', borderRadius: 12, padding: 16 }}>
+            <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700, marginBottom: 10 }}>
+              Select Bib
+            </div>
 
             <input
               value={bibSearch}
@@ -340,10 +384,21 @@ export default function RaceCorrections() {
                 setForm(f => ({ ...f, bib_number: e.target.value }))
               }}
               placeholder="Search bib"
-              style={inputStyle()}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                background: '#080b0f',
+                border: '1px solid #1e2730',
+                borderRadius: 8,
+                color: '#fff',
+                fontFamily: FB,
+                outline: 'none',
+                marginBottom: 10,
+                boxSizing: 'border-box',
+              }}
             />
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto', marginTop: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
               {filteredBibOptions.map(bib => (
                 <button
                   key={bib}
@@ -371,18 +426,22 @@ export default function RaceCorrections() {
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <div style={sectionLabel()}>Roster Match</div>
+              <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700, marginBottom: 8 }}>
+                Roster Match
+              </div>
 
-              {selectedEntries.length ? selectedEntries.map(entry => (
-                <div key={entry.id} style={rosterCard()}>
-                  <div style={{ color: '#e2e8f0', fontSize: 13 }}>
-                    {entry.first_name} {entry.last_name}
+              {selectedEntries.length ? (
+                selectedEntries.map(entry => (
+                  <div key={entry.id} style={{ padding: '8px 10px', background: '#080b0f', border: '1px solid #1e2730', borderRadius: 8, marginBottom: 6 }}>
+                    <div style={{ color: '#e2e8f0', fontSize: 13 }}>
+                      {entry.first_name} {entry.last_name}
+                    </div>
+                    <div style={{ color: '#4a5568', fontSize: 12 }}>
+                      {entry.team || '—'} {entry.division ? `· ${entry.division}` : ''}
+                    </div>
                   </div>
-                  <div style={{ color: '#4a5568', fontSize: 12 }}>
-                    {entry.team || '—'} {entry.division ? `· ${entry.division}` : ''}
-                  </div>
-                </div>
-              )) : (
+                ))
+              ) : (
                 <div style={{ color: '#4a5568', fontSize: 12 }}>
                   No roster match for this bib.
                 </div>
@@ -391,11 +450,22 @@ export default function RaceCorrections() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateRows: 'auto auto auto', gap: 20 }}>
-            <div style={{ ...card(), overflow: 'hidden', padding: 0 }}>
-              <div style={cardHeader()}>
+            <div style={{ background: '#0e1318', border: '1px solid #1a2030', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 14px', borderBottom: '1px solid #1a2030', fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
                 Split Timeline {selectedBibValue ? `· Bib ${selectedBibValue}` : ''}
               </div>
+              <div style={{ display: 'grid', gap: 16 }}>
+                <RaceAdjustmentForm
+                  eventId={eventId}
+                  entries={entries}
+                  onSaved={loadAdjustmentAdminData}
+                />
 
+                <RaceAdjustmentList
+                  adjustments={adjustments}
+                  onChanged={loadAdjustmentAdminData}
+                />
+              </div>
               {!selectedBibValue ? (
                 <div style={{ padding: 20, color: '#4a5568', fontSize: 13 }}>
                   Select a bib to view or correct splits.
@@ -403,7 +473,19 @@ export default function RaceCorrections() {
               ) : (
                 <div>
                   {timelineRows.map(({ checkpoint, split }, i) => (
-                    <div key={checkpoint.id} className="rc-row" style={timelineRow(i)}>
+                    <div
+                      key={checkpoint.id}
+                      className="rc-row"
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '90px 100px 110px 1fr 160px',
+                        gap: 10,
+                        alignItems: 'center',
+                        padding: '10px 14px',
+                        borderBottom: '1px solid #0d1117',
+                        background: i % 2 === 0 ? 'transparent' : '#0a0c10',
+                      }}
+                    >
                       <span style={{ fontFamily: F, color: '#f97316', fontWeight: 700 }}>
                         CP {checkpoint.checkpoint_order}
                       </span>
@@ -440,8 +522,8 @@ export default function RaceCorrections() {
               )}
             </div>
 
-            <div style={card()}>
-              <div style={sectionLabel()}>
+            <div style={{ background: '#0e1318', border: '1px solid #1a2030', borderRadius: 12, padding: 16 }}>
+              <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700, marginBottom: 12 }}>
                 {editingRowId ? 'Edit Split' : 'Add / Correct Split'}
               </div>
 
@@ -475,56 +557,6 @@ export default function RaceCorrections() {
                 <button onClick={resetForm} style={miniBtn('#94a3b8', '#1e2730')}>Clear</button>
               </div>
             </div>
-
-            <div style={{ ...card(), overflow: 'hidden', padding: 0 }}>
-              <div style={cardHeader()}>
-                Split History {selectedBibValue ? `· Bib ${selectedBibValue}` : ''}
-              </div>
-
-              {!selectedBibValue ? (
-                <div style={{ padding: 20, color: '#4a5568', fontSize: 13 }}>
-                  Select a bib to inspect split history.
-                </div>
-              ) : historyRows.length === 0 ? (
-                <div style={{ padding: 20, color: '#4a5568', fontSize: 13 }}>
-                  No split history for this bib yet.
-                </div>
-              ) : (
-                <div>
-                  {historyRows.map((row, i) => {
-                    const cp = checkpointMap[row.checkpoint_id]
-                    const stamp = row.updated_at || row.created_at || row.captured_at
-                    return (
-                      <div key={row.id} className="rc-history-row" style={historyRow(i, row.status)}>
-                        <div style={{ fontFamily: F, color: '#f97316', fontWeight: 700 }}>
-                          {cp ? `CP ${cp.checkpoint_order}` : 'Unknown CP'}
-                        </div>
-
-                        <div style={{ color: '#e2e8f0', fontFamily: F }}>
-                          {fmt(row.elapsed_ms)}
-                        </div>
-
-                        <div style={{ color: row.status === 'void' ? '#f87171' : '#22c55e', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>
-                          {row.status}
-                        </div>
-
-                        <div style={{ color: '#4a5568', fontSize: 12 }}>
-                          {row.source || 'manual'}
-                        </div>
-
-                        <div style={{ color: '#4a5568', fontSize: 12 }}>
-                          {stamp ? new Date(stamp).toLocaleString() : '—'}
-                        </div>
-
-                        <div style={{ color: '#94a3b8', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {row.correction_note || '—'}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -544,7 +576,7 @@ export default function RaceCorrections() {
             grid-template-columns: 1fr !important;
           }
 
-          .rc-row, .rc-history-row {
+          .rc-row {
             grid-template-columns: 1fr !important;
             gap: 6px !important;
           }
@@ -552,66 +584,6 @@ export default function RaceCorrections() {
       `}</style>
     </div>
   )
-}
-
-function backBtn() {
-  return {
-    background: 'none',
-    border: '1px solid #1e2730',
-    color: '#4a5568',
-    borderRadius: 6,
-    padding: '6px 12px',
-    cursor: 'pointer',
-    fontSize: 11,
-    fontFamily: F,
-    fontWeight: 700,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  }
-}
-
-function card() {
-  return {
-    background: '#0e1318',
-    border: '1px solid #1a2030',
-    borderRadius: 12,
-    padding: 16,
-  }
-}
-
-function cardHeader() {
-  return {
-    padding: '12px 14px',
-    borderBottom: '1px solid #1a2030',
-    fontSize: 10,
-    color: '#4a5568',
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    fontFamily: F,
-    fontWeight: 700,
-  }
-}
-
-function sectionLabel() {
-  return {
-    fontSize: 10,
-    color: '#4a5568',
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    fontFamily: F,
-    fontWeight: 700,
-    marginBottom: 10,
-  }
-}
-
-function rosterCard() {
-  return {
-    padding: '8px 10px',
-    background: '#080b0f',
-    border: '1px solid #1e2730',
-    borderRadius: 8,
-    marginBottom: 6,
-  }
 }
 
 function inputStyle() {
@@ -657,30 +629,5 @@ function miniBtn(color, border) {
     fontWeight: 700,
     letterSpacing: 1,
     textTransform: 'uppercase',
-  }
-}
-
-function timelineRow(i) {
-  return {
-    display: 'grid',
-    gridTemplateColumns: '90px 100px 110px 1fr 160px',
-    gap: 10,
-    alignItems: 'center',
-    padding: '10px 14px',
-    borderBottom: '1px solid #0d1117',
-    background: i % 2 === 0 ? 'transparent' : '#0a0c10',
-  }
-}
-
-function historyRow(i, status) {
-  return {
-    display: 'grid',
-    gridTemplateColumns: '90px 110px 90px 90px 160px 1fr',
-    gap: 10,
-    alignItems: 'center',
-    padding: '10px 14px',
-    borderBottom: '1px solid #0d1117',
-    background: status === 'void' ? '#1a0f0f' : i % 2 === 0 ? 'transparent' : '#0a0c10',
-    opacity: status === 'void' ? 0.75 : 1,
   }
 }
