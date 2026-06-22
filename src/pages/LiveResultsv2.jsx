@@ -112,6 +112,28 @@ function normalizeGender(value) {
   return 'Other'
 }
 
+function splitSortStamp(row) {
+  return new Date(
+    row?.updated_at ||
+    row?.created_at ||
+    row?.captured_at ||
+    0
+  ).getTime()
+}
+
+function choosePreferredSplit(existing, candidate) {
+  if (!existing) return candidate
+  if (!candidate) return existing
+
+  const existingVoid = existing.status === 'void'
+  const candidateVoid = candidate.status === 'void'
+
+  if (existingVoid && !candidateVoid) return candidate
+  if (!existingVoid && candidateVoid) return existing
+
+  return splitSortStamp(candidate) >= splitSortStamp(existing) ? candidate : existing
+}
+
 function emptyStateStyle(C) {
   return {
     background: C.surface,
@@ -329,13 +351,11 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
                 <td style={{ ...tdBase(C, true), fontWeight: 700, color: r.is_finished ? C.green : C.muted }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span>{fmtTime(r.adjusted_time_ms ?? r.time_ms)}</span>
-                    {(r.has_adjustment || r.has_checkpoint_adjustment) &&
-                      r.raw_time_ms != null &&
-                      r.raw_time_ms !== (r.adjusted_time_ms ?? r.time_ms) && (
-                        <span style={{ color: C.orange, fontSize: 10 }}>
-                          raw {fmtTime(r.raw_time_ms)}
-                        </span>
-                      )}
+                   {r.has_adjustment && r.time_ms != null && (
+                    <span style={{ color: C.orange, fontSize: 10 }}>
+                      raw {fmtTime(r.time_ms)}
+                    </span>
+                  )}
                   </div>
                 </td>
 
@@ -385,7 +405,6 @@ export default function LiveResults() {
   const [laps, setLaps] = useState([])
   const [finishes, setFinishes] = useState([])
   const [adjustments, setAdjustments] = useState([])
-  const [effectiveCheckpointRows, setEffectiveCheckpointRows] = useState([])
   const [resultsGenderFilter, setResultsGenderFilter] = useState('Overall')
   const [resultsDivisionFilter, setResultsDivisionFilter] = useState('all')
   const [checkpointSortMode, setCheckpointSortMode] = useState('cumulative')
@@ -435,7 +454,6 @@ export default function LiveResults() {
         { data: lapData },
         { data: finishData },
         { data: adjustmentData },
-        { data: effectiveRowsData, error: effectiveRowsError },
       ] = await Promise.all([
         supabase.from('race_events').select('*').eq('id', eventId).single(),
         supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
@@ -444,7 +462,6 @@ export default function LiveResults() {
         supabase.from('lap_events').select('*').eq('event_id', eventId),
         supabase.from('race_finishes').select('*').eq('event_id', eventId).order('place', { ascending: true }),
         supabase.from('race_result_adjustments').select('*').eq('event_id', eventId).order('created_at', { ascending: true }),
-        supabase.rpc('get_event_effective_checkpoint_results', { p_event_id: eventId }),
       ])
 
       setEvent(eventData || null)
@@ -454,12 +471,6 @@ export default function LiveResults() {
       setLaps(lapData || [])
       setFinishes(finishData || [])
       setAdjustments(adjustmentData || [])
-
-      if (effectiveRowsError) {
-        console.error('Failed to load effective checkpoint results', effectiveRowsError)
-      }
-
-      setEffectiveCheckpointRows(effectiveRowsData || [])
       setLastUpdate(new Date())
     }
 
@@ -495,11 +506,6 @@ export default function LiveResults() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'race_result_adjustments', filter: `event_id=eq.${eventId}` },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'checkpoint_time_adjustments', filter: `event_id=eq.${eventId}` },
         () => loadAll()
       )
       .subscribe((status) => {
@@ -565,8 +571,11 @@ export default function LiveResults() {
       if (e.division) vals.add(e.division)
     })
 
-    effectiveCheckpointRows.forEach(r => {
-      if (r.division) vals.add(r.division)
+    laps.forEach(l => {
+      if (l.bib_number) {
+        const entry = getPrimaryEntry(entriesByBib[l.bib_number])
+        if (entry?.division) vals.add(entry.division)
+      }
     })
 
     finishes.forEach(f => {
@@ -577,7 +586,35 @@ export default function LiveResults() {
     })
 
     return Array.from(vals).sort((a, b) => a.localeCompare(b))
-  }, [entries, effectiveCheckpointRows, finishes, entriesByBib])
+  }, [entries, laps, finishes, entriesByBib])
+
+  const splitMap = useMemo(() => {
+    const map = {}
+
+    laps.forEach(l => {
+      if (!l.bib_number || l.status === 'void') return
+      const key = `${l.bib_number}:${l.checkpoint_id}`
+      map[key] = choosePreferredSplit(map[key], l)
+    })
+
+    return map
+  }, [laps])
+
+  const getEffectiveStartMsForBib = (bib) => {
+    const entriesForBib = entriesByBib[bib] || []
+    const primaryEntry = getPrimaryEntry(entriesForBib)
+    const wave = primaryEntry?.wave_id ? wavesById[primaryEntry.wave_id] : null
+
+    const effectiveStart =
+      wave?.actual_start_time ||
+      wave?.planned_start_time ||
+      event?.race_started_at ||
+      null
+
+    if (!effectiveStart) return null
+    const ms = new Date(effectiveStart).getTime()
+    return Number.isNaN(ms) ? null : ms
+  }
 
   const countdownTargetMs = useMemo(() => {
     const target = new Date('2026-06-18T09:30:00')
@@ -588,22 +625,6 @@ export default function LiveResults() {
     return countdownTargetMs ? Math.max(0, countdownTargetMs - now) : null
   }, [countdownTargetMs, now])
 
-  const effectiveRowsByBib = useMemo(() => {
-    const map = {}
-
-    effectiveCheckpointRows.forEach(row => {
-      if (!row.bib_number) return
-      if (!map[row.bib_number]) map[row.bib_number] = []
-      map[row.bib_number].push(row)
-    })
-
-    Object.values(map).forEach(rows => {
-      rows.sort((a, b) => a.checkpoint_order - b.checkpoint_order)
-    })
-
-    return map
-  }, [effectiveCheckpointRows])
-
   const baseResultsRows = useMemo(() => {
     const allBibs = new Set()
 
@@ -611,8 +632,8 @@ export default function LiveResults() {
       if (entry.bib_number) allBibs.add(entry.bib_number)
     })
 
-    effectiveCheckpointRows.forEach(row => {
-      if (row.bib_number) allBibs.add(row.bib_number)
+    laps.forEach(l => {
+      if (l.bib_number) allBibs.add(l.bib_number)
     })
 
     finishes.forEach(f => {
@@ -623,65 +644,68 @@ export default function LiveResults() {
       const entriesForBib = entriesByBib[bib] || []
       const primaryEntry = getPrimaryEntry(entriesForBib)
       const finishFromTable = finishMapFromTable[bib] || null
-      const cpRows = effectiveRowsByBib[bib] || []
-      const finishRow = cpRows.find(r => r.is_finish)
+      const finishSplit = finishCheckpoint ? splitMap[`${bib}:${finishCheckpoint.id}`] : null
+
+      const startMs = getEffectiveStartMsForBib(bib)
+      const finishCapturedMs =
+        finishSplit?.captured_at ? new Date(finishSplit.captured_at).getTime() : null
+
+      const derivedFinishMs =
+        finishCapturedMs != null && startMs != null
+          ? Math.max(0, finishCapturedMs - startMs)
+          : finishSplit?.elapsed_ms ?? null
+
+      const time_ms = finishFromTable?.time_ms ?? derivedFinishMs ?? null
 
       const checkpoint_times = {}
       const checkpoint_split_times = {}
       let latestCheckpointOrder = 0
       let latestCheckpointElapsedMs = null
+      let previousCumulative = null
 
-      cpRows.forEach(cpRow => {
-        if (cpRow.effective_elapsed_ms == null) return
+      displayCheckpoints.forEach(cp => {
+        const split = splitMap[`${bib}:${cp.id}`]
+        if (!split) return
 
-        checkpoint_times[cpRow.checkpoint_id] = cpRow.effective_elapsed_ms
-        checkpoint_split_times[cpRow.checkpoint_id] = cpRow.effective_split_ms
+        const capturedMs = split.captured_at ? new Date(split.captured_at).getTime() : null
+        const effectiveElapsed =
+          capturedMs != null && startMs != null
+            ? Math.max(0, capturedMs - startMs)
+            : split.elapsed_ms
+
+        checkpoint_times[cp.id] = effectiveElapsed
+        checkpoint_split_times[cp.id] =
+          previousCumulative == null ? effectiveElapsed : effectiveElapsed - previousCumulative
+
+        previousCumulative = effectiveElapsed
 
         if (
-          cpRow.checkpoint_order > latestCheckpointOrder ||
+          cp.checkpoint_order > latestCheckpointOrder ||
           (
-            cpRow.checkpoint_order === latestCheckpointOrder &&
-            (
-              latestCheckpointElapsedMs == null ||
-              cpRow.effective_elapsed_ms < latestCheckpointElapsedMs
-            )
+            cp.checkpoint_order === latestCheckpointOrder &&
+            (latestCheckpointElapsedMs == null || effectiveElapsed < latestCheckpointElapsedMs)
           )
         ) {
-          latestCheckpointOrder = cpRow.checkpoint_order
-          latestCheckpointElapsedMs = cpRow.effective_elapsed_ms
+          latestCheckpointOrder = cp.checkpoint_order
+          latestCheckpointElapsedMs = effectiveElapsed
         }
       })
 
-      const baseFinishMs =
-        finishRow?.effective_elapsed_ms ??
-        finishFromTable?.time_ms ??
-        null
-
-      const rawFinishMs =
-        finishRow?.raw_elapsed_ms ??
-        finishFromTable?.time_ms ??
-        null
-
-      const hasCheckpointAdjustment = cpRows.some(r => r.adjustment_id != null)
-
       const baseRow = {
         id: finishFromTable?.id || primaryEntry?.id || `row-${bib}`,
-        entry_id: primaryEntry?.id || finishRow?.entry_id || null,
+        entry_id: primaryEntry?.id || null,
         bib_number: bib,
         name: getDisplayNameForBib(entriesForBib, bib),
-        division: primaryEntry?.division || finishRow?.division || null,
-        gender: primaryEntry?.gender || finishRow?.gender || null,
-        normalizedGender: normalizeGender(primaryEntry?.gender || finishRow?.gender),
+        division: primaryEntry?.division || null,
+        gender: primaryEntry?.gender || null,
+        normalizedGender: normalizeGender(primaryEntry?.gender),
         wave_code: primaryEntry?.wave_id ? (wavesById[primaryEntry.wave_id]?.wave_code || null) : null,
-        time_ms: baseFinishMs,
-        raw_time_ms: rawFinishMs,
+        time_ms,
         checkpoint_times,
         checkpoint_split_times,
         latestCheckpointOrder,
         latestCheckpointElapsedMs,
-        is_finished: baseFinishMs != null,
-        has_checkpoint_adjustment: hasCheckpointAdjustment,
-        adjusted_checkpoint_count: cpRows.filter(r => r.adjustment_id != null).length,
+        is_finished: time_ms != null,
       }
 
       const adjustmentKey = getAdjustmentKey(baseRow)
@@ -692,7 +716,7 @@ export default function LiveResults() {
         ...baseRow,
         adjustments: rowAdjustments,
         total_adjustment_ms: totalAdjustmentMs,
-        adjusted_time_ms: baseFinishMs != null ? baseFinishMs + totalAdjustmentMs : null,
+        adjusted_time_ms: time_ms != null ? time_ms + totalAdjustmentMs : null,
         has_adjustment: rowAdjustments.length > 0,
       }
     })
@@ -724,16 +748,7 @@ export default function LiveResults() {
     })
 
     return rows
-  }, [
-    entries,
-    finishes,
-    entriesByBib,
-    finishMapFromTable,
-    wavesById,
-    adjustmentMap,
-    effectiveCheckpointRows,
-    effectiveRowsByBib,
-  ])
+  }, [entries, laps, finishes, entriesByBib, finishMapFromTable, finishCheckpoint, splitMap, displayCheckpoints, wavesById, event?.race_started_at, adjustmentMap])
 
   const resultsGenderTabs = useMemo(() => {
     const found = new Set()

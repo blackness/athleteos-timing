@@ -446,6 +446,9 @@ async function loadAdjustmentAdminData() {
                   No roster match for this bib.
                 </div>
               )}
+              <button onClick={() => navigate(`/race/${eventId}/results/resultscorrectionspage`)}>
+                Checkpoint Time Corrections
+              </button>
             </div>
           </div>
 

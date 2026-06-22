@@ -172,6 +172,7 @@ export default function CheckpointTimer() {
   const [editingBib, setEditingBib] = useState('')
 
   const [lastAction, setLastAction] = useState(null)
+  const [confirmUndoOpen, setConfirmUndoOpen] = useState(false)
 
   const tickRef = useRef(null)
   const retryRef = useRef(null)
@@ -338,7 +339,9 @@ export default function CheckpointTimer() {
       listener.subscription.unsubscribe()
     }
   }, [])
-
+  useEffect(() => {
+    setConfirmUndoOpen(false)
+  }, [lastAction?.lapId])
   useEffect(() => {
     const savedMode = localStorage.getItem(getModeStorageKey(checkpointId))
     if (savedMode === 'capture_first' || savedMode === 'bib_first') {
@@ -599,6 +602,10 @@ export default function CheckpointTimer() {
   )
 
   const nextPending = pending[0] || null
+  const undoTarget = useMemo(() => {
+    if (!lastAction?.lapId) return null
+    return laps.find(l => l.id === lastAction.lapId && l.status !== 'void') || null
+  }, [lastAction, laps])
 
   const showAssignMainButton = useMemo(() => {
     return (
@@ -781,6 +788,10 @@ export default function CheckpointTimer() {
       setBibInput('')
       setPreview(null)
       setTimeout(() => refocusBibInput(), 0)
+    } else {
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 0)
     }
 
     setSavingLap(false)
@@ -886,6 +897,23 @@ export default function CheckpointTimer() {
     refocusBibInput,
     setTransientMessage,
   ])
+  const runPrimaryAction = useCallback(() => {
+    const bib = bibInput.trim()
+
+    if (inputMode === 'capture_first') {
+      if (canCapture) {
+        captureLap()
+        return
+      }
+    }
+
+    if (inputMode === 'bib_first') {
+      if (bib && canCapture) {
+        captureLap()
+        return
+      }
+    }
+  }, [bibInput, inputMode, canCapture, captureLap])
 
   const voidLastPending = useCallback(async () => {
     const target = [...pending].reverse()[0]
@@ -938,59 +966,69 @@ export default function CheckpointTimer() {
     }
   }, [pending, eventId, checkpointId, isAdmin, pushLastAction, setTransientMessage])
 
-  const undoLastCheckpoint = useCallback(async () => {
-    const target = [...laps]
-      .filter(l => l.status !== 'void')
-      .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))[0]
+const undoLastCheckpoint = useCallback(async () => {
+  const targetId = lastAction?.lapId
+  if (!targetId) return
 
-    if (!target) return
+  const target = laps.find(l => l.id === targetId)
+  if (!target || target.status === 'void') return
 
-    const update = {
-      status: 'void',
-      is_corrected: true,
-      correction_note: 'Undo last checkpoint from timer',
-    }
+  const update = {
+    status: 'void',
+    is_corrected: true,
+    correction_note: 'Undo last checkpoint from timer',
+  }
 
-    setLaps(prev => prev.map(l => (l.id === target.id ? { ...l, ...update } : l)))
+  setLaps(prev => prev.map(l => (l.id === target.id ? { ...l, ...update } : l)))
 
-    const { error } = await supabase.from('lap_events').update(update).eq('id', target.id)
+  const { error } = await supabase.from('lap_events').update(update).eq('id', target.id)
 
-    if (error) {
-      const pendingLocal = loadPendingLocal(eventId, checkpointId)
-      pendingLocal.push({
-        type: 'status_update',
-        target_id: target.id,
-        payload: update,
-      })
-      savePendingLocal(eventId, checkpointId, pendingLocal)
+  if (error) {
+    const pendingLocal = loadPendingLocal(eventId, checkpointId)
+    pendingLocal.push({
+      type: 'status_update',
+      target_id: target.id,
+      payload: update,
+    })
+    savePendingLocal(eventId, checkpointId, pendingLocal)
 
-      pushLastAction({
-        type: 'undo',
-        status: 'local',
-        lapId: target.id,
-        bib_number: target.bib_number || null,
-        name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
-        team: target.bib_number ? getEntryTeam(target.bib_number) : '',
-        elapsed_ms: target.elapsed_ms,
-        detail: 'Undo saved locally — waiting to sync',
-      })
+    pushLastAction({
+      type: 'undo',
+      status: 'local',
+      lapId: target.id,
+      bib_number: target.bib_number || null,
+      name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
+      team: target.bib_number ? getEntryTeam(target.bib_number) : '',
+      elapsed_ms: target.elapsed_ms,
+      detail: 'Undo saved locally — waiting to sync',
+    })
 
-      setTransientMessage('Undo saved locally, waiting to sync', 1800)
-    } else {
-      pushLastAction({
-        type: 'undo',
-        status: 'saved',
-        lapId: target.id,
-        bib_number: target.bib_number || null,
-        name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
-        team: target.bib_number ? getEntryTeam(target.bib_number) : '',
-        elapsed_ms: target.elapsed_ms,
-        detail: 'Last checkpoint undone',
-      })
+    setTransientMessage('Undo saved locally, waiting to sync', 1800)
+  } else {
+    pushLastAction({
+      type: 'undo',
+      status: 'saved',
+      lapId: target.id,
+      bib_number: target.bib_number || null,
+      name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
+      team: target.bib_number ? getEntryTeam(target.bib_number) : '',
+      elapsed_ms: target.elapsed_ms,
+      detail: 'Last action undone',
+    })
 
-      setTransientMessage('Last checkpoint undone', 1500)
-    }
-  }, [laps, eventId, checkpointId, getEntryDisplayName, getEntryTeam, pushLastAction, setTransientMessage])
+    setTransientMessage('Last action undone', 1500)
+  }
+}, [
+  lastAction,
+  laps,
+  eventId,
+  checkpointId,
+  getEntryDisplayName,
+  getEntryTeam,
+  pushLastAction,
+  setTransientMessage,
+])
+
 
   const voidLap = useCallback(async (lap) => {
     if (!isAdmin) return
@@ -1137,19 +1175,98 @@ export default function CheckpointTimer() {
   }, [editingBib, entries, laps, isAdmin, getEntryDisplayName, getEntryTeam, pushLastAction])
 
   useEffect(() => {
-    const h = e => {
-      if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+  const isTextInput = el => {
+    if (!el) return false
+    const tag = el.tagName
+    return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
+  }
+
+  const h = e => {
+    const active = document.activeElement
+    const inInput = isTextInput(active)
+    const bib = bibInput.trim()
+
+    // Space = do the main action when not typing in a field
+    if (e.code === 'Space') {
+    if (inputMode === 'capture_first' && canCapture) {
+      e.preventDefault()
+      captureLap()
+      return
+    }
+
+    if (!inInput) {
+      e.preventDefault()
+      runPrimaryAction()
+      return
+    }
+  }
+
+    // Enter = submit current bib workflow
+    if (e.key === 'Enter') {
+      if (bib) {
         e.preventDefault()
-        if (showAssignMainButton) {
+
+        if (inputMode === 'capture_first' && nextPending) {
           assignBib()
-        } else if (canCapture && inputMode === 'capture_first') {
+          return
+        }
+
+        if (inputMode === 'bib_first' && canCapture) {
           captureLap()
+          return
         }
       }
     }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [captureLap, assignBib, canCapture, inputMode, showAssignMainButton])
+
+    // Escape = clear bib field
+    if (e.key === 'Escape') {
+      if (bib) {
+        e.preventDefault()
+        setBibInput('')
+        setPreview(null)
+        refocusBibInput()
+      }
+      return
+    }
+
+    // If user types while not focused in an input, route it into bib field
+    const isSingleChar = e.key.length === 1
+    const isTypingChar = /^[0-9]$/.test(e.key)
+
+    if (!inInput && isSingleChar && isTypingChar) {
+      e.preventDefault()
+      setBibInput(prev => `${prev}${e.key}`)
+      setBibEntryActive(true)
+      requestAnimationFrame(() => {
+        inputRef.current?.focus()
+      })
+      return
+    }
+
+    // Backspace edits bib even if input isn't focused
+    if (!inInput && e.key === 'Backspace') {
+      if (bibInput.length > 0) {
+        e.preventDefault()
+        setBibInput(prev => prev.slice(0, -1))
+        requestAnimationFrame(() => {
+          inputRef.current?.focus()
+        })
+      }
+    }
+  }
+
+  window.addEventListener('keydown', h)
+  return () => window.removeEventListener('keydown', h)
+}, [
+  bibInput,
+  inputMode,
+  nextPending,
+  canCapture,
+  assignBib,
+  captureLap,
+  runPrimaryAction,
+  refocusBibInput,
+])
 
   const lastActionTone = getLastActionTone()
 
@@ -1686,29 +1803,6 @@ export default function CheckpointTimer() {
                           ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : 'Tap')
                           : 'Lap'}
                 </button>
-
-                <button
-                  onClick={undoLastCheckpoint}
-                  disabled={checkpointCount === 0}
-                  style={{
-                    width: '100%',
-                    minHeight: 44,
-                    borderRadius: 12,
-                    border: `1px solid ${T.dangerBorder}`,
-                    background: 'transparent',
-                    color: checkpointCount === 0 ? T.dim : T.danger,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    letterSpacing: 1.1,
-                    cursor: checkpointCount === 0 ? 'not-allowed' : 'pointer',
-                    fontFamily: F,
-                    textTransform: 'uppercase',
-                    opacity: checkpointCount === 0 ? 0.5 : 1,
-                  }}
-                  title="Undo the most recent checkpoint"
-                >
-                  Undo
-                </button>
               </div>
 
               <div
@@ -1897,29 +1991,107 @@ export default function CheckpointTimer() {
                   {lastAction.detail}
                 </div>
 
-                {(lastAction.type === 'capture' || lastAction.type === 'assign') && (
-                  <div style={{ marginTop: 10 }}>
-                    <button
-                      onClick={undoLastCheckpoint}
-                      style={{
-                        height: 34,
-                        padding: '0 12px',
-                        borderRadius: 999,
-                        border: `1px solid ${T.dangerBorder}`,
-                        background: 'transparent',
-                        color: T.danger,
-                        fontFamily: F,
-                        fontWeight: 800,
-                        fontSize: 11,
-                        letterSpacing: 1.1,
-                        textTransform: 'uppercase',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Undo Last
-                    </button>
-                  </div>
-                )}
+                {(lastAction.type === 'capture' || lastAction.type === 'assign') && undoTarget && (
+  <div style={{ marginTop: 10 }}>
+    {!confirmUndoOpen ? (
+      <button
+        onClick={() => setConfirmUndoOpen(true)}
+        style={{
+          height: 34,
+          padding: '0 12px',
+          borderRadius: 999,
+          border: `1px solid ${T.dangerBorder}`,
+          background: 'transparent',
+          color: T.danger,
+          fontFamily: F,
+          fontWeight: 800,
+          fontSize: 11,
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+          cursor: 'pointer',
+        }}
+      >
+        Undo Bib {undoTarget.bib_number || 'Tap'}
+      </button>
+    ) : (
+      <div
+        style={{
+          marginTop: 2,
+          borderRadius: 12,
+          border: `1px solid ${T.warningBorder}`,
+          background: T.warningBg,
+          padding: '12px 14px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            color: T.warning,
+            fontFamily: F,
+            fontWeight: 900,
+            letterSpacing: 1.4,
+            textTransform: 'uppercase',
+          }}
+        >
+          Confirm Undo
+        </div>
+
+        <div style={{ marginTop: 6, fontSize: 15, color: T.textStrong, fontWeight: 700 }}>
+          Undo last capture for {undoTarget.bib_number ? `Bib ${undoTarget.bib_number}` : 'pending tap'}?
+        </div>
+
+        <div style={{ marginTop: 4, fontSize: 12, color: T.muted }}>
+          Time: {fmt(undoTarget.elapsed_ms, true)}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button
+            onClick={() => setConfirmUndoOpen(false)}
+            style={{
+              flex: 1,
+              height: 36,
+              borderRadius: 10,
+              border: `1px solid ${T.border2}`,
+              background: T.panel2,
+              color: T.textStrong,
+              fontFamily: F,
+              fontWeight: 800,
+              fontSize: 11,
+              letterSpacing: 1.1,
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+
+          <button
+            onClick={async () => {
+              setConfirmUndoOpen(false)
+              await undoLastCheckpoint()
+            }}
+            style={{
+              flex: 1,
+              height: 36,
+              borderRadius: 10,
+              border: `1px solid ${T.dangerBorder}`,
+              background: T.danger,
+              color: T.buttonText,
+              fontFamily: F,
+              fontWeight: 800,
+              fontSize: 11,
+              letterSpacing: 1.1,
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+          >
+            Confirm Undo
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+)}
               </div>
             )}
 

@@ -14,6 +14,7 @@ import CheckpointRedirect from './pages/CheckpointRedirect'
 import CheckpointQrSheet from './pages/CheckpointQrSheet'
 import RaceMonitor from './pages/RaceMonitor'
 import RaceCorrections from './pages/RaceCorrections'
+import ResultsCorrectionsPage from './pages/ResultsCorrectionsPage'
 import RaceLiveBoard from './pages/RaceLiveBoard'
 //import { Analytics } from '@vercel/analytics/react'
 
@@ -79,6 +80,7 @@ function AppRoutes() {
       <Route path="/race/:id/corrections" element={<RaceCorrections />} />
       <Route path="/race/:id/checkpoint/:checkpointId" element={<CheckpointTimer />} />
       <Route path="/public/race/:id/live-board" element={<RaceLiveBoard />} />
+      <Route path="/race/:id/results/resultscorrectionspage" element={<ResultsCorrectionsPage />} />
     </Routes>
   )
 }
