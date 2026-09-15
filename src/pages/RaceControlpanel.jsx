@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { exportRawLapEvents, exportLapSummary } from '../lib/exportLapResults'
@@ -118,7 +118,7 @@ function parsePlannedStartTime(value) {
 
 function getDisplayName(entry) {
   if (!entry) return null
-  const personName = `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim()
+  const personName = `$${entry.first_name ?? ''}$${entry.last_name ? ` ${entry.last_name}` : ''}`.trim()
   if (personName) return personName
   if (entry.team) return entry.team
   return null
@@ -126,7 +126,7 @@ function getDisplayName(entry) {
 
 function isTeamOnlyEntry(entry) {
   if (!entry) return false
-  const personName = `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim()
+  const personName = `$${entry.first_name ?? ''}$${entry.last_name ? ` ${entry.last_name}` : ''}`.trim()
   return !personName && !!entry.team
 }
 
@@ -142,7 +142,7 @@ function toLocalInputValue(value) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ''
   const pad = n => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return `$${d.getFullYear()}-$${pad(d.getMonth() + 1)}-$${pad(d.getDate())}T$${pad(d.getHours())}:$${pad(d.getMinutes())}:$${pad(d.getSeconds())}`
 }
 
 const F = "'Barlow Condensed', sans-serif"
@@ -433,12 +433,12 @@ function RaceControlPanel({
   const raceAlreadyStarted = isActive || isReview || isFinished || hasStartedWave
 
   const status = isActive
-  ? { label: 'LIVE', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.25)' }
-  : isReview
-    ? { label: 'RESULTS REVIEW', color: '#eab308', bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.25)' }
-    : isFinished
-      ? { label: 'FINAL', color: '#10b981', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.25)' }
-      : { label: 'READY', color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' }
+    ? { label: 'LIVE', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.25)' }
+    : isReview
+      ? { label: 'RESULTS REVIEW', color: '#eab308', bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.25)' }
+      : isFinished
+        ? { label: 'FINAL', color: '#10b981', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.25)' }
+        : { label: 'READY', color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' }
 
   return (
     <div style={{ ...S.card, padding: 18, marginBottom: 28 }}>
@@ -477,7 +477,7 @@ function RaceControlPanel({
 
         <div style={{ textAlign: 'right', minWidth: 140 }}>
           <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1.5, fontFamily: F, fontWeight: 700, marginBottom: 4 }}>
-            Race Clock
+            {isActive ? 'Race Clock' : isReview ? 'Results Review' : isFinished ? 'Final Time' : 'Waiting'}
           </div>
           <div style={{ fontSize: 36, fontWeight: 900, color: isActive ? '#f0f4f8' : '#374151', fontFamily: F, letterSpacing: -1.5, lineHeight: 1 }}>
             {formatRaceClock(elapsedMs)}
@@ -488,15 +488,14 @@ function RaceControlPanel({
       <div style={{ background: '#080b0f', border: '1px solid #1e2730', borderRadius: 12, padding: 14, marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 4 }}>
           {isActive
-  ? 'Race is live. Checkpoint timers are active and the public clock is running.'
-  : isReview
-    ? 'Race has ended and is now in Results Review. Finish assignments and corrections can still be completed.'
-    : isFinished
-      ? 'Race is finalized. Results should now be considered complete.'
-      : hasStartedWave
-        ? 'A wave has already started. The race activates from the first started wave.'
-        : 'Race is ready. Starting race activates checkpoint timers and the public live clock.'}
-
+            ? 'Race is live. Checkpoint timers are active and the public clock is running.'
+            : isReview
+              ? 'Race has ended and is now in Results Review. Finish assignments and corrections can still be completed.'
+              : isFinished
+                ? 'Race is finalized. Results should now be considered complete.'
+                : hasStartedWave
+                  ? 'A wave has already started. The race activates from the first started wave.'
+                  : 'Race is ready. Starting race activates checkpoint timers and the public live clock.'}
         </div>
         <div style={{ fontSize: 12, color: '#4a5568' }}>
           Use these controls carefully — they affect all timer devices and the public results site.
@@ -524,13 +523,15 @@ function RaceControlPanel({
         >
           {isActive
             ? 'Race Live'
-            : isFinished
-              ? 'Race Finished'
-              : hasStartedWave
-                ? 'Wave Started'
-                : startingRace
-                  ? 'Starting…'
-                  : 'Start Race'}
+            : isReview
+              ? 'In Review'
+              : isFinished
+                ? 'Race Final'
+                : hasStartedWave
+                  ? 'Wave Started'
+                  : startingRace
+                    ? 'Starting…'
+                    : 'Start Race'}
         </button>
 
         <button
@@ -613,6 +614,7 @@ function RaceControlPanel({
         >
           Finalize Results
         </button>
+
         <button
           onClick={() => navigate(`/results/${eventId}`)}
           style={{
@@ -697,39 +699,39 @@ function EditableCellInput({
     if (normalized !== original) onSave(draft)
   }
 
-  return (
-    <input
-      type={type}
-      value={draft}
-      list={list}
-      title={title}
-      placeholder={placeholder}
-      onChange={e => {
-        setDraft(e.target.value)
-        onChange?.(e.target.value)
-      }}
-      onBlur={commit}
-      onKeyDown={e => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-        if (e.key === 'Escape') {
-          setDraft(value ?? '')
-          e.currentTarget.blur()
-        }
-      }}
-      style={{
-        width,
-        padding: '6px 8px',
-        background: lockedStyle ? 'rgba(234,179,8,0.08)' : '#080b0f',
-        border: lockedStyle ? '1px solid rgba(234,179,8,0.35)' : '1px solid #1e2730',
-        borderRadius: 6,
-        color: '#e2e8f0',
-        fontSize: 12,
-        fontFamily: FB,
-        outline: 'none',
-        boxSizing: 'border-box',
-      }}
-    />
-  )
+ return (
+  <input
+    type={type}
+    value={draft}
+    list={list}
+    title={title}
+    placeholder={placeholder}
+    onChange={e => {
+      setDraft(e.target.value)
+      onChange?.(e.target.value)
+    }}
+    onBlur={commit}
+    onKeyDown={e => {
+      if (e.key === 'Enter') e.currentTarget.blur()
+      if (e.key === 'Escape') {
+        setDraft(value ?? '')
+        e.currentTarget.blur()
+      }
+    }}
+    style={{
+      width,
+      padding: '6px 8px',
+      background: lockedStyle ? 'rgba(234,179,8,0.08)' : '#080b0f',
+      border: lockedStyle ? '1px solid rgba(234,179,8,0.35)' : '1px solid #1e2730',
+      borderRadius: 6,
+      color: '#e2e8f0',
+      fontSize: 12,
+      fontFamily: FB,
+      outline: 'none',
+      boxSizing: 'border-box',
+    }}
+  />
+)
 }
 
 function EditableSuggestInput({
@@ -949,7 +951,7 @@ function EditableEntryRow({
           lockedStyle={isRaceLocked}
           title={
             isRaceLocked
-              ? 'Race is active or finished. Changing bibs now can affect live splits and results.'
+              ? 'Race is active, in review, or finished. Changing bibs now can affect live splits and results.'
               : 'Bib number'
           }
         />
@@ -1099,6 +1101,7 @@ export default function PreRaceSetup() {
   const [savingCheckpoint, setSavingCheckpoint] = useState(false)
   const [startingRace, setStartingRace] = useState(false)
   const [finishingRace, setFinishingRace] = useState(false)
+  const [finalizingRace, setFinalizingRace] = useState(false)
   const [checkpointName, setCheckpointName] = useState('')
   const [saveStateByEntryId, setSaveStateByEntryId] = useState({})
 
@@ -1127,53 +1130,21 @@ export default function PreRaceSetup() {
 
   const RESET_PIN = '2468'
 
-const loadSetupData = useCallback(async () => {
-  if (!eventId) return
-
-  setLoading(true)
-
-  const [
-    { data: ev },
-    { data: ent },
-    { data: cps },
-    { data: wvs },
-  ] = await Promise.all([
-    supabase.from('race_events').select('*').eq('id', eventId).single(),
-    supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
-    supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
-    supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
-  ])
-
-  setEvent(ev)
-  setEntries(ent ?? [])
-  setCheckpoints(cps ?? [])
-  setWaves(wvs ?? [])
-  setLoading(false)
-}, [eventId])
-
-useEffect(() => {
-  if (!eventId) return
-  loadSetupData()
-}, [eventId, loadSetupData])
-
-useEffect(() => {
-  if (!eventId) return
-
-  const ch = supabase
-    .channel(`prerace-setup:${eventId}`)
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
-      payload => {
-        setEvent(payload.new)
-      }
-    )
-    .subscribe()
-
-  return () => {
-    supabase.removeChannel(ch)
-  }
-}, [eventId])
+  useEffect(() => {
+    if (!eventId) return
+    Promise.all([
+      supabase.from('race_events').select('*').eq('id', eventId).single(),
+      supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
+      supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
+      supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
+    ]).then(([{ data: ev }, { data: ent }, { data: cps }, { data: wvs }]) => {
+      setEvent(ev)
+      setEntries(ent ?? [])
+      setCheckpoints(cps ?? [])
+      setWaves(wvs ?? [])
+      setLoading(false)
+    })
+  }, [eventId])
 
   const wavesById = useMemo(() => Object.fromEntries(waves.map(w => [w.id, w])), [waves])
   const hasStartedWave = useMemo(() => waves.some(w => !!w.actual_start_time), [waves])
@@ -1219,7 +1190,28 @@ useEffect(() => {
     if (!name || savingCheckpoint) return
 
     setSavingCheckpoint(true)
-    const nextOrder = checkpoints.length > 0 ? Math.max(...checkpoints.map(c => c.checkpoint_order)) + 1 : 1
+
+    const finishCheckpoint = checkpoints.find(cp =>
+      String(cp.name || '').trim().toLowerCase() === 'finish'
+    )
+
+    let nextOrder = checkpoints.length > 0 ? Math.max(...checkpoints.map(c => c.checkpoint_order)) + 1 : 1
+
+    if (finishCheckpoint) {
+      nextOrder = finishCheckpoint.checkpoint_order
+
+      const checkpointsToShift = checkpoints
+        .filter(cp => cp.checkpoint_order >= finishCheckpoint.checkpoint_order)
+        .sort((a, b) => b.checkpoint_order - a.checkpoint_order)
+
+      for (const cp of checkpointsToShift) {
+        await supabase
+          .from('race_checkpoints')
+          .update({ checkpoint_order: cp.checkpoint_order + 1 })
+          .eq('id', cp.id)
+      }
+    }
+
     const shortCode = `CP${nextOrder}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
 
     const { error } = await supabase.from('race_checkpoints').insert({
@@ -1246,6 +1238,14 @@ useEffect(() => {
   }
 
   const deleteCheckpoint = async id => {
+    const cp = checkpoints.find(x => x.id === id)
+    const lower = String(cp?.name || '').trim().toLowerCase()
+
+    if (lower === 'start' || lower === 'finish') {
+      window.alert('Start and Finish checkpoints cannot be deleted.')
+      return
+    }
+
     const ok = window.confirm('Delete this checkpoint?')
     if (!ok) return
     await supabase.from('race_checkpoints').delete().eq('id', id)
@@ -1254,29 +1254,56 @@ useEffect(() => {
 
   const seedEightCheckpoints = async () => {
     if (savingCheckpoint) return
-    if (checkpoints.length > 0) {
-      const ok = window.confirm('Checkpoints already exist. Add missing checkpoints up to 8?')
+
+    const currentIntermediate = checkpoints.filter(cp => {
+      const lower = String(cp.name || '').trim().toLowerCase()
+      return lower !== 'start' && lower !== 'finish'
+    })
+
+    if (currentIntermediate.length > 0) {
+      const ok = window.confirm('Checkpoints already exist. Add missing intermediate checkpoints up to 8 total?')
       if (!ok) return
     }
 
     setSavingCheckpoint(true)
-    const existingOrders = new Set(checkpoints.map(c => c.checkpoint_order))
-    const rows = []
 
-    for (let i = 1; i <= 8; i++) {
-      if (!existingOrders.has(i)) {
-        rows.push({
-          event_id: eventId,
-          name: `Checkpoint ${i}`,
-          checkpoint_order: i,
-          code: `CP${i}`,
-          short_code: `CP${i}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-          is_active: true,
-        })
+    const finishCheckpoint = checkpoints.find(cp =>
+      String(cp.name || '').trim().toLowerCase() === 'finish'
+    )
+
+    let desiredIntermediateCount = 6
+    let existingIntermediate = checkpoints.filter(cp => {
+      const lower = String(cp.name || '').trim().toLowerCase()
+      return lower !== 'start' && lower !== 'finish'
+    })
+
+    for (let i = existingIntermediate.length + 1; i <= desiredIntermediateCount; i++) {
+      if (finishCheckpoint) {
+        const checkpointsToShift = checkpoints
+          .filter(cp => cp.checkpoint_order >= finishCheckpoint.checkpoint_order)
+          .sort((a, b) => b.checkpoint_order - a.checkpoint_order)
+
+        for (const cp of checkpointsToShift) {
+          await supabase
+            .from('race_checkpoints')
+            .update({ checkpoint_order: cp.checkpoint_order + 1 })
+            .eq('id', cp.id)
+        }
       }
+
+      const insertOrder = finishCheckpoint ? finishCheckpoint.checkpoint_order : checkpoints.length + 1
+      await supabase.from('race_checkpoints').insert({
+        event_id: eventId,
+        name: `Checkpoint ${i}`,
+        checkpoint_order: insertOrder,
+        code: `CP${insertOrder}`,
+        short_code: `CP${insertOrder}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        is_active: true,
+      })
+
+      await loadCheckpoints()
     }
 
-    if (rows.length) await supabase.from('race_checkpoints').insert(rows)
     setSavingCheckpoint(false)
     loadCheckpoints()
   }
@@ -1340,114 +1367,150 @@ useEffect(() => {
     if (!error) await loadWaves()
   }
 
+  const hasAnotherActiveRace = async () => {
+    if (!event?.user_id) return null
+
+    const { data, error } = await supabase
+      .from('race_events')
+      .select('id, name')
+      .eq('user_id', event.user_id)
+      .eq('status', 'active')
+
+    if (error) throw error
+
+    return (data || []).find(r => r.id !== eventId) || null
+  }
+
   const startRace = async () => {
-  if (startingRace) return
+    if (startingRace) return
 
-  if (event?.status === 'active') {
-    window.alert('Race is already active.')
-    return
-  }
-
-  if (event?.status === 'finished') {
-    window.alert('Race is already finalized.')
-    return
-  }
-
-  try {
-    const otherActive = await hasAnotherActiveRace()
-    if (otherActive) {
-      window.alert(`Cannot start this race while another race is active: "${otherActive.name}"`)
+    if (event?.status === 'active') {
+      window.alert('Race is already active.')
       return
     }
-  } catch (err) {
-    window.alert(`Could not verify active races: ${err.message}`)
-    return
+
+    if (event?.status === 'finished') {
+      window.alert('Race is already finalized.')
+      return
+    }
+
+    try {
+      const otherActive = await hasAnotherActiveRace()
+      if (otherActive) {
+        window.alert(`Cannot start this race while another race is active: "${otherActive.name}"`)
+        return
+      }
+    } catch (err) {
+      window.alert(`Could not verify active races: ${err.message}`)
+      return
+    }
+
+    const ok = window.confirm(
+      'Start race now?\n\nThis will activate checkpoint timers and begin the public live clock.'
+    )
+    if (!ok) return
+
+    setStartingRace(true)
+    const now = new Date().toISOString()
+
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({
+        race_started_at: now,
+        race_finished_at: null,
+        status: 'active',
+      })
+      .eq('id', eventId)
+      .select()
+      .single()
+
+    setStartingRace(false)
+
+    if (!error && data) {
+      setEvent(data)
+      navigate(`/race/${eventId}/monitor`)
+    } else if (error) {
+      window.alert(`Could not start race: ${error.message}`)
+    }
   }
 
-  const ok = window.confirm(
-    'Start race now?\n\nThis will activate checkpoint timers and begin the public live clock.'
-  )
-  if (!ok) return
+  const finishRace = async () => {
+    if (finishingRace) return
 
-  setStartingRace(true)
-  const now = new Date().toISOString()
+    if (event?.status !== 'active') {
+      window.alert('Race must be active before it can be ended.')
+      return
+    }
 
-  const { data, error } = await supabase
-    .from('race_events')
-    .update({
-      race_started_at: now,
-      race_finished_at: null,
-      status: 'active',
-    })
-    .eq('id', eventId)
-    .select()
-    .single()
+    const ok = window.confirm(
+      'End race now?\n\nThis will stop live race timing and move the race into Results Review.'
+    )
+    if (!ok) return
 
-  setStartingRace(false)
+    setFinishingRace(true)
+    const finishedAt = new Date().toISOString()
 
-  if (!error && data) {
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({
+        status: 'results_review',
+        race_finished_at: finishedAt,
+      })
+      .eq('id', eventId)
+      .select()
+      .single()
+
+    setFinishingRace(false)
+
+    if (error) {
+      window.alert(`Could not end race: ${error.message}`)
+      return
+    }
+
+    if (!data) {
+      window.alert('Could not end race: no row returned.')
+      return
+    }
+
     setEvent(data)
-    await loadSetupData()
-    navigate(`/race/${eventId}/monitor`)
-  } else if (error) {
-    window.alert(`Could not start race: ${error.message}`)
-  }
-}
-  const hasAnotherActiveRace = async () => {
-  if (!event?.user_id) return null
-
-  const { data, error } = await supabase
-    .from('race_events')
-    .select('id, name')
-    .eq('user_id', event.user_id)
-    .eq('status', 'active')
-
-  if (error) throw error
-
-  return (data || []).find(r => r.id !== eventId) || null
-}
-
-const finishRace = async () => {
-  if (finishingRace) return
-
-  if (event?.status !== 'active') {
-    window.alert('Race must be active before it can be ended.')
-    return
   }
 
-  const ok = window.confirm(
-    'End race now?\n\nThis will stop live race timing and move the race into Results Review.'
-  )
-  if (!ok) return
+  const finalizeRace = async () => {
+    if (finalizingRace) return
 
-  setFinishingRace(true)
-  const finishedAt = new Date().toISOString()
+    if (event?.status !== 'results_review') {
+      window.alert('Race must be in Results Review before finalizing.')
+      return
+    }
 
-  const { data, error } = await supabase
-    .from('race_events')
-    .update({
-      status: 'results_review',
-      race_finished_at: finishedAt,
-    })
-    .eq('id', eventId)
-    .select()
-    .single()
+    const ok = window.confirm(
+      'Finalize results now?\n\nThis marks the race as complete/final.'
+    )
+    if (!ok) return
 
-  setFinishingRace(false)
+    setFinalizingRace(true)
 
-  if (error) {
-    window.alert(`Could not end race: ${error.message}`)
-    return
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({
+        status: 'finished',
+      })
+      .eq('id', eventId)
+      .select()
+      .single()
+
+    setFinalizingRace(false)
+
+    if (error) {
+      window.alert(`Could not finalize race: ${error.message}`)
+      return
+    }
+
+    if (data) {
+      setEvent(data)
+    }
   }
 
-  if (!data) {
-    window.alert('Could not end race: no row returned.')
-    return
-  }
-
-  setEvent(data)
-  await loadSetupData()
-}
   const resetRaceData = async () => {
     if (resettingRaceData) return
 
@@ -1771,719 +1834,694 @@ const finishRace = async () => {
       .select()
       .single()
 
-    setSaving(false)
+      setSaving(false)
 
-    if (error) {
-      setFormError(error.message)
-      return
-    }
+      if (error) {
+        setFormError(error.message)
+        return
+      }
 
-    setEntries(prev =>
-      [...prev, data].sort((a, b) =>
-        Number(a.bib_number) - Number(b.bib_number)
-      )
-    )
-
-    setForm({
-      bib_number: '',
-      first_name: '',
-      last_name: '',
-      team: '',
-      division: '',
-      age: '',
-      gender: '',
-    })
-    setShowAdHoc(false)
-  }
-const finalizeRace = async () => {
-  if (event?.status !== 'results_review') {
-    window.alert('Race must be in Results Review before finalizing.')
-    return
-  }
-
-  const ok = window.confirm(
-    'Finalize results now?\n\nThis marks the race as complete/final.'
-  )
-  if (!ok) return
-
-  const { data, error } = await supabase
-    .from('race_events')
-    .update({
-      status: 'finished',
-    })
-    .eq('id', eventId)
-    .select()
-    .single()
-
-  if (error) {
-    window.alert(`Could not finalize race: ${error.message}`)
-    return
-  }
-
-  if (data) {
-    setEvent(data)
-    await loadSetupData()
-  }
-}
-  const saveEntryField = async (entryId, field, value) => {
-    const existing = entries.find(e => e.id === entryId)
-    if (!existing) return
-
-    const currentValue = existing[field] ?? null
-    const nextValue = value ?? null
-    if (currentValue === nextValue) return
-
-    if (field === 'bib_number' && event?.status !== 'draft') {
-      const ok = window.confirm(
-        `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
-      )
-      if (!ok) return
-    }
-
-    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saving' }))
-
-    const { data, error } = await supabase
-      .from('event_entries')
-      .update({ [field]: nextValue })
-      .eq('id', entryId)
-      .select()
-      .single()
-
-    if (error || !data) {
-      setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'error' }))
-      setTimeout(() => {
-        setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
-      }, 2000)
-      return
-    }
-
-    setEntries(prev =>
-      prev
-        .map(e => (e.id === entryId ? data : e))
-        .sort((a, b) =>
+      setEntries(prev =>
+        [...prev, data].sort((a, b) =>
           Number(a.bib_number) - Number(b.bib_number)
         )
-    )
+      )
 
-    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saved' }))
-    setTimeout(() => {
-      setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
-    }, 1200)
-  }
+      setForm({
+        bib_number: '',
+        first_name: '',
+        last_name: '',
+        team: '',
+        division: '',
+        age: '',
+        gender: '',
+      })
+      setShowAdHoc(false)
+    }
 
-  const removeEntry = async id => {
-    await supabase.from('event_entries').delete().eq('id', id)
-    setEntries(prev => prev.filter(e => e.id !== id))
-  }
+    const saveEntryField = async (entryId, field, value) => {
+      const existing = entries.find(e => e.id === entryId)
+      if (!existing) return
 
-  const preloaded = entries.filter(e => !e.is_adhoc)
-  const adhoc = entries.filter(e => e.is_adhoc)
+      const currentValue = existing[field] ?? null
+      const nextValue = value ?? null
+      if (currentValue === nextValue) return
 
-  if (loading) {
+      if (field === 'bib_number' && event?.status !== 'draft') {
+        const ok = window.confirm(
+          `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started, in review, or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
+        )
+        if (!ok) return
+      }
+
+      setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saving' }))
+
+      const { data, error } = await supabase
+        .from('event_entries')
+        .update({ [field]: nextValue })
+        .eq('id', entryId)
+        .select()
+        .single()
+
+      if (error || !data) {
+        setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'error' }))
+        setTimeout(() => {
+          setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
+        }, 2000)
+        return
+      }
+
+      setEntries(prev =>
+        prev
+          .map(e => (e.id === entryId ? data : e))
+          .sort((a, b) =>
+            Number(a.bib_number) - Number(b.bib_number)
+          )
+      )
+
+      setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saved' }))
+      setTimeout(() => {
+        setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
+      }, 1200)
+    }
+
+    const removeEntry = async id => {
+      await supabase.from('event_entries').delete().eq('id', id)
+      setEntries(prev => prev.filter(e => e.id !== id))
+    }
+
+    const preloaded = entries.filter(e => !e.is_adhoc)
+    const adhoc = entries.filter(e => e.is_adhoc)
+
+    if (loading) {
+      return (
+        <div style={{ ...S.page, alignItems: 'center', justifyContent: 'center', display: 'flex', color: '#4a5568' }}>
+          Loading…
+        </div>
+      )
+    }
+
     return (
-      <div style={{ ...S.page, alignItems: 'center', justifyContent: 'center', display: 'flex', color: '#4a5568' }}>
-        Loading…
-      </div>
-    )
-  }
+      <div style={S.page}>
+        <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  return (
-    <div style={S.page}>
-      <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
+        <div style={S.header}>
+          <button style={S.backBtn} onClick={() => navigate('/')}>← Events</button>
 
-      <div style={S.header}>
-        <button style={S.backBtn} onClick={() => navigate('/')}>← Events</button>
-
-        <div style={{ flex: 1, padding: '0 16px', minWidth: 220 }}>
-          <div style={{ fontSize: 11, color: '#f97316', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
-            RACE SETUP
-          </div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', fontFamily: F }}>
-            {event?.name}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button style={{ ...S.backBtn, color: '#60a5fa' }} onClick={() => navigate(`/results/${eventId}`)}>
-            Live Results ↗
-          </button>
-          <button style={{ ...S.backBtn, color: '#a78bfa' }} onClick={() => navigate(`/race/${eventId}/corrections`)}>
-            Corrections & Adjustments
-          </button>
-          <button style={{ ...S.backBtn, color: '#f97316' }} onClick={() => navigate(`/race/${eventId}/checkpoints`)}>
-            Checkpoints
-          </button>
-          <button style={{ ...S.backBtn, color: '#3b82f6' }} onClick={() => navigate(`/race/${eventId}/monitor`)}>
-            Monitor
-          </button>
-        </div>
-      </div>
-
-      <div style={S.body}>
-        <div style={S.statRow}>
-          {[
-            { label: 'Total Entries', value: entries.length },
-            { label: 'Pre-registered', value: preloaded.length },
-            { label: 'Day-of', value: adhoc.length },
-            { label: 'Checkpoints', value: checkpoints.length },
-          ].map(s => (
-            <div key={s.label} style={S.stat}>
-              <div style={S.statVal}>{s.value}</div>
-              <div style={S.statLbl}>{s.label}</div>
+          <div style={{ flex: 1, padding: '0 16px', minWidth: 220 }}>
+            <div style={{ fontSize: 11, color: '#f97316', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
+              RACE SETUP
             </div>
-          ))}
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', fontFamily: F }}>
+              {event?.name}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button style={{ ...S.backBtn, color: '#60a5fa' }} onClick={() => navigate(`/results/${eventId}`)}>
+              Live Results ↗
+            </button>
+            <button style={{ ...S.backBtn, color: '#a78bfa' }} onClick={() => navigate(`/race/${eventId}/corrections`)}>
+              Corrections & Adjustments
+            </button>
+            <button style={{ ...S.backBtn, color: '#f97316' }} onClick={() => navigate(`/race/${eventId}/checkpoints`)}>
+              Checkpoints
+            </button>
+            <button style={{ ...S.backBtn, color: '#3b82f6' }} onClick={() => navigate(`/race/${eventId}/monitor`)}>
+              Monitor
+            </button>
+          </div>
         </div>
 
-        <RaceControlPanel
-          event={event}
-          eventId={eventId}
-          startingRace={startingRace}
-          finishingRace={finishingRace}
-          onStartRace={startRace}
-          onFinishRace={finishRace}
-          onFinalizeRace={finalizeRace}
-          navigate={navigate}
-          hasStartedWave={hasStartedWave}
-        />
-
-        <div style={S.section}>
-          <div style={S.sLabel}>Import Athletes / Teams</div>
-
-          {csvStep === 'idle' && (
-            <div style={{ ...S.card, padding: 20 }}>
-              <div
-                onPaste={handlePaste}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => {
-                  e.preventDefault()
-                  const f = e.dataTransfer.files[0]
-                  if (f) {
-                    const r = new FileReader()
-                    r.onload = ev => processText(ev.target.result)
-                    r.readAsText(f)
-                  }
-                }}
-                onClick={() => fileRef.current?.click()}
-                style={{
-                  border: '2px dashed #1e2730',
-                  borderRadius: 10,
-                  padding: '32px 20px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-                <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
-                  Drop CSV file, click to browse, or paste data
-                </div>
-                <div style={{ color: '#4a5568', fontSize: 12 }}>
-                  Supports CSV, TSV, or paste from Excel/Google Sheets
-                </div>
-                <div style={{ color: '#4a5568', fontSize: 11, marginTop: 6 }}>
-                  For relay imports, Bib + Team is enough. Athlete names are optional.
-                </div>
-                <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }} onChange={handleFile} />
+        <div style={S.body}>
+          <div style={S.statRow}>
+            {[
+              { label: 'Total Entries', value: entries.length },
+              { label: 'Pre-registered', value: preloaded.length },
+              { label: 'Day-of', value: adhoc.length },
+              { label: 'Checkpoints', value: checkpoints.length },
+            ].map(s => (
+              <div key={s.label} style={S.stat}>
+                <div style={S.statVal}>{s.value}</div>
+                <div style={S.statLbl}>{s.label}</div>
               </div>
+            ))}
+          </div>
 
-              {csvError && <div style={{ color: '#f87171', fontSize: 12, marginTop: 10 }}>{csvError}</div>}
-            </div>
-          )}
+          <RaceControlPanel
+            event={event}
+            eventId={eventId}
+            startingRace={startingRace}
+            finishingRace={finishingRace}
+            onStartRace={startRace}
+            onFinishRace={finishRace}
+            onFinalizeRace={finalizeRace}
+            navigate={navigate}
+            hasStartedWave={hasStartedWave}
+          />
 
-          {csvStep === 'mapping' && csvData && (
-            <div style={{ ...S.card, padding: 20 }}>
-              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
-                Found <strong style={{ color: '#f1f5f9' }}>{csvData.rows.length} rows</strong> with <strong style={{ color: '#f1f5f9' }}>{csvData.headers.length} columns</strong>. Map each column to a field:
-              </div>
+          <div style={S.section}>
+            <div style={S.sLabel}>Import Athletes / Teams</div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
-                {Object.keys(FIELD_LABELS).filter(f => f !== 'skip').map(field => (
-                  <div key={field}>
-                    <label style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 4, fontFamily: F, fontWeight: 700 }}>
-                      {FIELD_LABELS[field]}{field === 'bib_number' ? ' *' : ''}
-                    </label>
-                    <select
-                      value={mapping[field] ?? ''}
-                      onChange={e => setMapping(p => ({ ...p, [field]: e.target.value || undefined }))}
-                      style={S.select}
-                    >
-                      <option value="">— Skip —</option>
-                      {csvData.headers.map(h => <option key={h} value={h}>{h}</option>)}
-                    </select>
+            {csvStep === 'idle' && (
+              <div style={{ ...S.card, padding: 20 }}>
+                <div
+                  onPaste={handlePaste}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => {
+                    e.preventDefault()
+                    const f = e.dataTransfer.files[0]
+                    if (f) {
+                      const r = new FileReader()
+                      r.onload = ev => processText(ev.target.result)
+                      r.readAsText(f)
+                    }
+                  }}
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    border: '2px dashed #1e2730',
+                    borderRadius: 10,
+                    padding: '32px 20px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                  <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                    Drop CSV file, click to browse, or paste data
                   </div>
+                  <div style={{ color: '#4a5568', fontSize: 12 }}>
+                    Supports CSV, TSV, or paste from Excel/Google Sheets
+                  </div>
+                  <div style={{ color: '#4a5568', fontSize: 11, marginTop: 6 }}>
+                    For relay imports, Bib + Team is enough. Athlete names are optional.
+                  </div>
+                  <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }} onChange={handleFile} />
+                </div>
+
+                {csvError && <div style={{ color: '#f87171', fontSize: 12, marginTop: 10 }}>{csvError}</div>}
+              </div>
+            )}
+
+            {csvStep === 'mapping' && csvData && (
+              <div style={{ ...S.card, padding: 20 }}>
+                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
+                  Found <strong style={{ color: '#f1f5f9' }}>{csvData.rows.length} rows</strong> with <strong style={{ color: '#f1f5f9' }}>{csvData.headers.length} columns</strong>. Map each column to a field:
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+                  {Object.keys(FIELD_LABELS).filter(f => f !== 'skip').map(field => (
+                    <div key={field}>
+                      <label style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 4, fontFamily: F, fontWeight: 700 }}>
+                        {FIELD_LABELS[field]}{field === 'bib_number' ? ' *' : ''}
+                      </label>
+                      <select
+                        value={mapping[field] ?? ''}
+                        onChange={e => setMapping(p => ({ ...p, [field]: e.target.value || undefined }))}
+                        style={S.select}
+                      >
+                        <option value="">— Skip —</option>
+                        {csvData.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, fontFamily: F, fontWeight: 700 }}>
+                  Preview (first 3 rows)
+                </div>
+
+                <div style={{ background: '#080b0f', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+                  {csvData.rows.slice(0, 3).map((row, i) => {
+                    const get = field => {
+                      const col = mapping[field]
+                      if (!col) return '—'
+                      const idx = csvData.headers.indexOf(col)
+                      return idx >= 0 ? row[idx] || '—' : '—'
+                    }
+
+                    const personName = mapping.first_name
+                      ? `${get('first_name')} ${get('last_name')}`.trim()
+                      : get('full_name')
+
+                    const name = personName || get('team') || '—'
+
+                    return (
+                      <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 12px', borderBottom: '1px solid #0d1117', fontSize: 12, alignItems: 'center' }}>
+                        <span style={{ color: '#f97316', fontWeight: 700, width: 36, fontFamily: F }}>{get('bib_number')}</span>
+                        <span style={{ color: '#e2e8f0', flex: 1 }}>{name}</span>
+                        <span style={{ color: '#4a5568' }}>{get('team')}</span>
+                        <span style={{ color: '#4a5568' }}>{get('division')}</span>
+                        <span style={{ color: '#4a5568', width: 40 }}>{get('wave_code')}</span>
+                        <span style={{ color: '#4a5568', width: 120 }}>{get('planned_start_time')}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {csvError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>{csvError}</div>}
+
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={importCSV} disabled={importing} style={{ ...S.addBtn, flex: 1, opacity: importing ? 0.6 : 1 }}>
+                    {importing ? 'Importing…' : `Import ${csvData.rows.length} Rows`}
+                  </button>
+                  <button onClick={() => { setCsvStep('idle'); setCsvData(null); setCsvError('') }} style={S.backBtn}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {waves.length > 0 && (
+            <div style={S.section}>
+              <div style={S.sLabel}>Waves ({waves.length})</div>
+
+              <div style={{ ...S.card, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 10,
+                    padding: '6px 14px',
+                    borderBottom: '1px solid #1a2030',
+                    fontSize: 10,
+                    color: '#374151',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                    fontFamily: F,
+                    fontWeight: 700,
+                    alignItems: 'center',
+                  }}
+                >
+                  <span style={{ width: 70 }}>Code</span>
+                  <span style={{ flex: 1 }}>Name</span>
+                  <span style={{ width: 190 }}>Planned</span>
+                  <span style={{ width: 220 }}>Actual</span>
+                  <span style={{ width: 90 }}></span>
+                </div>
+
+                {waves.map((wave, i) => (
+                  <WaveSetupRow
+                    key={wave.id}
+                    wave={wave}
+                    zebra={i % 2 === 1}
+                    onStartNow={startWaveNow}
+                    onSaveActualTime={saveWaveActualTime}
+                  />
                 ))}
               </div>
 
-              <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, fontFamily: F, fontWeight: 700 }}>
-                Preview (first 3 rows)
+              <div style={{ color: '#4a5568', fontSize: 12, marginTop: 10 }}>
+                Use <strong style={{ color: '#94a3b8' }}>Start Now</strong> when the wave gun goes off, or click the actual time field to correct it manually.
               </div>
+            </div>
+          )}
 
-              <div style={{ background: '#080b0f', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-                {csvData.rows.slice(0, 3).map((row, i) => {
-                  const get = field => {
-                    const col = mapping[field]
-                    if (!col) return '—'
-                    const idx = csvData.headers.indexOf(col)
-                    return idx >= 0 ? row[idx] || '—' : '—'
-                  }
-
-                  const personName = mapping.first_name
-                    ? `${get('first_name')} ${get('last_name')}`.trim()
-                    : get('full_name')
-
-                  const name = personName || get('team') || '—'
-
-                  return (
-                    <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 12px', borderBottom: '1px solid #0d1117', fontSize: 12, alignItems: 'center' }}>
-                      <span style={{ color: '#f97316', fontWeight: 700, width: 36, fontFamily: F }}>{get('bib_number')}</span>
-                      <span style={{ color: '#e2e8f0', flex: 1 }}>{name}</span>
-                      <span style={{ color: '#4a5568' }}>{get('team')}</span>
-                      <span style={{ color: '#4a5568' }}>{get('division')}</span>
-                      <span style={{ color: '#4a5568', width: 40 }}>{get('wave_code')}</span>
-                      <span style={{ color: '#4a5568', width: 120 }}>{get('planned_start_time')}</span>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {csvError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>{csvError}</div>}
-
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={importCSV} disabled={importing} style={{ ...S.addBtn, flex: 1, opacity: importing ? 0.6 : 1 }}>
-                  {importing ? 'Importing…' : `Import ${csvData.rows.length} Rows`}
+          <div style={S.section}>
+            <div style={S.sLabel}>Checkpoints</div>
+            <div style={{ ...S.card, padding: 18 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                <input
+                  value={checkpointName}
+                  onChange={e => setCheckpointName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addCheckpoint()}
+                  placeholder="Add checkpoint name"
+                  style={{ ...S.input, flex: 1, minWidth: 220 }}
+                />
+                <button
+                  onClick={addCheckpoint}
+                  disabled={!checkpointName.trim() || savingCheckpoint}
+                  style={{ ...S.addBtn, opacity: !checkpointName.trim() || savingCheckpoint ? 0.5 : 1 }}
+                >
+                  {savingCheckpoint ? 'Saving…' : 'Add'}
                 </button>
-                <button onClick={() => { setCsvStep('idle'); setCsvData(null); setCsvError('') }} style={S.backBtn}>
+                <button
+                  onClick={seedEightCheckpoints}
+                  disabled={savingCheckpoint}
+                  style={{ ...S.backBtn, color: '#60a5fa' }}
+                >
+                  Seed 8
+                </button>
+              </div>
+
+              {checkpoints.length === 0 ? (
+                <div style={{ color: '#4a5568', fontSize: 13 }}>
+                  No checkpoints yet. Add them manually or use “Seed 8”.
+                </div>
+              ) : (
+                <div style={{ background: '#080b0f', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', gap: 10, padding: '6px 14px', borderBottom: '1px solid #1a2030', fontSize: 10, color: '#374151', textTransform: 'uppercase', letterSpacing: 1, fontFamily: F, fontWeight: 700 }}>
+                    <span style={{ width: 60 }}>Order</span>
+                    <span style={{ flex: 1 }}>Name</span>
+                    <span style={{ width: 90 }}>Quick Code</span>
+                    <span style={{ width: 30 }}></span>
+                  </div>
+
+                  {checkpoints.map((cp, i) => (
+                    <CheckpointSetupRow
+                      key={cp.id}
+                      checkpoint={cp}
+                      onSave={updateCheckpointName}
+                      onDelete={deleteCheckpoint}
+                      zebra={i % 2 === 1}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ color: '#4a5568', fontSize: 12, marginTop: 10 }}>
+                Start and Finish are created automatically for every race. Add only intermediate checkpoints here.
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                <button onClick={() => navigate(`/race/${eventId}/checkpoints`)} style={{ ...S.addBtn, flex: 1 }}>
+                  Open Checkpoints
+                </button>
+                <button onClick={() => navigate(`/results/${eventId}`)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
+                  View Live Results
+                </button>
+                <button onClick={() => navigate(`/race/${eventId}/corrections`)} style={{ ...S.backBtn, flex: 1, color: '#a78bfa' }}>
+                  Corrections & Adjustments
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+                <button onClick={() => exportRawLapEvents(eventId)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
+                  Export Raw Lap CSV
+                </button>
+                <button onClick={() => exportLapSummary(eventId)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
+                  Export Lap Summary CSV
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {entries.length > 0 && (
+            <div style={S.section}>
+              <div style={S.sLabel}>Roster ({entries.length})</div>
+
+              {event?.status !== 'draft' && (
+                <div style={{ marginBottom: 10, color: '#eab308', fontSize: 12, fontFamily: FB }}>
+                  Bib edits are sensitive once the race has started. Team, division, gender, and names can still be corrected inline.
+                </div>
+              )}
+
+              <div style={{ ...S.card, overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <div style={{ minWidth: 950 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        padding: '6px 14px',
+                        borderBottom: '1px solid #1a2030',
+                        fontSize: 10,
+                        color: '#374151',
+                        textTransform: 'uppercase',
+                        letterSpacing: 1,
+                        fontFamily: F,
+                        fontWeight: 700,
+                        alignItems: 'center',
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 2,
+                        background: '#0e1318',
+                        boxShadow: '0 2px 0 rgba(0,0,0,0.2)',
+                      }}
+                    >
+                      <span style={{ width: 54, color: event?.status !== 'draft' ? '#eab308' : '#374151' }}>Bib</span>
+                      <span style={{ width: 120 }}>First</span>
+                      <span style={{ width: 120 }}>Last</span>
+                      <span style={{ width: 140 }}>Team</span>
+                      <span style={{ width: 110 }}>Division</span>
+                      <span style={{ width: 60 }}>Age</span>
+                      <span style={{ width: 90 }}>Gender</span>
+                      <span style={{ width: 90 }}>Wave</span>
+                      <span style={{ flex: 1 }}></span>
+                      <span style={{ width: 24 }}></span>
+                    </div>
+
+                    <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                      {entries.map((entry, i) => (
+                        <EditableEntryRow
+                          key={entry.id}
+                          entry={entry}
+                          zebra={i % 2 === 1}
+                          onSaveField={saveEntryField}
+                          onDelete={removeEntry}
+                          teamOptions={teamOptions}
+                          divisionOptions={divisionOptions}
+                          genderOptions={genderOptions}
+                          waveOptions={waveOptions}
+                          wavesById={wavesById}
+                          eventId={eventId}
+                          onWavesChanged={loadWaves}
+                          saveState={saveStateByEntryId[entry.id] || 'idle'}
+                          isRaceLocked={event?.status !== 'draft'}
+                          waveLabel={entry.wave_id ? (wavesById[entry.wave_id]?.wave_code || null) : null}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showAdHoc ? (
+            <div style={{ ...S.card, padding: 18, marginBottom: 24 }}>
+              <div style={{ ...S.sLabel, marginBottom: 12 }}>Add Day-Of Competitor / Team</div>
+
+              {formError && (
+                <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>
+                  {formError}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={adhocLabelStyle}>Bib # *</label>
+                  <input
+                    value={form.bib_number}
+                    onChange={e => setForm(p => ({ ...p, bib_number: e.target.value }))}
+                    style={S.input}
+                  />
+                </div>
+
+                <div>
+                  <label style={adhocLabelStyle}>First Name</label>
+                  <input
+                    value={form.first_name}
+                    onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))}
+                    style={S.input}
+                  />
+                </div>
+
+                <div>
+                  <label style={adhocLabelStyle}>Last Name</label>
+                  <input
+                    value={form.last_name}
+                    onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))}
+                    style={S.input}
+                  />
+                </div>
+
+                <div>
+                  <label style={adhocLabelStyle}>Age</label>
+                  <input
+                    type="number"
+                    value={form.age}
+                    onChange={e => setForm(p => ({ ...p, age: e.target.value }))}
+                    style={S.input}
+                  />
+                </div>
+
+                <div>
+                  <label style={adhocLabelStyle}>Team</label>
+                  <input
+                    list="adhoc-team-options"
+                    value={form.team}
+                    onChange={e => setForm(p => ({ ...p, team: e.target.value }))}
+                    style={S.input}
+                  />
+                </div>
+
+                <div>
+                  <label style={adhocLabelStyle}>Division</label>
+                  <input
+                    list="adhoc-division-options"
+                    value={form.division}
+                    onChange={e => setForm(p => ({ ...p, division: e.target.value }))}
+                    style={S.input}
+                  />
+                </div>
+
+                <div>
+                  <label style={adhocLabelStyle}>Gender</label>
+                  <input
+                    list="adhoc-gender-options"
+                    value={form.gender}
+                    onChange={e => setForm(p => ({ ...p, gender: e.target.value }))}
+                    style={S.input}
+                  />
+                </div>
+              </div>
+
+              <datalist id="adhoc-team-options">
+                {teamOptions.map(v => <option key={v} value={v} />)}
+              </datalist>
+
+              <datalist id="adhoc-division-options">
+                {divisionOptions.map(v => <option key={v} value={v} />)}
+              </datalist>
+
+              <datalist id="adhoc-gender-options">
+                {genderOptions.map(v => <option key={v} value={v} />)}
+              </datalist>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                <button
+                  onClick={addAdHoc}
+                  disabled={saving}
+                  style={{ ...S.addBtn, flex: 1, opacity: saving ? 0.6 : 1 }}
+                >
+                  {saving ? 'Adding…' : 'Add Entry'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowAdHoc(false)
+                    setFormError('')
+                    setForm({
+                      bib_number: '',
+                      first_name: '',
+                      last_name: '',
+                      team: '',
+                      division: '',
+                      age: '',
+                      gender: '',
+                    })
+                  }}
+                  style={S.backBtn}
+                >
                   Cancel
                 </button>
               </div>
             </div>
+          ) : (
+            <button
+              onClick={() => setShowAdHoc(true)}
+              style={{
+                width: '100%',
+                padding: 14,
+                background: '#0e1318',
+                border: '1px dashed #1e2730',
+                borderRadius: 10,
+                color: '#60a5fa',
+                fontSize: 13,
+                cursor: 'pointer',
+                fontFamily: FB,
+                marginBottom: 24,
+              }}
+            >
+              + Add Day-Of Competitor / Team
+            </button>
+          )}
+
+          <div style={S.section}>
+            <div style={{ ...S.card, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.10)' }}>
+              <div style={{ padding: 18 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: '#f87171',
+                    textTransform: 'uppercase',
+                    letterSpacing: 2,
+                    marginBottom: 8,
+                    fontFamily: F,
+                    fontWeight: 800,
+                  }}
+                >
+                  Danger Zone
+                </div>
+
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#fecaca', marginBottom: 8, fontFamily: F }}>
+                  Reset All Race Timing Data
+                </div>
+
+                <div style={{ fontSize: 13, color: '#fca5a5', marginBottom: 14, lineHeight: 1.5 }}>
+                  This permanently deletes all captured splits and finishes for this race,
+                  clears wave actual start times, and resets the race back to draft.
+                  Entries, checkpoints, and waves will remain.
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+                  <div>
+                    <label style={adhocLabelStyle}>PIN</label>
+                    <input
+                      type="password"
+                      value={resetPin}
+                      onChange={e => setResetPin(e.target.value)}
+                      placeholder="Enter PIN"
+                      style={{
+                        ...S.input,
+                        border: '1px solid rgba(248,113,113,0.35)',
+                        background: '#120b0b',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={adhocLabelStyle}>Type RESET to confirm</label>
+                    <input
+                      value={resetConfirmText}
+                      onChange={e => setResetConfirmText(e.target.value)}
+                      placeholder="RESET"
+                      style={{
+                        ...S.input,
+                        border: '1px solid rgba(248,113,113,0.35)',
+                        background: '#120b0b',
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={resetRaceData}
+                    disabled={resettingRaceData}
+                    style={{
+                      height: 44,
+                      padding: '0 16px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: resettingRaceData ? '#7f1d1d' : '#dc2626',
+                      color: '#fff',
+                      cursor: resettingRaceData ? 'not-allowed' : 'pointer',
+                      fontFamily: F,
+                      fontWeight: 800,
+                      fontSize: 12,
+                      letterSpacing: 1.5,
+                      textTransform: 'uppercase',
+                      opacity: resettingRaceData ? 0.75 : 1,
+                    }}
+                  >
+                    {resettingRaceData ? 'Resetting…' : 'Reset Race Data'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {entries.length === 0 && (
+            <p style={{ textAlign: 'center', color: '#374151', fontSize: 12, marginTop: 10 }}>
+              No roster loaded — you can still capture laps and assign bibs manually
+            </p>
           )}
         </div>
 
-        {waves.length > 0 && (
-          <div style={S.section}>
-            <div style={S.sLabel}>Waves ({waves.length})</div>
-
-            <div style={{ ...S.card, overflow: 'hidden' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  padding: '6px 14px',
-                  borderBottom: '1px solid #1a2030',
-                  fontSize: 10,
-                  color: '#374151',
-                  textTransform: 'uppercase',
-                  letterSpacing: 1,
-                  fontFamily: F,
-                  fontWeight: 700,
-                  alignItems: 'center',
-                }}
-              >
-                <span style={{ width: 70 }}>Code</span>
-                <span style={{ flex: 1 }}>Name</span>
-                <span style={{ width: 190 }}>Planned</span>
-                <span style={{ width: 220 }}>Actual</span>
-                <span style={{ width: 90 }}></span>
-              </div>
-
-              {waves.map((wave, i) => (
-                <WaveSetupRow
-                  key={wave.id}
-                  wave={wave}
-                  zebra={i % 2 === 1}
-                  onStartNow={startWaveNow}
-                  onSaveActualTime={saveWaveActualTime}
-                />
-              ))}
-            </div>
-
-            <div style={{ color: '#4a5568', fontSize: 12, marginTop: 10 }}>
-              Use <strong style={{ color: '#94a3b8' }}>Start Now</strong> when the wave gun goes off, or click the actual time field to correct it manually.
-            </div>
-          </div>
-        )}
-
-        <div style={S.section}>
-          <div style={S.sLabel}>Checkpoints</div>
-          <div style={{ ...S.card, padding: 18 }}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-              <input
-                value={checkpointName}
-                onChange={e => setCheckpointName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addCheckpoint()}
-                placeholder="Add checkpoint name"
-                style={{ ...S.input, flex: 1, minWidth: 220 }}
-              />
-              <button
-                onClick={addCheckpoint}
-                disabled={!checkpointName.trim() || savingCheckpoint}
-                style={{ ...S.addBtn, opacity: !checkpointName.trim() || savingCheckpoint ? 0.5 : 1 }}
-              >
-                {savingCheckpoint ? 'Saving…' : 'Add'}
-              </button>
-              <button
-                onClick={seedEightCheckpoints}
-                disabled={savingCheckpoint}
-                style={{ ...S.backBtn, color: '#60a5fa' }}
-              >
-                Seed 8
-              </button>
-            </div>
-
-            {checkpoints.length === 0 ? (
-              <div style={{ color: '#4a5568', fontSize: 13 }}>
-                No checkpoints yet. Add them manually or use “Seed 8”.
-              </div>
-            ) : (
-              <div style={{ background: '#080b0f', borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', gap: 10, padding: '6px 14px', borderBottom: '1px solid #1a2030', fontSize: 10, color: '#374151', textTransform: 'uppercase', letterSpacing: 1, fontFamily: F, fontWeight: 700 }}>
-                  <span style={{ width: 60 }}>Order</span>
-                  <span style={{ flex: 1 }}>Name</span>
-                  <span style={{ width: 90 }}>Quick Code</span>
-                  <span style={{ width: 30 }}></span>
-                </div>
-
-                {checkpoints.map((cp, i) => (
-                  <CheckpointSetupRow
-                    key={cp.id}
-                    checkpoint={cp}
-                    onSave={updateCheckpointName}
-                    onDelete={deleteCheckpoint}
-                    zebra={i % 2 === 1}
-                  />
-                ))}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-              <button onClick={() => navigate(`/race/${eventId}/checkpoints`)} style={{ ...S.addBtn, flex: 1 }}>
-                Open Checkpoints
-              </button>
-              <button onClick={() => navigate(`/results/${eventId}`)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
-                View Live Results
-              </button>
-              <button onClick={() => navigate(`/race/${eventId}/corrections`)} style={{ ...S.backBtn, flex: 1, color: '#a78bfa' }}>
-                Corrections & Adjustments
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-              <button onClick={() => exportRawLapEvents(eventId)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
-                Export Raw Lap CSV
-              </button>
-              <button onClick={() => exportLapSummary(eventId)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
-                Export Lap Summary CSV
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {entries.length > 0 && (
-          <div style={S.section}>
-            <div style={S.sLabel}>Roster ({entries.length})</div>
-
-            {event?.status !== 'draft' && (
-              <div style={{ marginBottom: 10, color: '#eab308', fontSize: 12, fontFamily: FB }}>
-                Bib edits are sensitive once the race has started. Team, division, gender, and names can still be corrected inline.
-              </div>
-            )}
-
-            <div style={{ ...S.card, overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto' }}>
-                <div style={{ minWidth: 950 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: 10,
-                      padding: '6px 14px',
-                      borderBottom: '1px solid #1a2030',
-                      fontSize: 10,
-                      color: '#374151',
-                      textTransform: 'uppercase',
-                      letterSpacing: 1,
-                      fontFamily: F,
-                      fontWeight: 700,
-                      alignItems: 'center',
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 2,
-                      background: '#0e1318',
-                      boxShadow: '0 2px 0 rgba(0,0,0,0.2)',
-                    }}
-                  >
-                    <span style={{ width: 54, color: event?.status !== 'draft' ? '#eab308' : '#374151' }}>Bib</span>
-                    <span style={{ width: 120 }}>First</span>
-                    <span style={{ width: 120 }}>Last</span>
-                    <span style={{ width: 140 }}>Team</span>
-                    <span style={{ width: 110 }}>Division</span>
-                    <span style={{ width: 60 }}>Age</span>
-                    <span style={{ width: 90 }}>Gender</span>
-                    <span style={{ width: 90 }}>Wave</span>
-                    <span style={{ flex: 1 }}></span>
-                    <span style={{ width: 24 }}></span>
-                  </div>
-
-                  <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-                    {entries.map((entry, i) => (
-                      <EditableEntryRow
-                        key={entry.id}
-                        entry={entry}
-                        zebra={i % 2 === 1}
-                        onSaveField={saveEntryField}
-                        onDelete={removeEntry}
-                        teamOptions={teamOptions}
-                        divisionOptions={divisionOptions}
-                        genderOptions={genderOptions}
-                        waveOptions={waveOptions}
-                        wavesById={wavesById}
-                        eventId={eventId}
-                        onWavesChanged={loadWaves}
-                        saveState={saveStateByEntryId[entry.id] || 'idle'}
-                        isRaceLocked={event?.status !== 'draft'}
-                        waveLabel={entry.wave_id ? (wavesById[entry.wave_id]?.wave_code || null) : null}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showAdHoc ? (
-          <div style={{ ...S.card, padding: 18, marginBottom: 24 }}>
-            <div style={{ ...S.sLabel, marginBottom: 12 }}>Add Day-Of Competitor / Team</div>
-
-            {formError && (
-              <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>
-                {formError}
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={adhocLabelStyle}>Bib # *</label>
-                <input
-                  value={form.bib_number}
-                  onChange={e => setForm(p => ({ ...p, bib_number: e.target.value }))}
-                  style={S.input}
-                />
-              </div>
-
-              <div>
-                <label style={adhocLabelStyle}>First Name</label>
-                <input
-                  value={form.first_name}
-                  onChange={e => setForm(p => ({ ...p, first_name: e.target.value }))}
-                  style={S.input}
-                />
-              </div>
-
-              <div>
-                <label style={adhocLabelStyle}>Last Name</label>
-                <input
-                  value={form.last_name}
-                  onChange={e => setForm(p => ({ ...p, last_name: e.target.value }))}
-                  style={S.input}
-                />
-              </div>
-
-              <div>
-                <label style={adhocLabelStyle}>Age</label>
-                <input
-                  type="number"
-                  value={form.age}
-                  onChange={e => setForm(p => ({ ...p, age: e.target.value }))}
-                  style={S.input}
-                />
-              </div>
-
-              <div>
-                <label style={adhocLabelStyle}>Team</label>
-                <input
-                  list="adhoc-team-options"
-                  value={form.team}
-                  onChange={e => setForm(p => ({ ...p, team: e.target.value }))}
-                  style={S.input}
-                />
-              </div>
-
-              <div>
-                <label style={adhocLabelStyle}>Division</label>
-                <input
-                  list="adhoc-division-options"
-                  value={form.division}
-                  onChange={e => setForm(p => ({ ...p, division: e.target.value }))}
-                  style={S.input}
-                />
-              </div>
-
-              <div>
-                <label style={adhocLabelStyle}>Gender</label>
-                <input
-                  list="adhoc-gender-options"
-                  value={form.gender}
-                  onChange={e => setForm(p => ({ ...p, gender: e.target.value }))}
-                  style={S.input}
-                />
-              </div>
-            </div>
-
-            <datalist id="adhoc-team-options">
-              {teamOptions.map(v => <option key={v} value={v} />)}
-            </datalist>
-
-            <datalist id="adhoc-division-options">
-              {divisionOptions.map(v => <option key={v} value={v} />)}
-            </datalist>
-
-            <datalist id="adhoc-gender-options">
-              {genderOptions.map(v => <option key={v} value={v} />)}
-            </datalist>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <button
-                onClick={addAdHoc}
-                disabled={saving}
-                style={{ ...S.addBtn, flex: 1, opacity: saving ? 0.6 : 1 }}
-              >
-                {saving ? 'Adding…' : 'Add Entry'}
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowAdHoc(false)
-                  setFormError('')
-                  setForm({
-                    bib_number: '',
-                    first_name: '',
-                    last_name: '',
-                    team: '',
-                    division: '',
-                    age: '',
-                    gender: '',
-                  })
-                }}
-                style={S.backBtn}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowAdHoc(true)}
-            style={{
-              width: '100%',
-              padding: 14,
-              background: '#0e1318',
-              border: '1px dashed #1e2730',
-              borderRadius: 10,
-              color: '#60a5fa',
-              fontSize: 13,
-              cursor: 'pointer',
-              fontFamily: FB,
-              marginBottom: 24,
-            }}
-          >
-            + Add Day-Of Competitor / Team
-          </button>
-        )}
-
-        <div style={S.section}>
-          <div style={{ ...S.card, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.10)' }}>
-            <div style={{ padding: 18 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: '#f87171',
-                  textTransform: 'uppercase',
-                  letterSpacing: 2,
-                  marginBottom: 8,
-                  fontFamily: F,
-                  fontWeight: 800,
-                }}
-              >
-                Danger Zone
-              </div>
-
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#fecaca', marginBottom: 8, fontFamily: F }}>
-                Reset All Race Timing Data
-              </div>
-
-              <div style={{ fontSize: 13, color: '#fca5a5', marginBottom: 14, lineHeight: 1.5 }}>
-                This permanently deletes all captured splits and finishes for this race,
-                clears wave actual start times, and resets the race back to draft.
-                Entries, checkpoints, and waves will remain.
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
-                <div>
-                  <label style={adhocLabelStyle}>PIN</label>
-                  <input
-                    type="password"
-                    value={resetPin}
-                    onChange={e => setResetPin(e.target.value)}
-                    placeholder="Enter PIN"
-                    style={{
-                      ...S.input,
-                      border: '1px solid rgba(248,113,113,0.35)',
-                      background: '#120b0b',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={adhocLabelStyle}>Type RESET to confirm</label>
-                  <input
-                    value={resetConfirmText}
-                    onChange={e => setResetConfirmText(e.target.value)}
-                    placeholder="RESET"
-                    style={{
-                      ...S.input,
-                      border: '1px solid rgba(248,113,113,0.35)',
-                      background: '#120b0b',
-                    }}
-                  />
-                </div>
-
-                <button
-                  onClick={resetRaceData}
-                  disabled={resettingRaceData}
-                  style={{
-                    height: 44,
-                    padding: '0 16px',
-                    borderRadius: 8,
-                    border: 'none',
-                    background: resettingRaceData ? '#7f1d1d' : '#dc2626',
-                    color: '#fff',
-                    cursor: resettingRaceData ? 'not-allowed' : 'pointer',
-                    fontFamily: F,
-                    fontWeight: 800,
-                    fontSize: 12,
-                    letterSpacing: 1.5,
-                    textTransform: 'uppercase',
-                    opacity: resettingRaceData ? 0.75 : 1,
-                  }}
-                >
-                  {resettingRaceData ? 'Resetting…' : 'Reset Race Data'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {entries.length === 0 && (
-          <p style={{ textAlign: 'center', color: '#374151', fontSize: 12, marginTop: 10 }}>
-            No roster loaded — you can still capture laps and assign bibs manually
-          </p>
-        )}
+        <style>{`
+          input:focus, select:focus, textarea:focus { border-color: #f97316 !important; outline: none; }
+          input::placeholder { color: #2d3748; }
+        `}</style>
       </div>
-
-      <style>{`
-        input:focus, select:focus, textarea:focus { border-color: #f97316 !important; outline: none; }
-        input::placeholder { color: #2d3748; }
-      `}</style>
-    </div>
-  )
+    )
 }

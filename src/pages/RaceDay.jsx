@@ -106,47 +106,92 @@ export default function RaceDay() {
 
   // ── load ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!eventId) return
+  if (!eventId) return
 
-    supabase.from('race_events').select('*').eq('id', eventId).single()
-      .then(({ data }) => {
-        setEvent(data)
-        // Restore timer state if race already started
-        if (data?.race_started_at && !_startTime) {
-          _startTime = new Date(data.race_started_at).getTime()
-          _running   = true
-          setRunning(true)
+  // Reset module-level timer state whenever switching races
+  _startTime = null
+  _running = false
+
+  setRunning(false)
+  setElapsed(0)
+  setFinishes([])
+  setEvent(null)
+
+  supabase.from('race_events').select('*').eq('id', eventId).single()
+    .then(({ data }) => {
+      setEvent(data)
+
+      if (data?.race_started_at) {
+        _startTime = new Date(data.race_started_at).getTime()
+        _running = data.status === 'active'
+        setRunning(data.status === 'active')
+        setElapsed(Math.max(0, Date.now() - _startTime))
+      } else {
+        _startTime = null
+        _running = false
+        setRunning(false)
+        setElapsed(0)
+      }
+    })
+
+  supabase.from('event_entries').select('*').eq('event_id', eventId)
+    .then(({ data }) => {
+      const map = {}
+      data?.forEach(e => { map[e.bib_number] = e })
+      setEntries(map)
+    })
+
+  supabase.from('race_finishes').select('*').eq('event_id', eventId)
+    .order('place', { ascending: true })
+    .then(({ data }) => {
+      if (data?.length) {
+        setFinishes(data)
+        placeRef.current = data.length + 1
+      } else {
+        placeRef.current = 1
+      }
+    })
+
+  const channel = supabase.channel(`raceday:${eventId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'race_finishes', filter: `event_id=eq.${eventId}` },
+      p => setFinishes(prev => {
+        if (prev.find(f => f.id === p.new.id)) return prev
+        return [...prev, p.new].sort((a, b) => a.place - b.place)
+      })
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'race_finishes', filter: `event_id=eq.${eventId}` },
+      p => setFinishes(prev => prev.map(f => f.id === p.new.id ? p.new : f))
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
+      p => {
+        const row = p.new
+        setEvent(row)
+
+        if (row?.race_started_at) {
+          _startTime = new Date(row.race_started_at).getTime()
+          _running = row.status === 'active'
+          setRunning(row.status === 'active')
+          setElapsed(Math.max(0, Date.now() - _startTime))
+        } else {
+          _startTime = null
+          _running = false
+          setRunning(false)
+          setElapsed(0)
         }
-      })
+      }
+    )
+    .subscribe()
 
-    supabase.from('event_entries').select('*').eq('event_id', eventId)
-      .then(({ data }) => {
-        const map = {}
-        data?.forEach(e => { map[e.bib_number] = e })
-        setEntries(map)
-      })
-
-    supabase.from('race_finishes').select('*').eq('event_id', eventId)
-      .order('place', { ascending: true })
-      .then(({ data }) => {
-        if (data?.length) {
-          setFinishes(data)
-          placeRef.current = data.length + 1
-        }
-      })
-
-    const channel = supabase.channel(`raceday:${eventId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'race_finishes', filter: `event_id=eq.${eventId}` },
-        p => setFinishes(prev => {
-          if (prev.find(f => f.id === p.new.id)) return prev
-          return [...prev, p.new].sort((a, b) => a.place - b.place)
-        }))
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'race_finishes', filter: `event_id=eq.${eventId}` },
-        p => setFinishes(prev => prev.map(f => f.id === p.new.id ? p.new : f)))
-      .subscribe()
-
-    return () => supabase.removeChannel(channel)
-  }, [eventId])
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}, [eventId])
 
   // ── clock ─────────────────────────────────────────────────
   useEffect(() => {

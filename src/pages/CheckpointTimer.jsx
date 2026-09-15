@@ -183,6 +183,18 @@ export default function CheckpointTimer() {
   const T = THEMES[theme]
   const isAdmin = !!session?.user
 
+  const checkpointName = String(checkpoint?.name || '').trim().toLowerCase()
+  const isFinishCheckpoint =
+    checkpointName === 'finish' ||
+    checkpointName.includes('finish') ||
+    checkpointName.includes('finish line')
+
+  const captureLabel = isFinishCheckpoint ? 'Finish' : 'Lap'
+  const checkpointSummaryLabel = isFinishCheckpoint ? 'Finish Summary' : 'Checkpoint Summary'
+  const recordedCountLabel = isFinishCheckpoint ? 'Recorded Finishers' : 'Recorded Checkpoints'
+  const pendingLabel = isFinishCheckpoint ? 'Pending Finish Assignments' : 'Pending'
+  const actionWaitingLabel = isFinishCheckpoint ? 'No pending finishers' : 'No pending laps'
+
   const modeBtn = active => ({
     flex: 1,
     height: 40,
@@ -323,8 +335,8 @@ export default function CheckpointTimer() {
     if (lastAction.type === 'undo') return { tone: 'warning', icon: '↩', title: 'Last Undo' }
     if (lastAction.type === 'void') return { tone: 'warning', icon: '⛔', title: 'Voided' }
     if (lastAction.type === 'assign') return { tone: 'success', icon: '✓', title: 'Last Assignment' }
-    return { tone: 'success', icon: '✓', title: 'Last Capture' }
-  }, [lastAction])
+    return { tone: 'success', icon: '✓', title: isFinishCheckpoint ? 'Last Finish Capture' : 'Last Capture' }
+  }, [lastAction, isFinishCheckpoint])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -339,9 +351,11 @@ export default function CheckpointTimer() {
       listener.subscription.unsubscribe()
     }
   }, [])
+
   useEffect(() => {
     setConfirmUndoOpen(false)
   }, [lastAction?.lapId])
+
   useEffect(() => {
     const savedMode = localStorage.getItem(getModeStorageKey(checkpointId))
     if (savedMode === 'capture_first' || savedMode === 'bib_first') {
@@ -379,6 +393,20 @@ export default function CheckpointTimer() {
 
   useEffect(() => {
     if (!eventId || !checkpointId) return
+
+    setEvent(null)
+    setCheckpoint(null)
+    setLaps([])
+    setRaceStart(null)
+    setElapsed(0)
+    setBibInput('')
+    setPreview(null)
+    setBibEntryActive(false)
+    setEditingLapId(null)
+    setEditingBib('')
+    setLastAction(null)
+    setConfirmUndoOpen(false)
+
     deviceIdRef.current = getDeviceId()
 
     async function load() {
@@ -389,7 +417,12 @@ export default function CheckpointTimer() {
         { data: lapData },
       ] = await Promise.all([
         supabase.from('race_events').select('*').eq('id', eventId).single(),
-        supabase.from('race_checkpoints').select('*').eq('id', checkpointId).single(),
+        supabase
+          .from('race_checkpoints')
+          .select('*')
+          .eq('id', checkpointId)
+          .eq('event_id', eventId)
+          .single(),
         supabase.from('event_entries').select('*').eq('event_id', eventId),
         supabase
           .from('lap_events')
@@ -404,8 +437,10 @@ export default function CheckpointTimer() {
 
       if (eventData?.race_started_at) {
         setRaceStart(new Date(eventData.race_started_at).getTime())
+      } else {
+        setRaceStart(null)
+        setElapsed(0)
       }
-
       const map = {}
       ;(entryData || []).forEach(e => { map[e.bib_number] = e })
       setEntries(map)
@@ -423,6 +458,9 @@ export default function CheckpointTimer() {
           setEvent(payload.new)
           if (payload.new?.race_started_at) {
             setRaceStart(new Date(payload.new.race_started_at).getTime())
+          } else {
+            setRaceStart(null)
+            setElapsed(0)
           }
         }
       )
@@ -601,6 +639,20 @@ export default function CheckpointTimer() {
     [laps]
   )
 
+  const activeOrderedLaps = useMemo(() => {
+    return laps
+      .filter(l => l.status !== 'void')
+      .sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+  }, [laps])
+
+  const activePlaceByLapId = useMemo(() => {
+    const map = {}
+    activeOrderedLaps.forEach((lap, idx) => {
+      map[lap.id] = idx + 1
+    })
+    return map
+  }, [activeOrderedLaps])
+
   const nextPending = pending[0] || null
   const undoTarget = useMemo(() => {
     if (!lastAction?.lapId) return null
@@ -653,6 +705,7 @@ export default function CheckpointTimer() {
     if (pendingLocal.length > 0) return { label: 'Saved locally', tone: 'warning' }
     if (canCapture) return { label: 'Ready', tone: 'success' }
     if (event?.status === 'finished') return { label: 'Race finished', tone: 'default' }
+    if (event?.status === 'results_review') return { label: 'Results review', tone: 'warning' }
     return { label: 'Waiting', tone: 'default' }
   }, [eventId, checkpointId, syncing, canCapture, event?.status])
 
@@ -711,18 +764,18 @@ export default function CheckpointTimer() {
     lastCaptureAtRef.current = nowTs
     setSavingLap(true)
 
-    const now = new Date()
+    const nowDate = new Date()
     const entry = activeBib ? entries[activeBib] : null
 
     const row = {
       event_id: eventId,
       checkpoint_id: checkpointId,
-      elapsed_ms: now.getTime() - raceStart,
-      captured_at: now.toISOString(),
+      elapsed_ms: nowDate.getTime() - raceStart,
+      captured_at: nowDate.toISOString(),
       status: isBibFirst ? 'assigned' : 'pending',
       bib_number: isBibFirst ? activeBib : null,
       entry_id: isBibFirst ? (entry?.id ?? null) : null,
-      assigned_at: isBibFirst ? now.toISOString() : null,
+      assigned_at: isBibFirst ? nowDate.toISOString() : null,
       source: 'manual',
       device_id: deviceIdRef.current,
     }
@@ -742,7 +795,9 @@ export default function CheckpointTimer() {
       name: row.bib_number ? getEntryDisplayName(row.bib_number) : 'Pending tap',
       team: row.bib_number ? getEntryTeam(row.bib_number) : '',
       elapsed_ms: row.elapsed_ms,
-      detail: row.bib_number ? 'Recording checkpoint…' : 'Recording pending tap…',
+      detail: row.bib_number
+        ? (isFinishCheckpoint ? 'Recording finisher…' : 'Recording checkpoint…')
+        : (isFinishCheckpoint ? 'Recording finish tap…' : 'Recording pending tap…'),
     })
 
     const { data, error } = await supabase.from('lap_events').insert(row).select().single()
@@ -763,7 +818,9 @@ export default function CheckpointTimer() {
         name: data.bib_number ? getEntryDisplayName(data.bib_number) : 'Pending tap',
         team: data.bib_number ? getEntryTeam(data.bib_number) : '',
         elapsed_ms: data.elapsed_ms,
-        detail: data.bib_number ? 'Checkpoint saved' : 'Tap saved — assign bib next',
+        detail: data.bib_number
+          ? (isFinishCheckpoint ? 'Finisher saved' : 'Checkpoint saved')
+          : (isFinishCheckpoint ? 'Finish tap saved — assign bib next' : 'Tap saved — assign bib next'),
       })
     } else {
       const pendingLocal = loadPendingLocal(eventId, checkpointId)
@@ -781,7 +838,12 @@ export default function CheckpointTimer() {
         detail: 'Saved locally — waiting to sync',
       })
 
-      setTransientMessage(isBibFirst ? 'Checkpoint saved locally, waiting to sync' : 'Tap saved locally, waiting to sync', 2200)
+      setTransientMessage(
+        isBibFirst
+          ? (isFinishCheckpoint ? 'Finisher saved locally, waiting to sync' : 'Checkpoint saved locally, waiting to sync')
+          : (isFinishCheckpoint ? 'Finish tap saved locally, waiting to sync' : 'Tap saved locally, waiting to sync'),
+        2200
+      )
     }
 
     if (isBibFirst) {
@@ -811,6 +873,7 @@ export default function CheckpointTimer() {
     pushLastAction,
     refocusBibInput,
     setTransientMessage,
+    isFinishCheckpoint,
   ])
 
   const assignBib = useCallback(async () => {
@@ -838,7 +901,7 @@ export default function CheckpointTimer() {
       name: getEntryDisplayName(bib),
       team: getEntryTeam(bib),
       elapsed_ms: nextPending.elapsed_ms,
-      detail: 'Assigning bib to pending tap…',
+      detail: isFinishCheckpoint ? 'Assigning bib to pending finisher…' : 'Assigning bib to pending tap…',
     })
 
     const { error } = await supabase.from('lap_events').update(update).eq('id', nextPending.id)
@@ -896,7 +959,9 @@ export default function CheckpointTimer() {
     pushLastAction,
     refocusBibInput,
     setTransientMessage,
+    isFinishCheckpoint,
   ])
+
   const runPrimaryAction = useCallback(() => {
     const bib = bibInput.trim()
 
@@ -959,76 +1024,75 @@ export default function CheckpointTimer() {
         name: 'Pending tap',
         team: '',
         elapsed_ms: target.elapsed_ms,
-        detail: 'Most recent pending tap voided',
+        detail: isFinishCheckpoint ? 'Most recent pending finisher voided' : 'Most recent pending tap voided',
       })
 
-      setTransientMessage('Last pending tap voided', 1500)
+      setTransientMessage(isFinishCheckpoint ? 'Last pending finisher voided' : 'Last pending tap voided', 1500)
     }
-  }, [pending, eventId, checkpointId, isAdmin, pushLastAction, setTransientMessage])
+  }, [pending, eventId, checkpointId, isAdmin, pushLastAction, setTransientMessage, isFinishCheckpoint])
 
-const undoLastCheckpoint = useCallback(async () => {
-  const targetId = lastAction?.lapId
-  if (!targetId) return
+  const undoLastCheckpoint = useCallback(async () => {
+    const targetId = lastAction?.lapId
+    if (!targetId) return
 
-  const target = laps.find(l => l.id === targetId)
-  if (!target || target.status === 'void') return
+    const target = laps.find(l => l.id === targetId)
+    if (!target || target.status === 'void') return
 
-  const update = {
-    status: 'void',
-    is_corrected: true,
-    correction_note: 'Undo last checkpoint from timer',
-  }
+    const update = {
+      status: 'void',
+      is_corrected: true,
+      correction_note: 'Undo last checkpoint from timer',
+    }
 
-  setLaps(prev => prev.map(l => (l.id === target.id ? { ...l, ...update } : l)))
+    setLaps(prev => prev.map(l => (l.id === target.id ? { ...l, ...update } : l)))
 
-  const { error } = await supabase.from('lap_events').update(update).eq('id', target.id)
+    const { error } = await supabase.from('lap_events').update(update).eq('id', target.id)
 
-  if (error) {
-    const pendingLocal = loadPendingLocal(eventId, checkpointId)
-    pendingLocal.push({
-      type: 'status_update',
-      target_id: target.id,
-      payload: update,
-    })
-    savePendingLocal(eventId, checkpointId, pendingLocal)
+    if (error) {
+      const pendingLocal = loadPendingLocal(eventId, checkpointId)
+      pendingLocal.push({
+        type: 'status_update',
+        target_id: target.id,
+        payload: update,
+      })
+      savePendingLocal(eventId, checkpointId, pendingLocal)
 
-    pushLastAction({
-      type: 'undo',
-      status: 'local',
-      lapId: target.id,
-      bib_number: target.bib_number || null,
-      name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
-      team: target.bib_number ? getEntryTeam(target.bib_number) : '',
-      elapsed_ms: target.elapsed_ms,
-      detail: 'Undo saved locally — waiting to sync',
-    })
+      pushLastAction({
+        type: 'undo',
+        status: 'local',
+        lapId: target.id,
+        bib_number: target.bib_number || null,
+        name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
+        team: target.bib_number ? getEntryTeam(target.bib_number) : '',
+        elapsed_ms: target.elapsed_ms,
+        detail: 'Undo saved locally — waiting to sync',
+      })
 
-    setTransientMessage('Undo saved locally, waiting to sync', 1800)
-  } else {
-    pushLastAction({
-      type: 'undo',
-      status: 'saved',
-      lapId: target.id,
-      bib_number: target.bib_number || null,
-      name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
-      team: target.bib_number ? getEntryTeam(target.bib_number) : '',
-      elapsed_ms: target.elapsed_ms,
-      detail: 'Last action undone',
-    })
+      setTransientMessage('Undo saved locally, waiting to sync', 1800)
+    } else {
+      pushLastAction({
+        type: 'undo',
+        status: 'saved',
+        lapId: target.id,
+        bib_number: target.bib_number || null,
+        name: target.bib_number ? getEntryDisplayName(target.bib_number) : 'Pending tap',
+        team: target.bib_number ? getEntryTeam(target.bib_number) : '',
+        elapsed_ms: target.elapsed_ms,
+        detail: 'Last action undone',
+      })
 
-    setTransientMessage('Last action undone', 1500)
-  }
-}, [
-  lastAction,
-  laps,
-  eventId,
-  checkpointId,
-  getEntryDisplayName,
-  getEntryTeam,
-  pushLastAction,
-  setTransientMessage,
-])
-
+      setTransientMessage('Last action undone', 1500)
+    }
+  }, [
+    lastAction,
+    laps,
+    eventId,
+    checkpointId,
+    getEntryDisplayName,
+    getEntryTeam,
+    pushLastAction,
+    setTransientMessage,
+  ])
 
   const voidLap = useCallback(async (lap) => {
     if (!isAdmin) return
@@ -1073,12 +1137,12 @@ const undoLastCheckpoint = useCallback(async () => {
         name: lap.bib_number ? getEntryDisplayName(lap.bib_number) : 'Pending tap',
         team: lap.bib_number ? getEntryTeam(lap.bib_number) : '',
         elapsed_ms: lap.elapsed_ms,
-        detail: 'Lap voided',
+        detail: isFinishCheckpoint ? 'Finisher voided' : 'Lap voided',
       })
 
-      setTransientMessage('Lap voided', 1400)
+      setTransientMessage(isFinishCheckpoint ? 'Finisher voided' : 'Lap voided', 1400)
     }
-  }, [eventId, checkpointId, isAdmin, getEntryDisplayName, getEntryTeam, pushLastAction, setTransientMessage])
+  }, [eventId, checkpointId, isAdmin, getEntryDisplayName, getEntryTeam, pushLastAction, setTransientMessage, isFinishCheckpoint])
 
   const restoreLap = useCallback(async (lap) => {
     if (!isAdmin) return
@@ -1126,12 +1190,12 @@ const undoLastCheckpoint = useCallback(async () => {
         name: 'Pending tap',
         team: '',
         elapsed_ms: lap.elapsed_ms,
-        detail: 'Lap restored to pending',
+        detail: isFinishCheckpoint ? 'Finisher restored to pending' : 'Lap restored to pending',
       })
 
-      setTransientMessage('Lap restored to pending', 1500)
+      setTransientMessage(isFinishCheckpoint ? 'Finisher restored to pending' : 'Lap restored to pending', 1500)
     }
-  }, [eventId, checkpointId, isAdmin, pushLastAction, setTransientMessage])
+  }, [eventId, checkpointId, isAdmin, pushLastAction, setTransientMessage, isFinishCheckpoint])
 
   const saveEditedBib = useCallback(async (lap) => {
     if (!isAdmin) return
@@ -1175,98 +1239,93 @@ const undoLastCheckpoint = useCallback(async () => {
   }, [editingBib, entries, laps, isAdmin, getEntryDisplayName, getEntryTeam, pushLastAction])
 
   useEffect(() => {
-  const isTextInput = el => {
-    if (!el) return false
-    const tag = el.tagName
-    return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
-  }
-
-  const h = e => {
-    const active = document.activeElement
-    const inInput = isTextInput(active)
-    const bib = bibInput.trim()
-
-    // Space = do the main action when not typing in a field
-    if (e.code === 'Space') {
-    if (inputMode === 'capture_first' && canCapture) {
-      e.preventDefault()
-      captureLap()
-      return
+    const isTextInput = el => {
+      if (!el) return false
+      const tag = el.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
     }
 
-    if (!inInput) {
-      e.preventDefault()
-      runPrimaryAction()
-      return
-    }
-  }
+    const h = e => {
+      const active = document.activeElement
+      const inInput = isTextInput(active)
+      const bib = bibInput.trim()
 
-    // Enter = submit current bib workflow
-    if (e.key === 'Enter') {
-      if (bib) {
-        e.preventDefault()
-
-        if (inputMode === 'capture_first' && nextPending) {
-          assignBib()
-          return
-        }
-
-        if (inputMode === 'bib_first' && canCapture) {
+      if (e.code === 'Space') {
+        if (inputMode === 'capture_first' && canCapture) {
+          e.preventDefault()
           captureLap()
           return
         }
+
+        if (!inInput) {
+          e.preventDefault()
+          runPrimaryAction()
+          return
+        }
       }
-    }
 
-    // Escape = clear bib field
-    if (e.key === 'Escape') {
-      if (bib) {
-        e.preventDefault()
-        setBibInput('')
-        setPreview(null)
-        refocusBibInput()
+      if (e.key === 'Enter') {
+        if (bib) {
+          e.preventDefault()
+
+          if (inputMode === 'capture_first' && nextPending) {
+            assignBib()
+            return
+          }
+
+          if (inputMode === 'bib_first' && canCapture) {
+            captureLap()
+            return
+          }
+        }
       }
-      return
-    }
 
-    // If user types while not focused in an input, route it into bib field
-    const isSingleChar = e.key.length === 1
-    const isTypingChar = /^[0-9]$/.test(e.key)
+      if (e.key === 'Escape') {
+        if (bib) {
+          e.preventDefault()
+          setBibInput('')
+          setPreview(null)
+          refocusBibInput()
+        }
+        return
+      }
 
-    if (!inInput && isSingleChar && isTypingChar) {
-      e.preventDefault()
-      setBibInput(prev => `${prev}${e.key}`)
-      setBibEntryActive(true)
-      requestAnimationFrame(() => {
-        inputRef.current?.focus()
-      })
-      return
-    }
+      const isSingleChar = e.key.length === 1
+      const isTypingChar = /^[0-9]$/.test(e.key)
 
-    // Backspace edits bib even if input isn't focused
-    if (!inInput && e.key === 'Backspace') {
-      if (bibInput.length > 0) {
+      if (!inInput && isSingleChar && isTypingChar) {
         e.preventDefault()
-        setBibInput(prev => prev.slice(0, -1))
+        setBibInput(prev => `${prev}${e.key}`)
+        setBibEntryActive(true)
         requestAnimationFrame(() => {
           inputRef.current?.focus()
         })
+        return
+      }
+
+      if (!inInput && e.key === 'Backspace') {
+        if (bibInput.length > 0) {
+          e.preventDefault()
+          setBibInput(prev => prev.slice(0, -1))
+          requestAnimationFrame(() => {
+            inputRef.current?.focus()
+          })
+        }
       }
     }
-  }
 
-  window.addEventListener('keydown', h)
-  return () => window.removeEventListener('keydown', h)
-}, [
-  bibInput,
-  inputMode,
-  nextPending,
-  canCapture,
-  assignBib,
-  captureLap,
-  runPrimaryAction,
-  refocusBibInput,
-])
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [
+    bibInput,
+    inputMode,
+    nextPending,
+    canCapture,
+    assignBib,
+    captureLap,
+    runPrimaryAction,
+    refocusBibInput,
+  ])
 
   const lastActionTone = getLastActionTone()
 
@@ -1334,7 +1393,13 @@ const undoLastCheckpoint = useCallback(async () => {
                     marginTop: 2,
                   }}
                 >
-                  {event?.status === 'finished' ? 'Race finished' : canCapture ? 'Race active' : 'Waiting'}
+                  {event?.status === 'finished'
+                    ? 'Race finished'
+                    : event?.status === 'results_review'
+                      ? 'Results review'
+                      : canCapture
+                        ? 'Race active'
+                        : 'Waiting'}
                 </div>
               </div>
 
@@ -1364,7 +1429,7 @@ const undoLastCheckpoint = useCallback(async () => {
                     marginTop: 3,
                   }}
                 >
-                  CP {checkpoint?.checkpoint_order ?? '—'}
+                  {isFinishCheckpoint ? 'Finish Line' : `CP ${checkpoint?.checkpoint_order ?? '—'}`}
                 </div>
               </div>
             </div>
@@ -1390,7 +1455,7 @@ const undoLastCheckpoint = useCallback(async () => {
                     textTransform: 'uppercase',
                   }}
                 >
-                  Checkpoints · {checkpointCount}
+                  {isFinishCheckpoint ? `Finishers · ${checkpointCount}` : `Checkpoints · ${checkpointCount}`}
                 </div>
                 <div
                   style={{
@@ -1546,8 +1611,12 @@ const undoLastCheckpoint = useCallback(async () => {
 
             <div style={{ textAlign: 'center', fontSize: 11, color: T.muted, minHeight: 18, marginBottom: 10 }}>
               {inputMode === 'capture_first'
-                ? 'Tap racers as they pass. Assign bibs afterward.'
-                : 'Enter bib, then tap to record immediately.'}
+                ? isFinishCheckpoint
+                  ? 'Tap finishers as they cross. Assign bibs afterward in place order.'
+                  : 'Tap racers as they pass. Assign bibs afterward.'
+                : isFinishCheckpoint
+                  ? 'Enter bib, then tap to record the finisher immediately.'
+                  : 'Enter bib, then tap to record immediately.'}
             </div>
 
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -1576,13 +1645,19 @@ const undoLastCheckpoint = useCallback(async () => {
                 }}
               >
                 <div style={{ fontSize: 11, color: T.warning, fontFamily: F, fontWeight: 900, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-                  {pending.length} Unassigned {pending.length === 1 ? 'Tap' : 'Taps'}
+                  {isFinishCheckpoint
+                    ? `${pending.length} Unassigned ${pending.length === 1 ? 'Finisher' : 'Finishers'}`
+                    : `${pending.length} Unassigned ${pending.length === 1 ? 'Tap' : 'Taps'}`}
                 </div>
                 <div style={{ marginTop: 4, fontSize: 18, color: T.textStrong, fontFamily: F, fontWeight: 900 }}>
-                  Awaiting Bib: {nextPending ? fmt(nextPending.elapsed_ms, true) : '—'}
+                  {isFinishCheckpoint
+                    ? `Next to Assign: ${nextPending ? `Place ${activePlaceByLapId[nextPending.id] ?? '—'} · ${fmt(nextPending.elapsed_ms, true)}` : '—'}`
+                    : `Awaiting Bib: ${nextPending ? fmt(nextPending.elapsed_ms, true) : '—'}`}
                 </div>
                 <div style={{ marginTop: 3, fontSize: 11, color: T.muted }}>
-                  Assign bibs before more taps are missed.
+                  {isFinishCheckpoint
+                    ? 'Assign bibs in place order so the finish queue stays aligned.'
+                    : 'Assign bibs before more taps are missed.'}
                 </div>
               </div>
             )}
@@ -1590,7 +1665,7 @@ const undoLastCheckpoint = useCallback(async () => {
             {inputMode === 'capture_first' && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 9, color: T.dim, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700, marginBottom: 6 }}>
-                  Assign next bib
+                  {isFinishCheckpoint ? 'Assign next finisher' : 'Assign next bib'}
                 </div>
 
                 <div style={{ minHeight: 18, margin: '0 0 8px', fontSize: 12 }}>
@@ -1609,8 +1684,36 @@ const undoLastCheckpoint = useCallback(async () => {
                   )}
                 </div>
 
-                <div style={{ fontSize: 18, color: nextPending ? T.textStrong : T.muted2, marginBottom: 8, fontFamily: F, fontWeight: 900 }}>
-                  {nextPending ? `Awaiting Bib · ${fmt(nextPending.elapsed_ms, true)}` : 'No pending laps'}
+                <div style={{ marginBottom: 8 }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: T.muted2,
+                      textTransform: 'uppercase',
+                      letterSpacing: 1.4,
+                      fontFamily: F,
+                      fontWeight: 700,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {isFinishCheckpoint ? 'Assigning now' : 'Awaiting bib'}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 22,
+                      color: nextPending ? T.textStrong : T.muted2,
+                      fontFamily: F,
+                      fontWeight: 900,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {nextPending
+                      ? isFinishCheckpoint
+                        ? `Place ${activePlaceByLapId[nextPending.id] ?? '—'} · ${fmt(nextPending.elapsed_ms, true)}`
+                        : `Awaiting Bib · ${fmt(nextPending.elapsed_ms, true)}`
+                      : actionWaitingLabel}
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -1673,7 +1776,7 @@ const undoLastCheckpoint = useCallback(async () => {
                     }}
                   >
                     {showAssignMainButton
-                      ? 'Lap'
+                      ? captureLabel
                       : savingAssign
                         ? '…'
                         : 'Assign'}
@@ -1800,8 +1903,8 @@ const undoLastCheckpoint = useCallback(async () => {
                       : !canCapture
                         ? 'Waiting'
                         : inputMode === 'bib_first'
-                          ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : 'Tap')
-                          : 'Lap'}
+                          ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : (isFinishCheckpoint ? 'Tap Finish' : 'Tap'))
+                          : captureLabel}
                 </button>
               </div>
 
@@ -1818,7 +1921,7 @@ const undoLastCheckpoint = useCallback(async () => {
                 }}
               >
                 <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
-                  Checkpoint Summary
+                  {checkpointSummaryLabel}
                 </div>
 
                 <div style={{ marginTop: 10 }}>
@@ -1844,7 +1947,7 @@ const undoLastCheckpoint = useCallback(async () => {
                       fontWeight: 700,
                     }}
                   >
-                    Recorded Checkpoints
+                    {recordedCountLabel}
                   </div>
                 </div>
 
@@ -1881,7 +1984,7 @@ const undoLastCheckpoint = useCallback(async () => {
                 }}
               >
                 <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
-                  Last Captures
+                  {isFinishCheckpoint ? 'Last Finishers' : 'Last Captures'}
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
@@ -1916,7 +2019,9 @@ const undoLastCheckpoint = useCallback(async () => {
                           </div>
 
                           <div style={{ fontSize: 12, color: T.textStrong, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            Bib {bib} · {name}
+                            {isFinishCheckpoint
+                              ? `Place ${activePlaceByLapId[l.id] ?? '—'} · Bib ${bib} · ${name}`
+                              : `Bib ${bib} · ${name}`}
                           </div>
                         </div>
                       )
@@ -1926,14 +2031,20 @@ const undoLastCheckpoint = useCallback(async () => {
 
                 <div style={{ textAlign: 'center', fontSize: 11, color: T.muted2, marginTop: 10 }}>
                   {showAssignMainButton
-                    ? 'Assign bib to the next pending lap'
+                    ? isFinishCheckpoint
+                      ? 'Assign bib to the next pending finisher'
+                      : 'Assign bib to the next pending lap'
                     : event?.status === 'finished'
                       ? 'Race ended'
                       : !canCapture
                         ? 'Waiting for official race start'
                         : inputMode === 'bib_first'
-                          ? `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Enter bib then tap`
-                          : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Tap or spacebar`}
+                          ? isFinishCheckpoint
+                            ? 'Finish line · Enter bib then tap'
+                            : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Enter bib then tap`
+                          : isFinishCheckpoint
+                            ? 'Finish line · Tap or spacebar'
+                            : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Tap or spacebar`}
                 </div>
               </div>
             </div>
@@ -1992,106 +2103,106 @@ const undoLastCheckpoint = useCallback(async () => {
                 </div>
 
                 {(lastAction.type === 'capture' || lastAction.type === 'assign') && undoTarget && (
-  <div style={{ marginTop: 10 }}>
-    {!confirmUndoOpen ? (
-      <button
-        onClick={() => setConfirmUndoOpen(true)}
-        style={{
-          height: 34,
-          padding: '0 12px',
-          borderRadius: 999,
-          border: `1px solid ${T.dangerBorder}`,
-          background: 'transparent',
-          color: T.danger,
-          fontFamily: F,
-          fontWeight: 800,
-          fontSize: 11,
-          letterSpacing: 1.1,
-          textTransform: 'uppercase',
-          cursor: 'pointer',
-        }}
-      >
-        Undo Bib {undoTarget.bib_number || 'Tap'}
-      </button>
-    ) : (
-      <div
-        style={{
-          marginTop: 2,
-          borderRadius: 12,
-          border: `1px solid ${T.warningBorder}`,
-          background: T.warningBg,
-          padding: '12px 14px',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            color: T.warning,
-            fontFamily: F,
-            fontWeight: 900,
-            letterSpacing: 1.4,
-            textTransform: 'uppercase',
-          }}
-        >
-          Confirm Undo
-        </div>
+                  <div style={{ marginTop: 10 }}>
+                    {!confirmUndoOpen ? (
+                      <button
+                        onClick={() => setConfirmUndoOpen(true)}
+                        style={{
+                          height: 34,
+                          padding: '0 12px',
+                          borderRadius: 999,
+                          border: `1px solid ${T.dangerBorder}`,
+                          background: 'transparent',
+                          color: T.danger,
+                          fontFamily: F,
+                          fontWeight: 800,
+                          fontSize: 11,
+                          letterSpacing: 1.1,
+                          textTransform: 'uppercase',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Undo Bib {undoTarget.bib_number || 'Tap'}
+                      </button>
+                    ) : (
+                      <div
+                        style={{
+                          marginTop: 2,
+                          borderRadius: 12,
+                          border: `1px solid ${T.warningBorder}`,
+                          background: T.warningBg,
+                          padding: '12px 14px',
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: T.warning,
+                            fontFamily: F,
+                            fontWeight: 900,
+                            letterSpacing: 1.4,
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          Confirm Undo
+                        </div>
 
-        <div style={{ marginTop: 6, fontSize: 15, color: T.textStrong, fontWeight: 700 }}>
-          Undo last capture for {undoTarget.bib_number ? `Bib ${undoTarget.bib_number}` : 'pending tap'}?
-        </div>
+                        <div style={{ marginTop: 6, fontSize: 15, color: T.textStrong, fontWeight: 700 }}>
+                          Undo last capture for {undoTarget.bib_number ? `Bib ${undoTarget.bib_number}` : 'pending tap'}?
+                        </div>
 
-        <div style={{ marginTop: 4, fontSize: 12, color: T.muted }}>
-          Time: {fmt(undoTarget.elapsed_ms, true)}
-        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: T.muted }}>
+                          Time: {fmt(undoTarget.elapsed_ms, true)}
+                        </div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button
-            onClick={() => setConfirmUndoOpen(false)}
-            style={{
-              flex: 1,
-              height: 36,
-              borderRadius: 10,
-              border: `1px solid ${T.border2}`,
-              background: T.panel2,
-              color: T.textStrong,
-              fontFamily: F,
-              fontWeight: 800,
-              fontSize: 11,
-              letterSpacing: 1.1,
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                          <button
+                            onClick={() => setConfirmUndoOpen(false)}
+                            style={{
+                              flex: 1,
+                              height: 36,
+                              borderRadius: 10,
+                              border: `1px solid ${T.border2}`,
+                              background: T.panel2,
+                              color: T.textStrong,
+                              fontFamily: F,
+                              fontWeight: 800,
+                              fontSize: 11,
+                              letterSpacing: 1.1,
+                              textTransform: 'uppercase',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Cancel
+                          </button>
 
-          <button
-            onClick={async () => {
-              setConfirmUndoOpen(false)
-              await undoLastCheckpoint()
-            }}
-            style={{
-              flex: 1,
-              height: 36,
-              borderRadius: 10,
-              border: `1px solid ${T.dangerBorder}`,
-              background: T.danger,
-              color: T.buttonText,
-              fontFamily: F,
-              fontWeight: 800,
-              fontSize: 11,
-              letterSpacing: 1.1,
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-            }}
-          >
-            Confirm Undo
-          </button>
-        </div>
-      </div>
-    )}
-  </div>
-)}
+                          <button
+                            onClick={async () => {
+                              setConfirmUndoOpen(false)
+                              await undoLastCheckpoint()
+                            }}
+                            style={{
+                              flex: 1,
+                              height: 36,
+                              borderRadius: 10,
+                              border: `1px solid ${T.dangerBorder}`,
+                              background: T.danger,
+                              color: T.buttonText,
+                              fontFamily: F,
+                              fontWeight: 800,
+                              fontSize: 11,
+                              letterSpacing: 1.1,
+                              textTransform: 'uppercase',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Confirm Undo
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -2122,7 +2233,7 @@ const undoLastCheckpoint = useCallback(async () => {
                   fontWeight: 700,
                 }}
               >
-                Pending ({pending.length})
+                {pendingLabel} ({pending.length})
               </div>
 
               {isAdmin && inputMode === 'capture_first' && (
@@ -2144,9 +2255,9 @@ const undoLastCheckpoint = useCallback(async () => {
                     cursor: pending.length ? 'pointer' : 'default',
                     flexShrink: 0,
                   }}
-                  title="Void the most recent unassigned tap"
+                  title={isFinishCheckpoint ? 'Void the most recent unassigned finisher' : 'Void the most recent unassigned tap'}
                 >
-                  Void Last Tap
+                  {isFinishCheckpoint ? 'Void Last Finisher' : 'Void Last Tap'}
                 </button>
               )}
             </div>
@@ -2160,13 +2271,17 @@ const undoLastCheckpoint = useCallback(async () => {
               }}
             >
               {isAdmin
-                ? 'Voided taps can be restored from the Recent tab.'
-                : 'Assign bibs to pending taps as racers are identified.'}
+                ? isFinishCheckpoint
+                  ? 'Voided finishers can be restored from the Recent tab.'
+                  : 'Voided taps can be restored from the Recent tab.'
+                : isFinishCheckpoint
+                  ? 'Assign bibs to pending finishers as racers are identified.'
+                  : 'Assign bibs to pending taps as racers are identified.'}
             </div>
 
             {pending.length === 0 ? (
               <div style={{ padding: '20px 14px', color: T.dim, fontSize: 12, textAlign: 'center' }}>
-                No pending laps
+                {actionWaitingLabel}
               </div>
             ) : (
               pending.map((l, i) => (
@@ -2181,8 +2296,10 @@ const undoLastCheckpoint = useCallback(async () => {
                     background: i === 0 ? T.pendingNext : 'transparent',
                   }}
                 >
-                  <span style={{ color: T.dim, width: 40, fontSize: 11, fontFamily: F }}>
-                    {i === 0 ? 'NEXT' : `${i + 1}`}
+                  <span style={{ color: i === 0 ? T.warning : T.dim, width: 72, fontSize: 11, fontFamily: F, fontWeight: 800 }}>
+                    {isFinishCheckpoint
+                      ? `P${activePlaceByLapId[l.id] ?? '—'}`
+                      : (i === 0 ? 'NEXT' : `${i + 1}`)}
                   </span>
                   <span style={{ color: T.textStrong, fontWeight: 900, flex: 1, fontSize: 20, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
                     {fmt(l.elapsed_ms, true)}
@@ -2237,7 +2354,7 @@ const undoLastCheckpoint = useCallback(async () => {
                 background: T.pageAlt,
               }}
             >
-              <span>Time</span>
+              <span>{isFinishCheckpoint ? 'Finish' : 'Time'}</span>
               <span>Bib</span>
               <span>Name</span>
               <span>Status</span>
@@ -2247,7 +2364,7 @@ const undoLastCheckpoint = useCallback(async () => {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {filteredRecentLaps.length === 0 ? (
                 <div style={{ textAlign: 'center', color: T.dim, padding: '48px 0', fontSize: 13 }}>
-                  No laps in this filter
+                  No records in this filter
                 </div>
               ) : (
                 filteredRecentLaps.map((l, i) => {

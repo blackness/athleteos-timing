@@ -21,6 +21,53 @@ const fontHead = "'Barlow Condensed', sans-serif"
 const fontBody = "'Barlow', sans-serif"
 const fontMono = "'JetBrains Mono', 'SF Mono', monospace"
 
+function getRaceStatusMeta(status) {
+  switch (status) {
+    case 'draft':
+      return {
+        label: 'DRAFT',
+        bg: '#334155',
+        text: '#e2e8f0',
+        border: '#475569',
+      }
+    case 'ready':
+      return {
+        label: 'READY',
+        bg: '#1d4ed8',
+        text: '#ffffff',
+        border: '#2563eb',
+      }
+    case 'active':
+      return {
+        label: 'LIVE',
+        bg: '#dc2626',
+        text: '#ffffff',
+        border: '#ef4444',
+      }
+    case 'results_review':
+      return {
+        label: 'RESULTS REVIEW',
+        bg: '#d97706',
+        text: '#ffffff',
+        border: '#f59e0b',
+      }
+    case 'finished':
+      return {
+        label: 'FINAL',
+        bg: '#15803d',
+        text: '#ffffff',
+        border: '#22c55e',
+      }
+    default:
+      return {
+        label: 'UNKNOWN',
+        bg: '#475569',
+        text: '#ffffff',
+        border: '#64748b',
+      }
+  }
+}
+
 function fmtTime(ms) {
   if (ms == null) return '—'
   const h = Math.floor(ms / 3600000)
@@ -62,6 +109,13 @@ export default function RaceMonitor() {
   }, [event?.status])
 
   const raceElapsedMs = getRaceElapsedMs(event, now)
+  const statusMeta = getRaceStatusMeta(event?.status)
+
+  const isDraft = event?.status === 'draft'
+  const isReady = event?.status === 'ready'
+  const isLive = event?.status === 'active'
+  const isReview = event?.status === 'results_review'
+  const isFinished = event?.status === 'finished'
 
   useEffect(() => {
     if (!eventId) return
@@ -179,13 +233,6 @@ export default function RaceMonitor() {
     }
   }
 
-  const raceStatusLabel =
-    event?.status === 'active'
-      ? { text: 'LIVE', color: C.red }
-      : event?.status === 'finished'
-        ? { text: 'FINISHED', color: C.muted }
-        : { text: 'NOT STARTED', color: C.yellow }
-
   if (loading) {
     return (
       <div style={{ minHeight: '100dvh', background: C.bg, color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: fontBody }}>
@@ -240,7 +287,7 @@ export default function RaceMonitor() {
             <div
               style={{
                 fontSize: 10,
-                color: raceStatusLabel.color,
+                color: statusMeta.border,
                 textTransform: 'uppercase',
                 letterSpacing: 2.5,
                 fontFamily: fontHead,
@@ -248,11 +295,17 @@ export default function RaceMonitor() {
                 marginBottom: 4,
               }}
             >
-              {event?.status === 'active'
-                ? 'Race Clock'
-                : event?.status === 'finished'
-                  ? 'Final Time'
-                  : 'Waiting For Start'}
+              {isDraft
+                ? 'Race Not Started'
+                : isReady
+                  ? 'Race Ready'
+                  : isLive
+                    ? 'Race Clock'
+                    : isReview
+                      ? 'Results Review'
+                      : isFinished
+                        ? 'Final Time'
+                        : 'Race Status'}
             </div>
 
             <div
@@ -262,7 +315,7 @@ export default function RaceMonitor() {
                 fontWeight: 900,
                 letterSpacing: -2,
                 fontFamily: fontHead,
-                color: event?.race_started_at ? C.text : '#374151',
+                color: isDraft || isReady ? '#374151' : C.text,
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
@@ -271,10 +324,12 @@ export default function RaceMonitor() {
 
             <div style={{ marginTop: 4, fontSize: 11, color: C.muted }}>
               {event?.race_started_at
-                ? event?.status === 'finished' && event?.race_finished_at
-                  ? `Start ${new Date(event.race_started_at).toLocaleTimeString()} · Finish ${new Date(event.race_finished_at).toLocaleTimeString()}`
+                ? event?.race_finished_at
+                  ? `Start ${new Date(event.race_started_at).toLocaleTimeString()} · End ${new Date(event.race_finished_at).toLocaleTimeString()}`
                   : `Start ${new Date(event.race_started_at).toLocaleTimeString()}`
-                : 'Race not started'}
+                : isReady
+                  ? 'Race ready to start'
+                  : 'Race not started'}
             </div>
           </div>
 
@@ -284,17 +339,30 @@ export default function RaceMonitor() {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 6,
+                gap: 8,
                 fontSize: 10,
-                fontWeight: 700,
-                color: raceStatusLabel.color,
-                letterSpacing: 2,
+                fontWeight: 800,
+                color: statusMeta.text,
+                background: statusMeta.bg,
+                border: `1px solid ${statusMeta.border}`,
+                borderRadius: 999,
+                padding: '6px 10px',
+                letterSpacing: 1.5,
                 fontFamily: fontHead,
                 textTransform: 'uppercase',
               }}
             >
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: raceStatusLabel.color, display: 'inline-block' }} />
-              {raceStatusLabel.text}
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: statusMeta.text,
+                  display: 'inline-block',
+                  opacity: 0.9,
+                }}
+              />
+              {statusMeta.label}
             </span>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>

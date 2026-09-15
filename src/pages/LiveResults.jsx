@@ -223,17 +223,144 @@ function ThemeToggle({ theme, setTheme, C }) {
   )
 }
 
+function TeamStandingsCard({ standings, C, isMobile }) {
+  const th = {
+    padding: isMobile ? '8px 10px' : '10px 12px',
+    textAlign: 'left',
+    fontFamily: fontHead,
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: C.muted,
+    borderBottom: `1px solid ${C.border}`,
+    background: C.surface,
+    whiteSpace: 'nowrap',
+  }
+
+  const td = {
+    padding: isMobile ? '8px 10px' : '10px 12px',
+    fontFamily: fontBody,
+    fontSize: 12,
+    color: C.text,
+    borderBottom: `1px solid ${C.border}`,
+    whiteSpace: 'nowrap',
+    verticalAlign: 'middle',
+  }
+
+  return (
+    <div
+      style={{
+        marginBottom: 16,
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: 10,
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          padding: isMobile ? '10px 12px' : '12px 14px',
+          borderBottom: `1px solid ${C.border}`,
+          fontFamily: fontHead,
+          fontWeight: 800,
+          fontSize: 11,
+          letterSpacing: 1.6,
+          textTransform: 'uppercase',
+          color: C.orange,
+        }}
+      >
+        Team Standings
+      </div>
+
+      {standings.complete.length === 0 && standings.incomplete.length === 0 ? (
+        <div style={{ padding: 16, color: C.muted, fontSize: 13 }}>
+          No team results yet.
+        </div>
+      ) : (
+        <>
+          {standings.complete.length > 0 && (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? 520 : 640 }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Place</th>
+                    <th style={th}>Team</th>
+                    <th style={th}>Score</th>
+                    <th style={th}>Finishers</th>
+                    <th style={th}>Scorers</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.complete.map((team, idx) => (
+                    <tr key={team.team}>
+                      <td style={td}>{idx + 1}</td>
+                      <td style={{ ...td, fontWeight: 700 }}>{team.team}</td>
+                      <td style={{ ...td, fontFamily: fontMono, fontWeight: 700 }}>{team.score}</td>
+                      <td style={{ ...td, fontFamily: fontMono }}>{team.finishers}</td>
+                      <td style={{ ...td, fontFamily: fontMono }}>
+                        {team.scorers.map(r => r.place).filter(Boolean).join(', ')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {standings.incomplete.length > 0 && (
+            <div style={{ padding: isMobile ? '10px 12px' : '12px 14px' }}>
+              <div
+                style={{
+                  fontFamily: fontHead,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: 1.4,
+                  textTransform: 'uppercase',
+                  color: C.muted,
+                  marginBottom: 8,
+                }}
+              >
+                Incomplete Teams
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {standings.incomplete.map(team => (
+                  <div
+                    key={team.team}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${C.border}`,
+                      color: C.muted,
+                      fontSize: 12,
+                      background: C.surface2,
+                    }}
+                  >
+                    {team.team} · {team.finishers} finisher{team.finishers === 1 ? '' : 's'}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobile, nameColWidth }) {
   if (!rows.length) {
     return <div style={emptyStateStyle(C)}>No racers in this segment yet…</div>
   }
 
   const medals = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' }
-  const tableMinWidth = isMobile ? 760 : 960
+  const tableMinWidth = isMobile ? 860 : 1080
   const checkpointMinWidth = isMobile ? 88 : 120
   const bibMinWidth = isMobile ? 60 : 72
   const finishMinWidth = isMobile ? 96 : 120
   const waveMinWidth = isMobile ? 72 : 90
+  const teamMinWidth = isMobile ? 96 : 140
 
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'auto' }}>
@@ -249,6 +376,10 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
               style={{ ...thBase(C), ...stickyHeader(64, 6), left: 64, minWidth: nameColWidth, maxWidth: nameColWidth, width: nameColWidth }}
             >
               Name{sortIndicator(sortConfig.key === 'name', sortConfig.dir)}
+            </th>
+
+            <th onClick={() => onSort('team', 'string')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: teamMinWidth }}>
+              Team{sortIndicator(sortConfig.key === 'team', sortConfig.dir)}
             </th>
 
             <th onClick={() => onSort('bib_number', 'number')} style={{ ...thBase(C), ...stickyHeader(undefined, 4), minWidth: bibMinWidth }}>
@@ -324,6 +455,12 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
                   </span>
                 </td>
 
+                <td style={tdBase(C)}>
+                  <span style={{ color: r.team ? C.text : C.muted }}>
+                    {r.team || '—'}
+                  </span>
+                </td>
+
                 <td style={tdBase(C, true)}>{r.bib_number ?? '—'}</td>
 
                 <td style={{ ...tdBase(C, true), fontWeight: 700, color: r.is_finished ? C.green : C.muted }}>
@@ -393,6 +530,7 @@ export default function LiveResults() {
   const [now, setNow] = useState(Date.now())
   const [theme, setTheme] = useState('light')
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
+  const [showFinishersOnly, setShowFinishersOnly] = useState(false)
 
   const [resultsSort, setResultsSort] = useState({ key: 'place', dir: 'asc', type: 'number' })
 
@@ -546,6 +684,24 @@ export default function LiveResults() {
     }))
   }, [checkpointsSorted, finishCheckpoint])
 
+  const finishCheckpointId = finishCheckpoint?.id || null
+
+  const finishLapEvents = useMemo(() => {
+    if (!finishCheckpointId) return []
+
+    return laps.filter(l =>
+      l.status !== 'void' &&
+      l.checkpoint_id === finishCheckpointId
+    )
+  }, [laps, finishCheckpointId])
+
+  const pendingFinishLapEvents = useMemo(() => {
+    return finishLapEvents.filter(l => !l.bib_number)
+  }, [finishLapEvents])
+
+  const pendingFinishCount = pendingFinishLapEvents.length
+  const resultsAreProvisional = pendingFinishCount > 0 || event?.status !== 'finished'
+
   const finishMapFromTable = useMemo(() => {
     const map = {}
     finishes.forEach(f => {
@@ -669,6 +825,7 @@ export default function LiveResults() {
         entry_id: primaryEntry?.id || finishRow?.entry_id || null,
         bib_number: bib,
         name: getDisplayNameForBib(entriesForBib, bib),
+        team: primaryEntry?.team || null,
         division: primaryEntry?.division || finishRow?.division || null,
         gender: primaryEntry?.gender || finishRow?.gender || null,
         normalizedGender: normalizeGender(primaryEntry?.gender || finishRow?.gender),
@@ -767,6 +924,10 @@ export default function LiveResults() {
       rows = rows.filter(r => r.division === resultsDivisionFilter)
     }
 
+    if (showFinishersOnly) {
+      rows = rows.filter(r => r.is_finished)
+    }
+
     const sorted = [...rows].sort((a, b) => {
       if (resultsSort.key.startsWith('cp:')) {
         const checkpointId = resultsSort.key.split(':')[1]
@@ -810,19 +971,81 @@ export default function LiveResults() {
       return compareValues(a.bib_number, b.bib_number, 'asc', 'number')
     })
 
-    return sorted.map((r, idx) => ({
-      ...r,
-      place: idx + 1,
-    }))
-  }, [baseResultsRows, resultsGenderFilter, resultsDivisionFilter, resultsSort, checkpointSortMode])
+    let finishPlace = 0
+
+    return sorted.map(r => {
+      const isPlaced = r.is_finished
+      if (isPlaced) finishPlace += 1
+
+      return {
+        ...r,
+        place: isPlaced ? finishPlace : null,
+      }
+    })
+  }, [
+    baseResultsRows,
+    resultsGenderFilter,
+    resultsDivisionFilter,
+    resultsSort,
+    checkpointSortMode,
+    showFinishersOnly,
+  ])
+
+  const teamStandings = useMemo(() => {
+    const finished = filteredResultsRows.filter(r => r.is_finished && r.team)
+
+    const grouped = new Map()
+
+    finished.forEach(r => {
+      if (!grouped.has(r.team)) grouped.set(r.team, [])
+      grouped.get(r.team).push(r)
+    })
+
+    const complete = []
+    const incomplete = []
+
+    for (const [team, runners] of grouped.entries()) {
+      const sorted = [...runners].sort((a, b) => {
+        const aPlace = a.place ?? Infinity
+        const bPlace = b.place ?? Infinity
+        if (aPlace !== bPlace) return aPlace - bPlace
+        return compareValues(a.bib_number, b.bib_number, 'asc', 'number')
+      })
+
+      const scorers = sorted.slice(0, 4)
+
+      const row = {
+        team,
+        finishers: sorted.length,
+        scorers,
+        score: scorers.length === 4 ? scorers.reduce((sum, r) => sum + (r.place ?? 0), 0) : null,
+      }
+
+      if (sorted.length >= 4) complete.push(row)
+      else incomplete.push(row)
+    }
+
+    complete.sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score
+
+      const a4 = a.scorers[3]?.place ?? Infinity
+      const b4 = b.scorers[3]?.place ?? Infinity
+      if (a4 !== b4) return a4 - b4
+
+      return a.team.localeCompare(b.team)
+    })
+
+    incomplete.sort((a, b) => {
+      if (a.finishers !== b.finishers) return b.finishers - a.finishers
+      return a.team.localeCompare(b.team)
+    })
+
+    return { complete, incomplete }
+  }, [filteredResultsRows])
 
   const hasUnknownResultsDivisionRows = useMemo(() => {
     return baseResultsRows.some(r => !r.division)
   }, [baseResultsRows])
-
-  const leaderRow = useMemo(() => {
-    return filteredResultsRows.find(r => (r.latestCheckpointOrder || 0) > 0) || null
-  }, [filteredResultsRows])
 
   const subTabBtn = active => ({
     padding: isMobile ? '7px 12px' : '8px 14px',
@@ -965,6 +1188,42 @@ export default function LiveResults() {
         </div>
       </div>
 
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+        <div
+          style={{
+            maxWidth: 1200,
+            margin: '0 auto',
+            padding: isMobile ? '10px 14px' : '12px 20px',
+          }}
+        >
+          <div
+            style={{
+              border: `1px solid ${pendingFinishCount > 0 ? C.yellow : resultsAreProvisional ? C.orange : C.green}`,
+              background:
+                pendingFinishCount > 0
+                  ? `${C.yellow}14`
+                  : resultsAreProvisional
+                    ? `${C.orange}14`
+                    : `${C.green}14`,
+              color: pendingFinishCount > 0 ? C.yellow : resultsAreProvisional ? C.orange : C.green,
+              borderRadius: 10,
+              padding: isMobile ? '10px 12px' : '12px 14px',
+              fontFamily: fontHead,
+              fontSize: isMobile ? 10 : 11,
+              fontWeight: 800,
+              letterSpacing: 1.4,
+              textTransform: 'uppercase',
+            }}
+          >
+            {pendingFinishCount > 0
+              ? `Unofficial — ${pendingFinishCount} finish ${pendingFinishCount === 1 ? 'record is' : 'records are'} pending bib assignment`
+              : event?.status === 'finished'
+                ? 'Unofficial Results — all recorded finishers currently assigned'
+                : 'Live Results — standings may change as racers finish'}
+          </div>
+        </div>
+      </div>
+
       {!event?.race_started_at && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
           <div
@@ -1070,8 +1329,8 @@ export default function LiveResults() {
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
           {[
             { label: 'Finishers', value: baseResultsRows.filter(r => r.is_finished).length, color: C.blue },
-            { label: 'Checkpoints', value: checkpoints.length, color: C.muted },
-            { label: 'Assigned splits', value: laps.filter(l => l.status !== 'void' && !!l.bib_number).length, color: C.green },
+            { label: 'Pending Finish IDs', value: pendingFinishCount, color: pendingFinishCount > 0 ? C.yellow : C.green },
+            { label: 'Teams Scoring', value: teamStandings.complete.length, color: C.orange },
             { label: 'Divisions', value: divisions.length, color: C.text },
           ].map((s, idx, arr) => (
             <div
@@ -1089,72 +1348,65 @@ export default function LiveResults() {
         </div>
       </div>
 
-      {leaderRow && (
+      {pendingFinishCount > 0 && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: '0 auto',
-              padding: isMobile ? '10px 14px' : '12px 20px',
-              display: 'grid',
-              gridTemplateColumns: isMobile ? 'auto 1fr' : 'auto 1fr auto auto',
-              gap: 12,
-              alignItems: 'center',
-            }}
-          >
+          <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobile ? '10px 14px' : '12px 20px' }}>
             <div
               style={{
-                minWidth: 40,
-                height: 40,
-                borderRadius: '50%',
-                background: '#FFD700',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontFamily: fontHead,
-                fontWeight: 900,
-                color: '#000',
-                fontSize: 17,
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: isMobile ? '10px 12px' : '12px 14px',
               }}
             >
-              1
+              <div
+                style={{
+                  fontFamily: fontHead,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: 1.4,
+                  textTransform: 'uppercase',
+                  color: C.muted,
+                  marginBottom: 8,
+                }}
+              >
+                Pending Finish Records
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {pendingFinishLapEvents.slice(0, 12).map(l => (
+                  <div
+                    key={l.id}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${C.border}`,
+                      background: C.surface2,
+                      color: C.text,
+                      fontSize: 12,
+                      fontFamily: fontMono,
+                    }}
+                  >
+                    {fmtTime(l.elapsed_ms)}
+                  </div>
+                ))}
+
+                {pendingFinishCount > 12 && (
+                  <div
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${C.border}`,
+                      background: C.surface2,
+                      color: C.muted,
+                      fontSize: 12,
+                    }}
+                  >
+                    +{pendingFinishCount - 12} more
+                  </div>
+                )}
+              </div>
             </div>
-
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: C.orange, fontFamily: fontHead, fontWeight: 700, letterSpacing: 1.8, textTransform: 'uppercase' }}>
-                {resultsGenderFilter === 'Overall' && resultsDivisionFilter === 'all'
-                  ? 'Current Leader'
-                  : `${resultsGenderFilter === 'Overall' ? 'Overall' : resultsGenderFilter}${resultsDivisionFilter !== 'all' ? ` · ${resultsDivisionFilter}` : ''} Leader`}
-              </div>
-              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, fontFamily: fontHead, color: C.text, lineHeight: 1 }}>
-                {leaderRow.name || `Bib ${leaderRow.bib_number}`}
-              </div>
-              <div style={{ marginTop: 3, fontSize: 11, color: C.muted }}>
-                Bib {leaderRow.bib_number} {leaderRow.wave_code ? `· Wave ${leaderRow.wave_code}` : ''}
-              </div>
-            </div>
-
-            {!isMobile && (
-              <>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 10, color: C.muted, fontFamily: fontHead, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-                    Current Time
-                  </div>
-                  <div style={{ fontSize: 26, fontWeight: 900, fontFamily: fontHead, color: leaderRow.is_finished ? C.green : C.blue, lineHeight: 1 }}>
-                    {leaderRow.is_finished ? fmtTime(leaderRow.adjusted_time_ms ?? leaderRow.time_ms) : `Leg ${leaderRow.latestCheckpointOrder || '—'}`}
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 10, color: C.muted, fontFamily: fontHead, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-                    Visible Racers
-                  </div>
-                  <div style={{ fontSize: 26, fontWeight: 900, fontFamily: fontHead, color: C.blue, lineHeight: 1 }}>
-                    {filteredResultsRows.length}
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
@@ -1201,7 +1453,52 @@ export default function LiveResults() {
       </div>
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobile ? '12px 14px' : '16px 20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              border: `1px solid ${C.border}`,
+              borderRadius: 999,
+              overflow: 'hidden',
+              background: C.surface,
+            }}
+          >
+            <button
+              onClick={() => setShowFinishersOnly(false)}
+              style={{
+                padding: isMobile ? '6px 8px' : '6px 10px',
+                border: 'none',
+                background: !showFinishersOnly ? C.surface2 : 'transparent',
+                color: !showFinishersOnly ? C.text : C.muted,
+                cursor: 'pointer',
+                fontFamily: fontHead,
+                fontSize: isMobile ? 9 : 10,
+                fontWeight: 700,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+              }}
+            >
+              All Racers
+            </button>
+            <button
+              onClick={() => setShowFinishersOnly(true)}
+              style={{
+                padding: isMobile ? '6px 8px' : '6px 10px',
+                border: 'none',
+                background: showFinishersOnly ? C.surface2 : 'transparent',
+                color: showFinishersOnly ? C.text : C.muted,
+                cursor: 'pointer',
+                fontFamily: fontHead,
+                fontSize: isMobile ? 9 : 10,
+                fontWeight: 700,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+              }}
+            >
+              Finishers Only
+            </button>
+          </div>
+
           <div
             style={{
               display: 'inline-flex',
@@ -1247,6 +1544,12 @@ export default function LiveResults() {
             </button>
           </div>
         </div>
+
+        <TeamStandingsCard
+          standings={teamStandings}
+          C={C}
+          isMobile={isMobile}
+        />
 
         <ResultsTable
           rows={filteredResultsRows}

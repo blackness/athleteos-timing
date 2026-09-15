@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
+import { createXCRaces } from '../lib/createXCRaces'
 
 function formatDate(str) {
   return new Date(str).toLocaleDateString('en-US', {
@@ -52,6 +53,15 @@ function getPrimaryAction(event) {
     }
   }
 
+  if (event.status === 'results_review') {
+    return {
+      label: 'Review Results',
+      path: `/race/${event.id}/setup`,
+      color: '#eab308',
+      background: 'rgba(234,179,8,0.10)',
+    }
+  }
+
   if (event.status === 'finished') {
     return {
       label: 'View Race',
@@ -69,6 +79,14 @@ function getPrimaryAction(event) {
   }
 }
 
+function getEventPriority(event) {
+  if (event.status === 'active') return 0
+  if (event.status === 'results_review') return 1
+  if (event.status === 'draft' || event.status === 'ready') return 2
+  if (event.status === 'finished') return 3
+  return 4
+}
+
 export default function Events() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
@@ -79,6 +97,7 @@ export default function Events() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [now, setNow] = useState(Date.now())
+  const [deletingEventId, setDeletingEventId] = useState(null)
 
   const [form, setForm] = useState({
     name: '',
@@ -100,6 +119,8 @@ export default function Events() {
   }, [])
 
   async function loadEvents() {
+    if (!user?.id) return
+
     setLoading(true)
 
     const { data } = await supabase
@@ -118,35 +139,99 @@ export default function Events() {
       return
     }
 
-    setSaving(true)
-    setError(null)
-
-    const distance = form.distance === 'Custom' ? form.custom_distance : form.distance
-
-    const { data, error: err } = await supabase
-      .from('race_events')
-      .insert({
-        user_id: user.id,
-        name: form.name.trim(),
-        sport: form.sport,
-        distance,
-        event_date: form.date,
-        location: form.location.trim() || null,
-        notes: form.notes.trim() || null,
-      })
-      .select()
-      .single()
-
-    setSaving(false)
-
-    if (err) {
-      setError(err.message)
+    if (form.distance === 'Custom' && !form.custom_distance.trim()) {
+      setError('Custom distance is required')
       return
     }
 
-    setShowModal(false)
-    resetForm()
-    navigate(`/race/${data.id}/setup`)
+    setSaving(true)
+    setError(null)
+
+    const distance = form.distance === 'Custom' ? form.custom_distance.trim() : form.distance
+
+    try {
+      if (form.sport === 'Cross Country') {
+        const races = await createXCRaces({
+          meetName: form.name.trim(),
+          eventDate: form.date,
+          location: form.location.trim() || null,
+          races: [
+            { name: 'Novice Girls', distance: '4 km' },
+            { name: 'Novice Boys', distance: '4 km' },
+            { name: 'Junior Girls', distance: '5 km' },
+            { name: 'Junior Boys', distance: '5 km' },
+            { name: 'Senior Girls', distance: '6 km' },
+            { name: 'Senior Boys', distance: '6 km' },
+          ],
+          userId: user.id,
+          notes: form.notes.trim() || null,
+          sport: form.sport,
+        })
+
+        setSaving(false)
+        setShowModal(false)
+        resetForm()
+        await loadEvents()
+
+        if (races?.length > 0) {
+          navigate(`/race/${races[0].id}/setup`)
+        }
+
+        return
+      }
+
+      const { data, error: err } = await supabase
+        .from('race_events')
+        .insert({
+          user_id: user.id,
+          name: form.name.trim(),
+          sport: form.sport,
+          distance,
+          event_date: form.date,
+          location: form.location.trim() || null,
+          notes: form.notes.trim() || null,
+          status: 'draft',
+          race_started_at: null,
+          race_finished_at: null,
+        })
+        .select()
+        .single()
+
+      if (err) {
+        throw err
+      }
+
+      const { error: checkpointError } = await supabase
+        .from('race_checkpoints')
+        .insert([
+          {
+            event_id: data.id,
+            name: 'Start',
+            checkpoint_order: 1,
+            is_active: true,
+          },
+          {
+            event_id: data.id,
+            name: 'Finish',
+            checkpoint_order: 2,
+            is_active: true,
+          },
+        ])
+
+      if (checkpointError) {
+        throw new Error(`Event created, but default checkpoints failed: ${checkpointError.message}`)
+      }
+
+      setSaving(false)
+      setShowModal(false)
+      resetForm()
+      await loadEvents()
+      navigate(`/race/${data.id}/setup`)
+    } catch (err) {
+      console.error('Failed to create event', err)
+      setSaving(false)
+      setError(err.message || 'Failed to create event')
+    }
   }
 
   function resetForm() {
@@ -162,10 +247,84 @@ export default function Events() {
     setError(null)
   }
 
+  async function deleteEvent(event) {
+    const isLive = event.status === 'active'
+    const isReview = event.status === 'results_review'
+    const isFinished = event.status === 'finished'
+
+    const warning = isLive
+      ? `Delete "${event.name}"?\n\nThis race is currently active. This will permanently remove the event and its timing data.`
+      : isReview
+        ? `Delete "${event.name}"?\n\nThis race is in Results Review. This will permanently remove the event and all captured race data.`
+        : isFinished
+          ? `Delete "${event.name}"?\n\nThis race is finished. This will permanently remove the event and all saved results.`
+          : `Delete "${event.name}"?\n\nThis will permanently remove the event and all related test/setup data.`
+
+    const confirmed = window.confirm(warning)
+    if (!confirmed) return
+
+    try {
+      setDeletingEventId(event.id)
+
+      const childDeletes = [
+        supabase.from('checkpoint_time_adjustments').delete().eq('event_id', event.id),
+        supabase.from('race_result_adjustments').delete().eq('event_id', event.id),
+        supabase.from('race_finishes').delete().eq('event_id', event.id),
+        supabase.from('lap_events').delete().eq('event_id', event.id),
+        supabase.from('race_waves').delete().eq('event_id', event.id),
+        supabase.from('race_checkpoints').delete().eq('event_id', event.id),
+        supabase.from('event_entries').delete().eq('event_id', event.id),
+      ]
+
+      for (const op of childDeletes) {
+        const { error } = await op
+        if (error) throw error
+      }
+
+      const { error: eventDeleteError } = await supabase
+        .from('race_events')
+        .delete()
+        .eq('id', event.id)
+        .eq('user_id', user.id)
+
+      if (eventDeleteError) throw eventDeleteError
+
+      await loadEvents()
+    } catch (err) {
+      console.error('Failed to delete event', err)
+      window.alert(`Failed to delete event: ${err.message || 'Unknown error'}`)
+    } finally {
+      setDeletingEventId(null)
+    }
+  }
+
   async function handleSignOut() {
     await supabase.auth.signOut()
     navigate('/login')
   }
+
+  const sortedEvents = useMemo(() => {
+    return [...events].sort((a, b) => {
+      const priorityDiff = getEventPriority(a) - getEventPriority(b)
+      if (priorityDiff !== 0) return priorityDiff
+
+      const aDate = new Date(a.event_date || 0).getTime()
+      const bDate = new Date(b.event_date || 0).getTime()
+      return bDate - aDate
+    })
+  }, [events])
+
+  const activeEvent = useMemo(() => {
+    return events.find(e => e.status === 'active') || null
+  }, [events])
+
+  const reviewEvent = useMemo(() => {
+    if (activeEvent) return null
+    return events.find(e => e.status === 'results_review') || null
+  }, [events, activeEvent])
+
+  const headerEvent = activeEvent || reviewEvent
+  const headerEventElapsed = headerEvent ? getRaceElapsedMs(headerEvent, now) : null
 
   return (
     <div style={{ minHeight: '100dvh', background: '#080b0f', fontFamily: "'Barlow', sans-serif" }}>
@@ -204,8 +363,68 @@ export default function Events() {
               letterSpacing: -0.5
             }}
           >
-            Race Timing
+            {activeEvent
+              ? `Now Timing: ${activeEvent.name}`
+              : reviewEvent
+                ? `In Review: ${reviewEvent.name}`
+                : 'Race Timing'}
           </h1>
+
+          {headerEvent && (
+            <div
+              style={{
+                marginTop: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                flexWrap: 'wrap',
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 10,
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  fontWeight: 800,
+                  letterSpacing: 2,
+                  textTransform: 'uppercase',
+                  color: activeEvent ? '#22c55e' : '#eab308',
+                }}
+              >
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    background: activeEvent ? '#22c55e' : '#eab308',
+                    display: 'inline-block',
+                    animation: activeEvent ? 'pulse 1.4s infinite' : 'none',
+                  }}
+                />
+                {activeEvent ? 'Live' : 'Results Review'}
+              </span>
+
+              <span
+                style={{
+                  color: activeEvent ? '#f0f4f8' : '#94a3b8',
+                  fontSize: 20,
+                  fontWeight: 900,
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  letterSpacing: -0.5,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {headerEventElapsed != null ? formatRaceClock(headerEventElapsed) : '—'}
+              </span>
+
+              <span style={{ color: '#4a5568', fontSize: 12 }}>
+                {headerEvent.distance ? `${headerEvent.distance}` : ''}
+                {headerEvent.location ? ` · ${headerEvent.location}` : ''}
+              </span>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -232,6 +451,244 @@ export default function Events() {
           </button>
         </div>
       </div>
+
+      {activeEvent && (
+        <div style={{ padding: '16px 20px 0' }}>
+          <div
+            style={{
+              background: '#0e1318',
+              borderRadius: 16,
+              border: '1.5px solid rgba(34,197,94,0.35)',
+              padding: '16px 18px',
+              boxShadow: '0 0 28px rgba(34,197,94,0.08)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                color: '#22c55e',
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontWeight: 800,
+                marginBottom: 6,
+              }}
+            >
+              Active Race
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    color: '#f0f4f8',
+                    fontSize: 22,
+                    fontWeight: 900,
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    letterSpacing: 0.3,
+                    lineHeight: 1.1
+                  }}
+                >
+                  {activeEvent.name}
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
+                  <span style={{ color: '#4a5568', fontSize: 12 }}>{activeEvent.sport}</span>
+                  <span style={{ color: '#4a5568', fontSize: 12 }}>{activeEvent.distance}</span>
+                  {activeEvent.location && <span style={{ color: '#4a5568', fontSize: 12 }}>📍 {activeEvent.location}</span>}
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right', minWidth: 120 }}>
+                <div
+                  style={{
+                    fontSize: 34,
+                    fontWeight: 900,
+                    color: '#22c55e',
+                    fontVariantNumeric: 'tabular-nums',
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    letterSpacing: -1.2,
+                    lineHeight: 1
+                  }}
+                >
+                  {formatRaceClock(getRaceElapsedMs(activeEvent, now))}
+                </div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: '#4a5568',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1.2,
+                    marginTop: 2
+                  }}
+                >
+                  live clock
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => navigate(`/race/${activeEvent.id}/monitor`)}
+                  style={{
+                    background: 'rgba(34,197,94,0.10)',
+                    border: '1px solid rgba(34,197,94,0.25)',
+                    borderRadius: 8,
+                    color: '#22c55e',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    letterSpacing: 1.2,
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Monitor
+                </button>
+
+                <button
+                  onClick={() => navigate(`/race/${activeEvent.id}/checkpoints`)}
+                  style={{
+                    background: 'rgba(249,115,22,0.08)',
+                    border: '1px solid #1e2730',
+                    borderRadius: 8,
+                    color: '#f97316',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    letterSpacing: 1.2,
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Checkpoints
+                </button>
+
+                <button
+                  onClick={() => navigate(`/results/${activeEvent.id}`)}
+                  style={{
+                    background: 'rgba(59,130,246,0.08)',
+                    border: '1px solid #1e2730',
+                    borderRadius: 8,
+                    color: '#60a5fa',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    letterSpacing: 1.2,
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Live Results
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!activeEvent && reviewEvent && (
+        <div style={{ padding: '16px 20px 0' }}>
+          <div
+            style={{
+              background: '#0e1318',
+              borderRadius: 16,
+              border: '1.5px solid rgba(234,179,8,0.30)',
+              padding: '16px 18px',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                color: '#eab308',
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontWeight: 800,
+                marginBottom: 6,
+              }}
+            >
+              Results Review
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    color: '#f0f4f8',
+                    fontSize: 20,
+                    fontWeight: 900,
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                  }}
+                >
+                  {reviewEvent.name}
+                </div>
+                <div style={{ color: '#4a5568', fontSize: 12, marginTop: 4 }}>
+                  This race has ended and is awaiting final review/finalization.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => navigate(`/race/${reviewEvent.id}/setup`)}
+                  style={{
+                    background: 'rgba(234,179,8,0.10)',
+                    border: '1px solid rgba(234,179,8,0.25)',
+                    borderRadius: 8,
+                    color: '#eab308',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    letterSpacing: 1.2,
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Review Race
+                </button>
+
+                <button
+                  onClick={() => navigate(`/results/${reviewEvent.id}`)}
+                  style={{
+                    background: 'rgba(59,130,246,0.08)',
+                    border: '1px solid #1e2730',
+                    borderRadius: 8,
+                    color: '#60a5fa',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    fontFamily: "'Barlow Condensed', sans-serif",
+                    letterSpacing: 1.2,
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Live Results
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ padding: '16px 20px 0' }}>
         <button
@@ -265,16 +722,17 @@ export default function Events() {
           <div style={{ color: '#4a5568', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>
             Loading...
           </div>
-        ) : events.length === 0 ? (
+        ) : sortedEvents.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 0' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🏁</div>
             <p style={{ color: '#4a5568', fontSize: 15, marginBottom: 8 }}>No events yet</p>
             <p style={{ color: '#2d3748', fontSize: 13 }}>Create your first event to start timing</p>
           </div>
         ) : (
-          events.map(event => {
+          sortedEvents.map(event => {
             const finisherCount = event.race_finishes?.[0]?.count ?? 0
             const isActive = event.status === 'active'
+            const isReview = event.status === 'results_review'
             const isFinished = event.status === 'finished'
             const raceElapsed = getRaceElapsedMs(event, now)
             const primaryAction = getPrimaryAction(event)
@@ -288,9 +746,11 @@ export default function Events() {
                   border: `1.5px solid ${
                     isActive
                       ? 'rgba(34,197,94,0.3)'
-                      : isFinished
-                        ? 'rgba(148,163,184,0.18)'
-                        : '#1e2730'
+                      : isReview
+                        ? 'rgba(234,179,8,0.25)'
+                        : isFinished
+                          ? 'rgba(148,163,184,0.18)'
+                          : '#1e2730'
                   }`,
                   overflow: 'hidden',
                   boxShadow: isActive ? '0 0 20px rgba(34,197,94,0.08)' : 'none'
@@ -341,6 +801,21 @@ export default function Events() {
                           </div>
                         )}
 
+                        {isReview && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontFamily: "'Barlow Condensed', sans-serif",
+                              fontWeight: 700,
+                              color: '#eab308',
+                              letterSpacing: 2,
+                              textTransform: 'uppercase'
+                            }}
+                          >
+                            Review
+                          </span>
+                        )}
+
                         {isFinished && (
                           <span
                             style={{
@@ -356,7 +831,7 @@ export default function Events() {
                           </span>
                         )}
 
-                        {!isActive && !isFinished && (
+                        {!isActive && !isReview && !isFinished && (
                           <span
                             style={{
                               fontSize: 10,
@@ -421,13 +896,13 @@ export default function Events() {
                       </div>
                     </div>
 
-                    {raceElapsed != null && (
+                    {raceElapsed != null && (isActive || isReview || isFinished) && (
                       <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
                         <div
                           style={{
                             fontSize: 26,
                             fontWeight: 900,
-                            color: isActive ? '#22c55e' : '#94a3b8',
+                            color: isActive ? '#22c55e' : isReview ? '#eab308' : '#94a3b8',
                             fontVariantNumeric: 'tabular-nums',
                             fontFamily: "'Barlow Condensed', sans-serif",
                             letterSpacing: -1,
@@ -445,7 +920,7 @@ export default function Events() {
                             marginTop: 2
                           }}
                         >
-                          elapsed
+                          {isActive ? 'live' : isReview ? 'review' : 'final'}
                         </div>
                       </div>
                     )}
@@ -526,10 +1001,32 @@ export default function Events() {
                       fontWeight: 700,
                       letterSpacing: 1,
                       textTransform: 'uppercase',
-                      color: '#4a5568'
+                      color: '#4a5568',
+                      borderRight: '1px solid #1e2730'
                     }}
                   >
                     Results
+                  </button>
+
+                  <button
+                    onClick={() => deleteEvent(event)}
+                    disabled={deletingEventId === event.id}
+                    style={{
+                      flex: 1,
+                      padding: '12px 0',
+                      background: 'rgba(239,68,68,0.06)',
+                      border: 'none',
+                      cursor: deletingEventId === event.id ? 'not-allowed' : 'pointer',
+                      fontFamily: "'Barlow Condensed', sans-serif",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      letterSpacing: 1.5,
+                      textTransform: 'uppercase',
+                      color: deletingEventId === event.id ? '#7f1d1d' : '#ef4444',
+                      opacity: deletingEventId === event.id ? 0.7 : 1
+                    }}
+                  >
+                    {deletingEventId === event.id ? 'Deleting...' : 'Delete'}
                   </button>
                 </div>
               </div>
@@ -610,7 +1107,7 @@ export default function Events() {
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="Tuesday Night 5K"
+                  placeholder={form.sport === 'Cross Country' ? 'KSS XC Meet' : 'Tuesday Night 5K'}
                   style={{ width: '100%', padding: '11px 14px', background: '#080b0f', border: '1.5px solid #1e2730', borderRadius: 8, color: '#f0f4f8', fontSize: 15, outline: 'none', boxSizing: 'border-box', fontFamily: "'Barlow', sans-serif" }}
                 />
               </div>
@@ -704,7 +1201,11 @@ export default function Events() {
                   marginTop: 4
                 }}
               >
-                {saving ? 'Creating...' : 'Create & Setup Race →'}
+                {saving
+                  ? 'Creating...'
+                  : form.sport === 'Cross Country'
+                    ? 'Create XC Meet Races →'
+                    : 'Create & Setup Race →'}
               </button>
             </div>
           </div>
