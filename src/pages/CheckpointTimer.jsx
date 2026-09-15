@@ -2,6 +2,11 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getRaceElapsedMs } from '../lib/raceClock'
+import {
+  loadRaceEventLocal,
+  clearRaceEventLocal,
+  mergeEventWithLocal,
+} from '../lib/raceEventLocalState'
 
 const F = "'Barlow Condensed', sans-serif"
 const FB = "'Barlow', sans-serif"
@@ -432,11 +437,14 @@ export default function CheckpointTimer() {
           .order('captured_at', { ascending: true }),
       ])
 
-      setEvent(eventData || null)
+      const localPending = loadRaceEventLocal(eventId)
+      const mergedEvent = mergeEventWithLocal(eventData || null, localPending)
+
+      setEvent(mergedEvent || null)
       setCheckpoint(checkpointData || null)
 
-      if (eventData?.race_started_at) {
-        setRaceStart(new Date(eventData.race_started_at).getTime())
+      if (mergedEvent?.race_started_at) {
+        setRaceStart(new Date(mergedEvent.race_started_at).getTime())
       } else {
         setRaceStart(null)
         setElapsed(0)
@@ -455,9 +463,13 @@ export default function CheckpointTimer() {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
         payload => {
-          setEvent(payload.new)
-          if (payload.new?.race_started_at) {
-            setRaceStart(new Date(payload.new.race_started_at).getTime())
+          const localPending = loadRaceEventLocal(eventId)
+          const mergedEvent = mergeEventWithLocal(payload.new, localPending)
+
+          setEvent(mergedEvent)
+
+          if (mergedEvent?.race_started_at) {
+            setRaceStart(new Date(mergedEvent.race_started_at).getTime())
           } else {
             setRaceStart(null)
             setElapsed(0)
@@ -546,6 +558,32 @@ export default function CheckpointTimer() {
     if (!eventId || !checkpointId) return
 
     async function retryUnsynced() {
+      const localRaceEvent = loadRaceEventLocal(eventId)
+
+      if (localRaceEvent?.type === 'start_race') {
+        const { data: syncedEvent, error: eventSyncError } = await supabase
+          .from('race_events')
+          .update({
+            status: 'active',
+            race_started_at: localRaceEvent.race_started_at,
+            race_finished_at: null,
+          })
+          .eq('id', eventId)
+          .select()
+          .single()
+
+        if (!eventSyncError && syncedEvent) {
+          clearRaceEventLocal(eventId)
+          setEvent(syncedEvent)
+
+          if (syncedEvent?.race_started_at) {
+            setRaceStart(new Date(syncedEvent.race_started_at).getTime())
+          } else {
+            setRaceStart(null)
+            setElapsed(0)
+          }
+        }
+      }
       const pendingLocal = loadPendingLocal(eventId, checkpointId)
       if (!pendingLocal.length) return
 

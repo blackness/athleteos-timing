@@ -3,6 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { exportRawLapEvents, exportLapSummary } from '../lib/exportLapResults'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
+import {
+  loadRaceEventLocal,
+  saveRaceEventLocal,
+  clearRaceEventLocal,
+  mergeEventWithLocal,
+} from '../lib/raceEventLocalState'
 
 function parseDelimitedLine(line, sep) {
   const cells = []
@@ -411,6 +417,7 @@ function RaceControlPanel({
   eventId,
   startingRace,
   finishingRace,
+  finalizingRace,
   onStartRace,
   onFinishRace,
   onFinalizeRace,
@@ -432,13 +439,18 @@ function RaceControlPanel({
   const elapsedMs = getRaceElapsedMs(event, now)
   const raceAlreadyStarted = isActive || isReview || isFinished || hasStartedWave
 
+  const isOfflinePendingStart =
+    event?.status === 'active' &&
+    !!event?.race_started_at &&
+    !!loadRaceEventLocal(eventId)
+
   const status = isActive
-  ? { label: 'LIVE', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.25)' }
-  : isReview
-    ? { label: 'RESULTS REVIEW', color: '#eab308', bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.25)' }
-    : isFinished
-      ? { label: 'FINAL', color: '#10b981', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.25)' }
-      : { label: 'READY', color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' }
+    ? { label: isOfflinePendingStart ? 'LIVE (OFFLINE)' : 'LIVE', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.25)' }
+    : isReview
+      ? { label: 'RESULTS REVIEW', color: '#eab308', bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.25)' }
+      : isFinished
+        ? { label: 'FINAL', color: '#10b981', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.25)' }
+        : { label: 'READY', color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' }
 
   return (
     <div style={{ ...S.card, padding: 18, marginBottom: 28 }}>
@@ -472,12 +484,18 @@ function RaceControlPanel({
                 Started {new Date(event.race_started_at).toLocaleTimeString()}
               </span>
             )}
+
+            {isOfflinePendingStart && (
+              <span style={{ color: '#eab308', fontSize: 12 }}>
+                Pending sync
+              </span>
+            )}
           </div>
         </div>
 
         <div style={{ textAlign: 'right', minWidth: 140 }}>
           <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1.5, fontFamily: F, fontWeight: 700, marginBottom: 4 }}>
-            Race Clock
+            {isActive ? 'Race Clock' : isReview ? 'Results Review' : isFinished ? 'Final Time' : 'Waiting'}
           </div>
           <div style={{ fontSize: 36, fontWeight: 900, color: isActive ? '#f0f4f8' : '#374151', fontFamily: F, letterSpacing: -1.5, lineHeight: 1 }}>
             {formatRaceClock(elapsedMs)}
@@ -488,15 +506,16 @@ function RaceControlPanel({
       <div style={{ background: '#080b0f', border: '1px solid #1e2730', borderRadius: 12, padding: 14, marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 4 }}>
           {isActive
-  ? 'Race is live. Checkpoint timers are active and the public clock is running.'
-  : isReview
-    ? 'Race has ended and is now in Results Review. Finish assignments and corrections can still be completed.'
-    : isFinished
-      ? 'Race is finalized. Results should now be considered complete.'
-      : hasStartedWave
-        ? 'A wave has already started. The race activates from the first started wave.'
-        : 'Race is ready. Starting race activates checkpoint timers and the public live clock.'}
-
+            ? isOfflinePendingStart
+              ? 'Race started offline. Checkpoint timers can run now and the event start will sync when connection returns.'
+              : 'Race is live. Checkpoint timers are active and the public clock is running.'
+            : isReview
+              ? 'Race has ended and is now in Results Review. Finish assignments and corrections can still be completed.'
+              : isFinished
+                ? 'Race is finalized. Results should now be considered complete.'
+                : hasStartedWave
+                  ? 'A wave has already started. The race activates from the first started wave.'
+                  : 'Race is ready. Starting race activates checkpoint timers and the public live clock.'}
         </div>
         <div style={{ fontSize: 12, color: '#4a5568' }}>
           Use these controls carefully — they affect all timer devices and the public results site.
@@ -524,13 +543,15 @@ function RaceControlPanel({
         >
           {isActive
             ? 'Race Live'
-            : isFinished
-              ? 'Race Finished'
-              : hasStartedWave
-                ? 'Wave Started'
-                : startingRace
-                  ? 'Starting…'
-                  : 'Start Race'}
+            : isReview
+              ? 'In Review'
+              : isFinished
+                ? 'Race Final'
+                : hasStartedWave
+                  ? 'Wave Started'
+                  : startingRace
+                    ? 'Starting…'
+                    : 'Start Race'}
         </button>
 
         <button
@@ -596,23 +617,25 @@ function RaceControlPanel({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginTop: 10 }}>
         <button
           onClick={onFinalizeRace}
-          disabled={!isReview}
+          disabled={!isReview || finalizingRace}
           style={{
             height: 44,
             borderRadius: 10,
             border: '1px solid #1e2730',
             background: isReview ? 'rgba(16,185,129,0.10)' : 'transparent',
             color: isReview ? '#10b981' : '#4b5563',
-            cursor: isReview ? 'pointer' : 'not-allowed',
+            cursor: isReview && !finalizingRace ? 'pointer' : 'not-allowed',
             fontFamily: F,
             fontWeight: 700,
             fontSize: 13,
             letterSpacing: 1.2,
             textTransform: 'uppercase',
+            opacity: finalizingRace ? 0.75 : 1,
           }}
         >
-          Finalize Results
+          {finalizingRace ? 'Finalizing…' : 'Finalize Results'}
         </button>
+
         <button
           onClick={() => navigate(`/results/${eventId}`)}
           style={{
@@ -949,7 +972,7 @@ function EditableEntryRow({
           lockedStyle={isRaceLocked}
           title={
             isRaceLocked
-              ? 'Race is active or finished. Changing bibs now can affect live splits and results.'
+              ? 'Race is active, in review, or finished. Changing bibs now can affect live splits and results.'
               : 'Bib number'
           }
         />
@@ -1099,6 +1122,7 @@ export default function PreRaceSetup() {
   const [savingCheckpoint, setSavingCheckpoint] = useState(false)
   const [startingRace, setStartingRace] = useState(false)
   const [finishingRace, setFinishingRace] = useState(false)
+  const [finalizingRace, setFinalizingRace] = useState(false)
   const [checkpointName, setCheckpointName] = useState('')
   const [saveStateByEntryId, setSaveStateByEntryId] = useState({})
 
@@ -1127,53 +1151,85 @@ export default function PreRaceSetup() {
 
   const RESET_PIN = '2468'
 
-const loadSetupData = useCallback(async () => {
-  if (!eventId) return
+  const loadSetupData = useCallback(async () => {
+    if (!eventId) return
 
-  setLoading(true)
+    setLoading(true)
 
-  const [
-    { data: ev },
-    { data: ent },
-    { data: cps },
-    { data: wvs },
-  ] = await Promise.all([
-    supabase.from('race_events').select('*').eq('id', eventId).single(),
-    supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
-    supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
-    supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
-  ])
+    const [
+      { data: ev },
+      { data: ent },
+      { data: cps },
+      { data: wvs },
+    ] = await Promise.all([
+      supabase.from('race_events').select('*').eq('id', eventId).single(),
+      supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
+      supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
+      supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
+    ])
 
-  setEvent(ev)
-  setEntries(ent ?? [])
-  setCheckpoints(cps ?? [])
-  setWaves(wvs ?? [])
-  setLoading(false)
-}, [eventId])
+    const localPending = loadRaceEventLocal(eventId)
 
-useEffect(() => {
-  if (!eventId) return
-  loadSetupData()
-}, [eventId, loadSetupData])
+    setEvent(mergeEventWithLocal(ev, localPending))
+    setEntries(ent ?? [])
+    setCheckpoints(cps ?? [])
+    setWaves(wvs ?? [])
+    setLoading(false)
+  }, [eventId])
 
-useEffect(() => {
-  if (!eventId) return
+  useEffect(() => {
+    if (!eventId) return
+    loadSetupData()
+  }, [eventId, loadSetupData])
 
-  const ch = supabase
-    .channel(`prerace-setup:${eventId}`)
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
-      payload => {
-        setEvent(payload.new)
+  useEffect(() => {
+    if (!eventId) return
+
+    const ch = supabase
+      .channel(`prerace-setup:${eventId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
+        payload => {
+          const localPending = loadRaceEventLocal(eventId)
+          setEvent(mergeEventWithLocal(payload.new, localPending))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(ch)
+    }
+  }, [eventId])
+
+  useEffect(() => {
+    if (!eventId) return
+
+    async function retryPendingRaceState() {
+      const localPending = loadRaceEventLocal(eventId)
+      if (!localPending || localPending.type !== 'start_race') return
+
+      const { data, error } = await supabase
+        .from('race_events')
+        .update({
+          status: 'active',
+          race_started_at: localPending.race_started_at,
+          race_finished_at: null,
+        })
+        .eq('id', eventId)
+        .select()
+        .single()
+
+      if (!error && data) {
+        clearRaceEventLocal(eventId)
+        setEvent(data)
       }
-    )
-    .subscribe()
+    }
 
-  return () => {
-    supabase.removeChannel(ch)
-  }
-}, [eventId])
+    retryPendingRaceState()
+    const t = setInterval(retryPendingRaceState, 5000)
+    return () => clearInterval(t)
+  }, [eventId])
 
   const wavesById = useMemo(() => Object.fromEntries(waves.map(w => [w.id, w])), [waves])
   const hasStartedWave = useMemo(() => waves.some(w => !!w.actual_start_time), [waves])
@@ -1219,7 +1275,28 @@ useEffect(() => {
     if (!name || savingCheckpoint) return
 
     setSavingCheckpoint(true)
-    const nextOrder = checkpoints.length > 0 ? Math.max(...checkpoints.map(c => c.checkpoint_order)) + 1 : 1
+
+    const finishCheckpoint = checkpoints.find(cp =>
+      String(cp.name || '').trim().toLowerCase() === 'finish'
+    )
+
+    let nextOrder = checkpoints.length > 0 ? Math.max(...checkpoints.map(c => c.checkpoint_order)) + 1 : 1
+
+    if (finishCheckpoint) {
+      nextOrder = finishCheckpoint.checkpoint_order
+
+      const checkpointsToShift = checkpoints
+        .filter(cp => cp.checkpoint_order >= finishCheckpoint.checkpoint_order)
+        .sort((a, b) => b.checkpoint_order - a.checkpoint_order)
+
+      for (const cp of checkpointsToShift) {
+        await supabase
+          .from('race_checkpoints')
+          .update({ checkpoint_order: cp.checkpoint_order + 1 })
+          .eq('id', cp.id)
+      }
+    }
+
     const shortCode = `CP${nextOrder}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
 
     const { error } = await supabase.from('race_checkpoints').insert({
@@ -1246,6 +1323,14 @@ useEffect(() => {
   }
 
   const deleteCheckpoint = async id => {
+    const cp = checkpoints.find(x => x.id === id)
+    const lower = String(cp?.name || '').trim().toLowerCase()
+
+    if (lower === 'start' || lower === 'finish') {
+      window.alert('Start and Finish checkpoints cannot be deleted.')
+      return
+    }
+
     const ok = window.confirm('Delete this checkpoint?')
     if (!ok) return
     await supabase.from('race_checkpoints').delete().eq('id', id)
@@ -1254,29 +1339,56 @@ useEffect(() => {
 
   const seedEightCheckpoints = async () => {
     if (savingCheckpoint) return
-    if (checkpoints.length > 0) {
-      const ok = window.confirm('Checkpoints already exist. Add missing checkpoints up to 8?')
+
+    const currentIntermediate = checkpoints.filter(cp => {
+      const lower = String(cp.name || '').trim().toLowerCase()
+      return lower !== 'start' && lower !== 'finish'
+    })
+
+    if (currentIntermediate.length > 0) {
+      const ok = window.confirm('Checkpoints already exist. Add missing intermediate checkpoints up to 8 total?')
       if (!ok) return
     }
 
     setSavingCheckpoint(true)
-    const existingOrders = new Set(checkpoints.map(c => c.checkpoint_order))
-    const rows = []
 
-    for (let i = 1; i <= 8; i++) {
-      if (!existingOrders.has(i)) {
-        rows.push({
-          event_id: eventId,
-          name: `Checkpoint ${i}`,
-          checkpoint_order: i,
-          code: `CP${i}`,
-          short_code: `CP${i}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-          is_active: true,
-        })
+    const finishCheckpoint = checkpoints.find(cp =>
+      String(cp.name || '').trim().toLowerCase() === 'finish'
+    )
+
+    const desiredIntermediateCount = 6
+    let existingIntermediate = checkpoints.filter(cp => {
+      const lower = String(cp.name || '').trim().toLowerCase()
+      return lower !== 'start' && lower !== 'finish'
+    })
+
+    for (let i = existingIntermediate.length + 1; i <= desiredIntermediateCount; i++) {
+      if (finishCheckpoint) {
+        const checkpointsToShift = checkpoints
+          .filter(cp => cp.checkpoint_order >= finishCheckpoint.checkpoint_order)
+          .sort((a, b) => b.checkpoint_order - a.checkpoint_order)
+
+        for (const cp of checkpointsToShift) {
+          await supabase
+            .from('race_checkpoints')
+            .update({ checkpoint_order: cp.checkpoint_order + 1 })
+            .eq('id', cp.id)
+        }
       }
+
+      const insertOrder = finishCheckpoint ? finishCheckpoint.checkpoint_order : checkpoints.length + 1
+      await supabase.from('race_checkpoints').insert({
+        event_id: eventId,
+        name: `Checkpoint ${i}`,
+        checkpoint_order: insertOrder,
+        code: `CP${insertOrder}`,
+        short_code: `CP${insertOrder}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        is_active: true,
+      })
+
+      await loadCheckpoints()
     }
 
-    if (rows.length) await supabase.from('race_checkpoints').insert(rows)
     setSavingCheckpoint(false)
     loadCheckpoints()
   }
@@ -1312,6 +1424,7 @@ useEffect(() => {
       if (eventError) {
         window.alert(`Wave started, but could not activate race: ${eventError.message}`)
       } else if (updatedEvent) {
+        clearRaceEventLocal(eventId)
         setEvent(updatedEvent)
       }
     }
@@ -1340,114 +1453,189 @@ useEffect(() => {
     if (!error) await loadWaves()
   }
 
+  const hasAnotherActiveRace = async () => {
+    if (!event?.user_id) return null
+
+    const { data, error } = await supabase
+      .from('race_events')
+      .select('id, name')
+      .eq('user_id', event.user_id)
+      .eq('status', 'active')
+
+    if (error) throw error
+
+    return (data || []).find(r => r.id !== eventId) || null
+  }
+
   const startRace = async () => {
-  if (startingRace) return
+    if (startingRace) return
 
-  if (event?.status === 'active') {
-    window.alert('Race is already active.')
-    return
-  }
-
-  if (event?.status === 'finished') {
-    window.alert('Race is already finalized.')
-    return
-  }
-
-  try {
-    const otherActive = await hasAnotherActiveRace()
-    if (otherActive) {
-      window.alert(`Cannot start this race while another race is active: "${otherActive.name}"`)
+    if (event?.status === 'active') {
+      window.alert('Race is already active.')
       return
     }
-  } catch (err) {
-    window.alert(`Could not verify active races: ${err.message}`)
-    return
-  }
 
-  const ok = window.confirm(
-    'Start race now?\n\nThis will activate checkpoint timers and begin the public live clock.'
-  )
-  if (!ok) return
+    if (event?.status === 'finished') {
+      window.alert('Race is already finalized.')
+      return
+    }
 
-  setStartingRace(true)
-  const now = new Date().toISOString()
+    try {
+      const otherActive = await hasAnotherActiveRace()
+      if (otherActive) {
+        window.alert(`Cannot start this race while another race is active: "${otherActive.name}"`)
+        return
+      }
+    } catch (err) {
+      window.alert(`Could not verify active races: ${err.message}`)
+      return
+    }
 
-  const { data, error } = await supabase
-    .from('race_events')
-    .update({
-      race_started_at: now,
-      race_finished_at: null,
-      status: 'active',
-    })
-    .eq('id', eventId)
-    .select()
-    .single()
+    const ok = window.confirm(
+      'Start race now?\n\nThis will activate checkpoint timers and begin the public live clock.'
+    )
+    if (!ok) return
 
-  setStartingRace(false)
+    setStartingRace(true)
+    const startedAt = new Date().toISOString()
 
-  if (!error && data) {
-    setEvent(data)
-    await loadSetupData()
-    navigate(`/race/${eventId}/monitor`)
-  } else if (error) {
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({
+        race_started_at: startedAt,
+        race_finished_at: null,
+        status: 'active',
+      })
+      .eq('id', eventId)
+      .select()
+      .single()
+
+    setStartingRace(false)
+
+    if (!error && data) {
+      clearRaceEventLocal(eventId)
+      setEvent(data)
+      await loadSetupData()
+      navigate(`/race/${eventId}/monitor`)
+      return
+    }
+
+    const isLikelyOffline =
+      !navigator.onLine ||
+      /failed to fetch|network|fetch/i.test(error?.message || '')
+
+    if (isLikelyOffline) {
+      const localPending = {
+        type: 'start_race',
+        status: 'active',
+        race_started_at: startedAt,
+        race_finished_at: null,
+        saved_at: new Date().toISOString(),
+      }
+
+      saveRaceEventLocal(eventId, localPending)
+
+      setEvent(prev =>
+        mergeEventWithLocal(
+          prev || {
+            id: eventId,
+            status: 'draft',
+            race_started_at: null,
+            race_finished_at: null,
+          },
+          localPending
+        )
+      )
+
+      window.alert('Race started offline. Timer devices can now run, and the race start will sync when connection returns.')
+      navigate(`/race/${eventId}/monitor`)
+      return
+    }
+
     window.alert(`Could not start race: ${error.message}`)
   }
-}
-  const hasAnotherActiveRace = async () => {
-  if (!event?.user_id) return null
 
-  const { data, error } = await supabase
-    .from('race_events')
-    .select('id, name')
-    .eq('user_id', event.user_id)
-    .eq('status', 'active')
+  const finishRace = async () => {
+    if (finishingRace) return
 
-  if (error) throw error
+    if (event?.status !== 'active') {
+      window.alert('Race must be active before it can be ended.')
+      return
+    }
 
-  return (data || []).find(r => r.id !== eventId) || null
-}
+    const ok = window.confirm(
+      'End race now?\n\nThis will stop live race timing and move the race into Results Review.'
+    )
+    if (!ok) return
 
-const finishRace = async () => {
-  if (finishingRace) return
+    setFinishingRace(true)
+    const finishedAt = new Date().toISOString()
 
-  if (event?.status !== 'active') {
-    window.alert('Race must be active before it can be ended.')
-    return
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({
+        status: 'results_review',
+        race_finished_at: finishedAt,
+      })
+      .eq('id', eventId)
+      .select()
+      .single()
+
+    setFinishingRace(false)
+
+    if (error) {
+      window.alert(`Could not end race: ${error.message}`)
+      return
+    }
+
+    if (!data) {
+      window.alert('Could not end race: no row returned.')
+      return
+    }
+
+    clearRaceEventLocal(eventId)
+    setEvent(data)
+    await loadSetupData()
   }
 
-  const ok = window.confirm(
-    'End race now?\n\nThis will stop live race timing and move the race into Results Review.'
-  )
-  if (!ok) return
+  const finalizeRace = async () => {
+    if (finalizingRace) return
 
-  setFinishingRace(true)
-  const finishedAt = new Date().toISOString()
+    if (event?.status !== 'results_review') {
+      window.alert('Race must be in Results Review before finalizing.')
+      return
+    }
 
-  const { data, error } = await supabase
-    .from('race_events')
-    .update({
-      status: 'results_review',
-      race_finished_at: finishedAt,
-    })
-    .eq('id', eventId)
-    .select()
-    .single()
+    const ok = window.confirm(
+      'Finalize results now?\n\nThis marks the race as complete/final.'
+    )
+    if (!ok) return
 
-  setFinishingRace(false)
+    setFinalizingRace(true)
 
-  if (error) {
-    window.alert(`Could not end race: ${error.message}`)
-    return
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({
+        status: 'finished',
+      })
+      .eq('id', eventId)
+      .select()
+      .single()
+
+    setFinalizingRace(false)
+
+    if (error) {
+      window.alert(`Could not finalize race: ${error.message}`)
+      return
+    }
+
+    if (data) {
+      clearRaceEventLocal(eventId)
+      setEvent(data)
+      await loadSetupData()
+    }
   }
 
-  if (!data) {
-    window.alert('Could not end race: no row returned.')
-    return
-  }
-
-  setEvent(data)
-  await loadSetupData()
-}
   const resetRaceData = async () => {
     if (resettingRaceData) return
 
@@ -1462,7 +1650,7 @@ const finishRace = async () => {
     }
 
     const ok = window.confirm(
-      'Reset all race timing data for this event?\n\nThis will permanently delete captured splits and finishes, clear wave actual start times, and reset the event to draft.'
+      'Reset all race timing data for this event?\n\nThis will permanently delete captured splits and finishes, clear wave actual start times, and reset the race to draft.'
     )
 
     if (!ok) return
@@ -1504,6 +1692,7 @@ const finishRace = async () => {
 
       if (eventError) throw eventError
 
+      clearRaceEventLocal(eventId)
       await loadWaves()
 
       setEvent(updatedEvent)
@@ -1722,9 +1911,7 @@ const finishRace = async () => {
       }
 
       setEntries(prev =>
-        [...prev, ...(data || [])].sort((a, b) =>
-          Number(a.bib_number) - Number(b.bib_number)
-        )
+        [...prev, ...(data || [])].sort((a, b) => Number(a.bib_number) - Number(b.bib_number))
       )
 
       await loadWaves()
@@ -1779,9 +1966,7 @@ const finishRace = async () => {
     }
 
     setEntries(prev =>
-      [...prev, data].sort((a, b) =>
-        Number(a.bib_number) - Number(b.bib_number)
-      )
+      [...prev, data].sort((a, b) => Number(a.bib_number) - Number(b.bib_number))
     )
 
     setForm({
@@ -1795,36 +1980,7 @@ const finishRace = async () => {
     })
     setShowAdHoc(false)
   }
-const finalizeRace = async () => {
-  if (event?.status !== 'results_review') {
-    window.alert('Race must be in Results Review before finalizing.')
-    return
-  }
 
-  const ok = window.confirm(
-    'Finalize results now?\n\nThis marks the race as complete/final.'
-  )
-  if (!ok) return
-
-  const { data, error } = await supabase
-    .from('race_events')
-    .update({
-      status: 'finished',
-    })
-    .eq('id', eventId)
-    .select()
-    .single()
-
-  if (error) {
-    window.alert(`Could not finalize race: ${error.message}`)
-    return
-  }
-
-  if (data) {
-    setEvent(data)
-    await loadSetupData()
-  }
-}
   const saveEntryField = async (entryId, field, value) => {
     const existing = entries.find(e => e.id === entryId)
     if (!existing) return
@@ -1835,7 +1991,7 @@ const finalizeRace = async () => {
 
     if (field === 'bib_number' && event?.status !== 'draft') {
       const ok = window.confirm(
-        `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
+        `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started, in review, or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
       )
       if (!ok) return
     }
@@ -1860,9 +2016,7 @@ const finalizeRace = async () => {
     setEntries(prev =>
       prev
         .map(e => (e.id === entryId ? data : e))
-        .sort((a, b) =>
-          Number(a.bib_number) - Number(b.bib_number)
-        )
+        .sort((a, b) => Number(a.bib_number) - Number(b.bib_number))
     )
 
     setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saved' }))
@@ -1939,6 +2093,7 @@ const finalizeRace = async () => {
           eventId={eventId}
           startingRace={startingRace}
           finishingRace={finishingRace}
+          finalizingRace={finalizingRace}
           onStartRace={startRace}
           onFinishRace={finishRace}
           onFinalizeRace={finalizeRace}
@@ -2154,6 +2309,10 @@ const finalizeRace = async () => {
                 ))}
               </div>
             )}
+
+            <div style={{ color: '#4a5568', fontSize: 12, marginTop: 10 }}>
+              Start and Finish are created automatically for every race. Add only intermediate checkpoints here.
+            </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
               <button onClick={() => navigate(`/race/${eventId}/checkpoints`)} style={{ ...S.addBtn, flex: 1 }}>
