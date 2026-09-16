@@ -304,6 +304,7 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
           />
         ) : (
           <button
+            type="button"
             onClick={() => setEditing(true)}
             style={{
               background: 'transparent',
@@ -323,7 +324,9 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
       <span style={{ width: 90, color: '#4a5568', fontSize: 12 }}>
         {checkpoint.short_code ?? checkpoint.code ?? '—'}
       </span>
-      <button style={S.removeBtn} onClick={() => onDelete(checkpoint.id)}>×</button>
+      <button type="button" style={S.removeBtn} onClick={() => onDelete(checkpoint.id)}>
+        ×
+      </button>
     </div>
   )
 }
@@ -371,6 +374,7 @@ function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
           />
         ) : (
           <button
+            type="button"
             onClick={() => setEditing(true)}
             style={{
               background: 'transparent',
@@ -390,6 +394,7 @@ function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
         )}
       </div>
       <button
+        type="button"
         onClick={() => onStartNow(wave.id)}
         style={{
           height: 34,
@@ -526,6 +531,7 @@ function RaceControlPanel({
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 10 }}>
         <button
+          type="button"
           onClick={onStartRace}
           disabled={startingRace || raceAlreadyStarted}
           style={{
@@ -557,6 +563,7 @@ function RaceControlPanel({
         </button>
 
         <button
+          type="button"
           onClick={onFinishRace}
           disabled={finishingRace || !isActive}
           style={{
@@ -578,6 +585,7 @@ function RaceControlPanel({
         </button>
 
         <button
+          type="button"
           onClick={() => navigate(`/race/${eventId}/monitor`)}
           style={{
             height: 50,
@@ -597,6 +605,7 @@ function RaceControlPanel({
         </button>
 
         <button
+          type="button"
           onClick={() => navigate(`/race/${eventId}/checkpoints`)}
           style={{
             height: 50,
@@ -618,6 +627,7 @@ function RaceControlPanel({
 
 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, marginTop: 10 }}>
         <button
+          type="button"
           onClick={onFinalizeRace}
           disabled={!isReview || finalizingRace}
           style={{
@@ -639,6 +649,7 @@ function RaceControlPanel({
         </button>
 
         <button
+          type="button"
           onClick={onFalseStartRace}
           disabled={!isActive || resettingRaceData}
           style={{
@@ -660,6 +671,7 @@ function RaceControlPanel({
         </button>
 
         <button
+            type="button"
           onClick={() => navigate(`/results/${eventId}`)}
           style={{
             height: 44,
@@ -698,6 +710,7 @@ function RaceControlPanel({
         </button>
 
         <button
+          type="button"
           onClick={() => navigate(`/race/${eventId}/checkpoint-qr`)}
           style={{
             height: 44,
@@ -1127,7 +1140,13 @@ function EditableEntryRow({
         </div>
       </div>
 
-      <button style={S.removeBtn} onClick={() => onDelete(entry.id)}>×</button>
+      <button
+        type="button"
+        style={S.removeBtn}
+        onClick={() => onDelete(entry.id)}
+      >
+        ×
+      </button>
     </div>
   )
 }
@@ -2154,6 +2173,59 @@ const nextStep = useMemo(() => {
   }
 }, [event?.status])
 
+const [publishing, setPublishing] = useState(false)
+const [copiedLink, setCopiedLink] = useState(null)
+
+const publicResultsUrl = useMemo(() => {
+  if (!eventId) return ''
+  return `${window.location.origin}/results/${eventId}`
+}, [eventId])
+
+const publicLiveBoardUrl = useMemo(() => {
+  if (!eventId) return ''
+  return `${window.location.origin}/public/race/${eventId}/live-board`
+}, [eventId])
+
+const setRacePublicState = async nextIsPublic => {
+  if (!event?.id || publishing) return
+
+  const actionWord = nextIsPublic ? 'publish' : 'make private'
+  const ok = window.confirm(
+    nextIsPublic
+      ? 'Make this race public?\n\nSpectators will be able to open the public results and live board links without logging in.'
+      : 'Make this race private?\n\nPublic results and live board links will stop working for spectators.'
+  )
+  if (!ok) return
+
+  setPublishing(true)
+
+  const { data, error } = await supabase
+    .from('race_events')
+    .update({ is_public: nextIsPublic })
+    .eq('id', event.id)
+    .select()
+    .single()
+
+  setPublishing(false)
+
+  if (error || !data) {
+    window.alert(`Could not ${actionWord} race: ${error?.message || 'Unknown error'}`)
+    return
+  }
+
+  setEvent(prev => ({ ...(prev || {}), ...data }))
+}
+
+const copyShareLink = async (text, key) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    setCopiedLink(key)
+    setTimeout(() => setCopiedLink(null), 1500)
+  } catch {
+    window.alert('Could not copy link.')
+  }
+}
+
 if (loading) {
   return (
     <div style={{ ...S.page, alignItems: 'center', justifyContent: 'center', display: 'flex', color: '#4a5568' }}>
@@ -2179,13 +2251,16 @@ return (
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button style={{ ...S.backBtn, color: '#60a5fa' }} onClick={() => navigate(`/results/${eventId}`)}>
+          <button
+            type="button" style={{ ...S.backBtn, color: '#60a5fa' }} onClick={() => navigate(`/results/${eventId}`)}>
             Public Results ↗
           </button>
-          <button style={{ ...S.backBtn, color: '#a78bfa' }} onClick={() => navigate(`/race/${eventId}/corrections`)}>
+          <button
+            type="button" style={{ ...S.backBtn, color: '#a78bfa' }} onClick={() => navigate(`/race/${eventId}/corrections`)}>
             Review & Fix Results
           </button>
-          <button style={{ ...S.backBtn, color: '#f97316' }} onClick={() => navigate(`/race/${eventId}/checkpoints`)}>
+          <button
+            type="button" style={{ ...S.backBtn, color: '#f97316' }} onClick={() => navigate(`/race/${eventId}/checkpoints`)}>
             Timer Devices
           </button>
           <button
@@ -2227,33 +2302,238 @@ return (
           navigate={navigate}
           hasStartedWave={hasStartedWave}
         />
-<div
+<div style={{ ...S.card, padding: 18, marginBottom: 28, border: `1px solid ${nextStep.border}`, background: nextStep.bg }}>
+  <div
+    style={{
+      fontSize: 10,
+      color: nextStep.tone,
+      textTransform: 'uppercase',
+      letterSpacing: 2,
+      marginBottom: 8,
+      fontFamily: F,
+      fontWeight: 800,
+    }}
+  >
+    {nextStep.title}
+  </div>
+
+  <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.5 }}>
+    {nextStep.text}
+  </div>
+</div>
+
+<div style={S.section}>
+  <div style={S.sLabel}>Public Sharing</div>
+
+  <div
+    style={{
+      ...S.card,
+      padding: 18,
+      border: `1px solid ${event?.is_public ? 'rgba(16,185,129,0.35)' : '#1a2030'}`,
+      background: event?.is_public ? 'rgba(16,185,129,0.08)' : '#0e1318',
+    }}
+  >
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 16,
+        alignItems: 'flex-start',
+        flexWrap: 'wrap',
+        marginBottom: 14,
+      }}
+    >
+      <div>
+        <div
           style={{
-            ...S.card,
-            padding: 18,
-            marginBottom: 28,
-            border: `1px solid ${nextStep.border}`,
-            background: nextStep.bg,
+            fontSize: 11,
+            color: event?.is_public ? '#10b981' : '#94a3b8',
+            textTransform: 'uppercase',
+            letterSpacing: 2,
+            marginBottom: 6,
+            fontFamily: F,
+            fontWeight: 800,
           }}
         >
-          <div
+          {event?.is_public ? 'Public Access Enabled' : 'Private Race'}
+        </div>
+
+        <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.5, maxWidth: 700 }}>
+          {event?.is_public
+            ? 'Spectators can open the public results and live board links for this race without signing in.'
+            : 'This race is currently private. Public results and live board links will not work for spectators until you publish it.'}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setRacePublicState(!event?.is_public)}
+        disabled={publishing}
+        style={{
+          height: 42,
+          padding: '0 14px',
+          borderRadius: 10,
+          border: 'none',
+          background: event?.is_public ? '#dc2626' : '#16a34a',
+          color: '#fff',
+          cursor: publishing ? 'not-allowed' : 'pointer',
+          fontFamily: F,
+          fontWeight: 800,
+          fontSize: 12,
+          letterSpacing: 1.4,
+          textTransform: 'uppercase',
+          opacity: publishing ? 0.7 : 1,
+        }}
+      >
+        {publishing
+          ? 'Saving…'
+          : event?.is_public
+            ? 'Make Private'
+            : 'Publish Race'}
+      </button>
+    </div>
+
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr',
+        gap: 12,
+      }}
+    >
+      <div
+        style={{
+          border: '1px solid #1e2730',
+          borderRadius: 10,
+          padding: 12,
+          background: '#080b0f',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            color: '#60a5fa',
+            textTransform: 'uppercase',
+            letterSpacing: 1.5,
+            marginBottom: 8,
+            fontFamily: F,
+            fontWeight: 800,
+          }}
+        >
+          Public Results Link
+        </div>
+
+        <div
+          style={{
+            fontSize: 12,
+            color: event?.is_public ? '#cbd5e1' : '#4a5568',
+            wordBreak: 'break-all',
+            marginBottom: 10,
+          }}
+        >
+          {publicResultsUrl}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => copyShareLink(publicResultsUrl, 'results')}
+            disabled={!event?.is_public}
             style={{
-              fontSize: 10,
-              color: nextStep.tone,
-              textTransform: 'uppercase',
-              letterSpacing: 2,
-              marginBottom: 8,
-              fontFamily: F,
-              fontWeight: 800,
+              ...S.backBtn,
+              color: event?.is_public ? '#60a5fa' : '#4b5563',
+              cursor: event?.is_public ? 'pointer' : 'not-allowed',
+              opacity: event?.is_public ? 1 : 0.6,
             }}
           >
-            {nextStep.title}
-          </div>
+            {copiedLink === 'results' ? 'Copied!' : 'Copy Results Link'}
+          </button>
 
-          <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.5 }}>
-            {nextStep.text}
-          </div>
+          <button
+            type="button"
+            onClick={() => window.open(publicResultsUrl, '_blank', 'noopener,noreferrer')}
+            disabled={!event?.is_public}
+            style={{
+              ...S.backBtn,
+              color: event?.is_public ? '#60a5fa' : '#4b5563',
+              cursor: event?.is_public ? 'pointer' : 'not-allowed',
+              opacity: event?.is_public ? 1 : 0.6,
+            }}
+          >
+            Open Results ↗
+          </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          border: '1px solid #1e2730',
+          borderRadius: 10,
+          padding: 12,
+          background: '#080b0f',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            color: '#a78bfa',
+            textTransform: 'uppercase',
+            letterSpacing: 1.5,
+            marginBottom: 8,
+            fontFamily: F,
+            fontWeight: 800,
+          }}
+        >
+          Public Live Board Link
+        </div>
+
+        <div
+          style={{
+            fontSize: 12,
+            color: event?.is_public ? '#cbd5e1' : '#4a5568',
+            wordBreak: 'break-all',
+            marginBottom: 10,
+          }}
+        >
+          {publicLiveBoardUrl}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => copyShareLink(publicLiveBoardUrl, 'liveboard')}
+            disabled={!event?.is_public}
+            style={{
+              ...S.backBtn,
+              color: event?.is_public ? '#a78bfa' : '#4b5563',
+              cursor: event?.is_public ? 'pointer' : 'not-allowed',
+              opacity: event?.is_public ? 1 : 0.6,
+            }}
+          >
+            {copiedLink === 'liveboard' ? 'Copied!' : 'Copy Live Board Link'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => window.open(publicLiveBoardUrl, '_blank', 'noopener,noreferrer')}
+            disabled={!event?.is_public}
+            style={{
+              ...S.backBtn,
+              color: event?.is_public ? '#a78bfa' : '#4b5563',
+              cursor: event?.is_public ? 'pointer' : 'not-allowed',
+              opacity: event?.is_public ? 1 : 0.6,
+            }}
+          >
+            Open Live Board ↗
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div style={{ color: '#4a5568', fontSize: 12, marginTop: 12, lineHeight: 1.5 }}>
+      Spectator links are public only when this race is published. Device QR codes remain staff-only and should not be shared publicly.
+    </div>
+  </div>
+</div>
         <div style={S.section}>
           <div style={S.sLabel}>Roster Import</div>
 

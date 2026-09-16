@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export default function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
+
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -12,23 +14,29 @@ export default function Login() {
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
 
+  const searchParams = new URLSearchParams(location.search)
+  const rawNext = searchParams.get('next')
+  const nextPath = rawNext && rawNext.startsWith('/') ? rawNext : '/'
+
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
     setMessage(null)
     setLoading(true)
+
     try {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({
-          email, password,
-          options: { data: { full_name: fullName } }
+          email,
+          password,
+          options: { data: { full_name: fullName } },
         })
         if (error) throw error
         setMessage('Account created! Check your email for a verification link.')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        navigate('/')
+        navigate(nextPath, { replace: true })
       }
     } catch (err) {
       setError(err.message || 'An error occurred')
@@ -48,7 +56,6 @@ export default function Login() {
         width: '100%', maxWidth: 400, boxSizing: 'border-box',
         border: '1.5px solid #1f2937', boxShadow: '0 25px 60px rgba(0,0,0,0.5)'
       }}>
-        {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{
             width: 64, height: 64, borderRadius: 18, margin: '0 auto 16px',
@@ -74,21 +81,18 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Error */}
         {error && (
           <div style={{ background: '#7f1d1d', border: '1.5px solid #991b1b', color: '#fca5a5', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
             ⚠️ {error}
           </div>
         )}
 
-        {/* Success */}
         {message && (
           <div style={{ background: '#14532d', border: '1.5px solid #166534', color: '#86efac', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
             ✓ {message}
           </div>
         )}
 
-        {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {isSignUp && (
             <div>
@@ -154,7 +158,6 @@ export default function Login() {
           </button>
         </form>
 
-        {/* Toggle */}
         <div style={{ marginTop: 20, textAlign: 'center' }}>
           <button
             type="button"
@@ -165,7 +168,6 @@ export default function Login() {
           </button>
         </div>
 
-        {/* Footer */}
         <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #1f2937', textAlign: 'center' }}>
           <p style={{ color: '#374151', fontSize: 12, margin: '0 0 4px' }}>Track drills, PRs, and race times</p>
           <p style={{ color: '#374151', fontSize: 11, margin: 0 }}>Your data is secure and encrypted</p>

@@ -14,7 +14,7 @@ export default function CheckpointRedirect() {
       }
 
       const normalizedCode = code.trim().toUpperCase()
-      let data = null
+      let checkpoint = null
 
       const byShort = await supabase
         .from('race_checkpoints')
@@ -22,30 +22,52 @@ export default function CheckpointRedirect() {
         .ilike('short_code', normalizedCode)
         .maybeSingle()
 
-      if (byShort.data) data = byShort.data
+      if (byShort.data) checkpoint = byShort.data
 
-      if (!data) {
+      if (!checkpoint) {
         const byId = await supabase
           .from('race_checkpoints')
           .select('id, event_id')
           .eq('id', code)
           .maybeSingle()
 
-        if (byId.data) data = byId.data
+        if (byId.data) checkpoint = byId.data
       }
 
-      if (data?.event_id && data?.id) {
-        navigate(`/race/${data.event_id}/checkpoint/${data.id}`, { replace: true })
-      } else {
+      if (!checkpoint?.event_id || !checkpoint?.id) {
         navigate('/', { replace: true })
+        return
       }
+
+      const targetPath = `/race/${checkpoint.event_id}/checkpoint/${checkpoint.id}`
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (session?.user) {
+        navigate(targetPath, { replace: true })
+        return
+      }
+
+      navigate(`/login?next=${encodeURIComponent(targetPath)}`, { replace: true })
     }
 
     go()
   }, [code, navigate])
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div
+      style={{
+        minHeight: '100dvh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'sans-serif',
+        color: '#475569',
+        background: '#080b0f',
+      }}
+    >
       Loading checkpoint…
     </div>
   )
