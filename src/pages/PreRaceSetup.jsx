@@ -509,18 +509,18 @@ function RaceControlPanel({
         <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 4 }}>
           {isActive
             ? isOfflinePendingStart
-              ? 'Race started offline. Checkpoint timers can run now and the event start will sync when connection returns.'
-              : 'Race is live. Checkpoint timers are active and the public clock is running.'
+              ? 'This race was started offline. Timer devices can run now, and the start will sync when internet returns.'
+              : 'This race is live. Timer devices are now recording racers.'
             : isReview
-              ? 'Race has ended and is now in Results Review. Finish assignments and corrections can still be completed.'
+              ? 'This race has ended. Review results and fix any issues before finalizing.'
               : isFinished
-                ? 'Race is finalized. Results should now be considered complete.'
+                ? 'This race is complete. Results are now final.'
                 : hasStartedWave
-                  ? 'A wave has already started. The race activates from the first started wave.'
-                  : 'Race is ready. Starting race activates checkpoint timers and the public live clock.'}
+                  ? 'A wave has already started. This race becomes active from the first started wave.'
+                  : 'This race is ready to begin. When athletes are ready, click Start Race.'}
         </div>
         <div style={{ fontSize: 12, color: '#4a5568' }}>
-          Use these controls carefully — they affect all timer devices and the public results site.
+          These controls affect timer devices and the public results page for this race.
         </div>
       </div>
 
@@ -593,7 +593,7 @@ function RaceControlPanel({
             textTransform: 'uppercase',
           }}
         >
-          Monitor
+          Live Race View
         </button>
 
         <button
@@ -612,7 +612,7 @@ function RaceControlPanel({
             textTransform: 'uppercase',
           }}
         >
-          Checkpoints
+          Timer Devices
         </button>
       </div>
 
@@ -675,7 +675,7 @@ function RaceControlPanel({
             textTransform: 'uppercase',
           }}
         >
-          Live Results ↗
+          Public Results ↗
         </button>
 
         <button
@@ -694,7 +694,7 @@ function RaceControlPanel({
             textTransform: 'uppercase',
           }}
         >
-          Corrections & Adjustments
+          Review & Fix Results
         </button>
 
         <button
@@ -713,7 +713,7 @@ function RaceControlPanel({
             textTransform: 'uppercase',
           }}
         >
-          Print QR Sheet
+          Print Device QR Codes
         </button>
       </div>
     </div>
@@ -2062,68 +2062,107 @@ const falseStartRace = async () => {
     })
     setShowAdHoc(false)
   }
+const saveEntryField = async (entryId, field, value) => {
+  const existing = entries.find(e => e.id === entryId)
+  if (!existing) return
 
-  const saveEntryField = async (entryId, field, value) => {
-    const existing = entries.find(e => e.id === entryId)
-    if (!existing) return
+  const currentValue = existing[field] ?? null
+  const nextValue = value ?? null
+  if (currentValue === nextValue) return
 
-    const currentValue = existing[field] ?? null
-    const nextValue = value ?? null
-    if (currentValue === nextValue) return
-
-    if (field === 'bib_number' && event?.status !== 'draft') {
-      const ok = window.confirm(
-        `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started, in review, or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
-      )
-      if (!ok) return
-    }
-
-    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saving' }))
-
-    const { data, error } = await supabase
-      .from('event_entries')
-      .update({ [field]: nextValue })
-      .eq('id', entryId)
-      .select()
-      .single()
-
-    if (error || !data) {
-      setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'error' }))
-      setTimeout(() => {
-        setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
-      }, 2000)
-      return
-    }
-
-    setEntries(prev =>
-      prev
-        .map(e => (e.id === entryId ? data : e))
-        .sort((a, b) => Number(a.bib_number) - Number(b.bib_number))
+  if (field === 'bib_number' && event?.status !== 'draft') {
+    const ok = window.confirm(
+      `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started, in review, or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
     )
+    if (!ok) return
+  }
 
-    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saved' }))
+  setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saving' }))
+
+  const { data, error } = await supabase
+    .from('event_entries')
+    .update({ [field]: nextValue })
+    .eq('id', entryId)
+    .select()
+    .single()
+
+  if (error || !data) {
+    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'error' }))
     setTimeout(() => {
       setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
-    }, 1200)
+    }, 2000)
+    return
   }
 
-  const removeEntry = async id => {
-    await supabase.from('event_entries').delete().eq('id', id)
-    setEntries(prev => prev.filter(e => e.id !== id))
+  setEntries(prev =>
+    prev
+      .map(e => (e.id === entryId ? data : e))
+      .sort((a, b) => Number(a.bib_number) - Number(b.bib_number))
+  )
+
+  setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saved' }))
+  setTimeout(() => {
+    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
+  }, 1200)
+}
+
+const removeEntry = async id => {
+  await supabase.from('event_entries').delete().eq('id', id)
+  setEntries(prev => prev.filter(e => e.id !== id))
+}
+
+const preloaded = entries.filter(e => !e.is_adhoc)
+const adhoc = entries.filter(e => e.is_adhoc)
+
+const nextStep = useMemo(() => {
+  if (event?.status === 'active') {
+    return {
+      title: 'Next Step',
+      text: 'Timer devices are now live. Open Timer Devices for operators, or use Live Race View and Public Results to watch the race.',
+      tone: '#22c55e',
+      bg: 'rgba(34,197,94,0.08)',
+      border: 'rgba(34,197,94,0.25)',
+    }
   }
 
-  const preloaded = entries.filter(e => !e.is_adhoc)
-  const adhoc = entries.filter(e => e.is_adhoc)
-
-  if (loading) {
-    return (
-      <div style={{ ...S.page, alignItems: 'center', justifyContent: 'center', display: 'flex', color: '#4a5568' }}>
-        Loading…
-      </div>
-    )
+  if (event?.status === 'results_review') {
+    return {
+      title: 'Next Step',
+      text: 'Review results, fix any issues, then click Finalize Results when everything looks correct.',
+      tone: '#eab308',
+      bg: 'rgba(234,179,8,0.08)',
+      border: 'rgba(234,179,8,0.25)',
+    }
   }
 
+  if (event?.status === 'finished') {
+    return {
+      title: 'Next Step',
+      text: 'This race is complete. View or share the final results, or export data if needed.',
+      tone: '#10b981',
+      bg: 'rgba(16,185,129,0.08)',
+      border: 'rgba(16,185,129,0.25)',
+    }
+  }
+
+  return {
+    title: 'Next Step',
+    text: 'Review your roster and timer devices, then click Start Race when athletes are ready.',
+    tone: '#3b82f6',
+    bg: 'rgba(59,130,246,0.08)',
+    border: 'rgba(59,130,246,0.25)',
+  }
+}, [event?.status])
+
+if (loading) {
   return (
+    <div style={{ ...S.page, alignItems: 'center', justifyContent: 'center', display: 'flex', color: '#4a5568' }}>
+      Loading…
+    </div>
+  )
+}
+
+return (
     <div style={S.page}>
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
@@ -2132,7 +2171,7 @@ const falseStartRace = async () => {
 
         <div style={{ flex: 1, padding: '0 16px', minWidth: 220 }}>
           <div style={{ fontSize: 11, color: '#f97316', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
-            RACE SETUP
+            RACE HOME
           </div>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', fontFamily: F }}>
             {event?.name}
@@ -2141,16 +2180,20 @@ const falseStartRace = async () => {
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button style={{ ...S.backBtn, color: '#60a5fa' }} onClick={() => navigate(`/results/${eventId}`)}>
-            Live Results ↗
+            Public Results ↗
           </button>
           <button style={{ ...S.backBtn, color: '#a78bfa' }} onClick={() => navigate(`/race/${eventId}/corrections`)}>
-            Corrections & Adjustments
+            Review & Fix Results
           </button>
           <button style={{ ...S.backBtn, color: '#f97316' }} onClick={() => navigate(`/race/${eventId}/checkpoints`)}>
-            Checkpoints
+            Timer Devices
           </button>
-          <button style={{ ...S.backBtn, color: '#3b82f6' }} onClick={() => navigate(`/race/${eventId}/monitor`)}>
-            Monitor
+          <button
+            type="button"
+            style={{ ...S.backBtn, color: '#3b82f6' }}
+            onClick={() => navigate(`/race/${eventId}/monitor`)}
+          >
+            Live Race View
           </button>
         </div>
       </div>
@@ -2184,9 +2227,35 @@ const falseStartRace = async () => {
           navigate={navigate}
           hasStartedWave={hasStartedWave}
         />
+<div
+          style={{
+            ...S.card,
+            padding: 18,
+            marginBottom: 28,
+            border: `1px solid ${nextStep.border}`,
+            background: nextStep.bg,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: nextStep.tone,
+              textTransform: 'uppercase',
+              letterSpacing: 2,
+              marginBottom: 8,
+              fontFamily: F,
+              fontWeight: 800,
+            }}
+          >
+            {nextStep.title}
+          </div>
 
+          <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.5 }}>
+            {nextStep.text}
+          </div>
+        </div>
         <div style={S.section}>
-          <div style={S.sLabel}>Import Athletes / Teams</div>
+          <div style={S.sLabel}>Roster Import</div>
 
           {csvStep === 'idle' && (
             <div style={{ ...S.card, padding: 20 }}>
@@ -2343,7 +2412,7 @@ const falseStartRace = async () => {
         )}
 
         <div style={S.section}>
-          <div style={S.sLabel}>Checkpoints</div>
+          <div style={S.sLabel}>Timer Devices</div>
           <div style={{ ...S.card, padding: 18 }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
               <input
@@ -2395,18 +2464,18 @@ const falseStartRace = async () => {
             )}
 
             <div style={{ color: '#4a5568', fontSize: 12, marginTop: 10 }}>
-              Start and Finish are created automatically for every race. Add only intermediate checkpoints here.
+              Start and Finish timer devices are created automatically for every race. Add only intermediate split points here.
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
               <button onClick={() => navigate(`/race/${eventId}/checkpoints`)} style={{ ...S.addBtn, flex: 1 }}>
-                Open Checkpoints
+                Open Timer Devices
               </button>
               <button onClick={() => navigate(`/results/${eventId}`)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
-                View Live Results
+                View Public Results
               </button>
               <button onClick={() => navigate(`/race/${eventId}/corrections`)} style={{ ...S.backBtn, flex: 1, color: '#a78bfa' }}>
-                Corrections & Adjustments
+                Review & Fix Results
               </button>
             </div>
 
@@ -2427,7 +2496,7 @@ const falseStartRace = async () => {
 
             {event?.status !== 'draft' && (
               <div style={{ marginBottom: 10, color: '#eab308', fontSize: 12, fontFamily: FB }}>
-                Bib edits are sensitive once the race has started. Team, division, gender, and names can still be corrected inline.
+                Once the race has started, change bibs very carefully. Names, teams, divisions, and genders can still be corrected here.
               </div>
             )}
 

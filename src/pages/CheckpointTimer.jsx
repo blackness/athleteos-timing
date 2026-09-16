@@ -132,6 +132,10 @@ function getPendingLocalStorageKey(eventId, checkpointId) {
   return `checkpoint_timer_pending:${eventId}:${checkpointId}`
 }
 
+function getDeviceRoleStorageKey(checkpointId) {
+  return `checkpoint_timer_role:${checkpointId}`
+}
+
 function loadPendingLocal(eventId, checkpointId) {
   try {
     const raw = localStorage.getItem(getPendingLocalStorageKey(eventId, checkpointId))
@@ -165,6 +169,7 @@ export default function CheckpointTimer() {
   const [repeatGuardMs, setRepeatGuardMs] = useState(0)
   const [recentFilter, setRecentFilter] = useState('all')
   const [theme, setTheme] = useState('dark')
+  const [deviceRole, setDeviceRole] = useState('capture')
 
   const [savingLap, setSavingLap] = useState(false)
   const [savingAssign, setSavingAssign] = useState(false)
@@ -187,6 +192,8 @@ export default function CheckpointTimer() {
 
   const T = THEMES[theme]
   const isAdmin = !!session?.user
+  const isCaptureDevice = deviceRole === 'capture'
+  const isAssignDevice = deviceRole === 'assign'
 
   const checkpointName = String(checkpoint?.name || '').trim().toLowerCase()
   const isFinishCheckpoint =
@@ -215,7 +222,7 @@ export default function CheckpointTimer() {
     textTransform: 'uppercase',
   })
 
-  const guardBtn = active => ({
+  const pillBtn = active => ({
     padding: '6px 10px',
     borderRadius: 999,
     border: `1px solid ${T.border2}`,
@@ -379,6 +386,13 @@ export default function CheckpointTimer() {
     } else {
       setTheme('light')
     }
+
+    const savedRole = localStorage.getItem(getDeviceRoleStorageKey(checkpointId))
+    if (savedRole === 'capture' || savedRole === 'assign') {
+      setDeviceRole(savedRole)
+    } else {
+      setDeviceRole('capture')
+    }
   }, [checkpointId])
 
   useEffect(() => {
@@ -397,10 +411,22 @@ export default function CheckpointTimer() {
   }, [checkpointId, theme])
 
   useEffect(() => {
+    if (!checkpointId) return
+    localStorage.setItem(getDeviceRoleStorageKey(checkpointId), deviceRole)
+  }, [checkpointId, deviceRole])
+
+  useEffect(() => {
+    if (isAssignDevice && inputMode !== 'capture_first') {
+      setInputMode('capture_first')
+    }
+  }, [isAssignDevice, inputMode])
+
+  useEffect(() => {
     if (!eventId || !checkpointId) return
 
     setEvent(null)
     setCheckpoint(null)
+    setEntries({})
     setLaps([])
     setRaceStart(null)
     setElapsed(0)
@@ -449,6 +475,7 @@ export default function CheckpointTimer() {
         setRaceStart(null)
         setElapsed(0)
       }
+
       const map = {}
       ;(entryData || []).forEach(e => { map[e.bib_number] = e })
       setEntries(map)
@@ -584,6 +611,7 @@ export default function CheckpointTimer() {
           }
         }
       }
+
       const pendingLocal = loadPendingLocal(eventId, checkpointId)
       if (!pendingLocal.length) return
 
@@ -651,7 +679,7 @@ export default function CheckpointTimer() {
     return () => clearInterval(retryRef.current)
   }, [eventId, checkpointId, getEntryDisplayName, getEntryTeam, pushLastAction])
 
-  const canCapture = event?.status === 'active' && !!raceStart
+  const canCapture = isCaptureDevice && event?.status === 'active' && !!raceStart
 
   const pending = useMemo(
     () =>
@@ -742,12 +770,14 @@ export default function CheckpointTimer() {
     if (syncing) return { label: 'Syncing…', tone: 'info' }
     if (pendingLocal.length > 0) return { label: 'Saved locally', tone: 'warning' }
     if (canCapture) return { label: 'Ready', tone: 'success' }
+    if (isAssignDevice && nextPending) return { label: 'Assigning', tone: 'info' }
     if (event?.status === 'finished') return { label: 'Race finished', tone: 'default' }
     if (event?.status === 'results_review') return { label: 'Results review', tone: 'warning' }
     return { label: 'Waiting', tone: 'default' }
-  }, [eventId, checkpointId, syncing, canCapture, event?.status])
+  }, [eventId, checkpointId, syncing, canCapture, event?.status, isAssignDevice, nextPending])
 
   const changeMode = useCallback((nextMode) => {
+    if (isAssignDevice) return
     if (nextMode === inputMode) return
 
     if (inputMode === 'bib_first' && bibInput.trim()) {
@@ -763,7 +793,7 @@ export default function CheckpointTimer() {
     setTimeout(() => {
       if (nextMode === 'bib_first') inputRef.current?.focus()
     }, 0)
-  }, [inputMode, bibInput])
+  }, [inputMode, bibInput, isAssignDevice])
 
   const captureLap = useCallback(async () => {
     if (!canCapture || savingLap || !raceStart) return
@@ -1288,6 +1318,22 @@ export default function CheckpointTimer() {
       const inInput = isTextInput(active)
       const bib = bibInput.trim()
 
+      if (isAssignDevice) {
+        if (e.key === 'Enter' && bib && inputMode === 'capture_first' && nextPending) {
+          e.preventDefault()
+          assignBib()
+        }
+
+        if (e.key === 'Escape' && bib) {
+          e.preventDefault()
+          setBibInput('')
+          setPreview(null)
+          refocusBibInput()
+        }
+
+        return
+      }
+
       if (e.code === 'Space') {
         if (inputMode === 'capture_first' && canCapture) {
           e.preventDefault()
@@ -1363,6 +1409,7 @@ export default function CheckpointTimer() {
     captureLap,
     runPrimaryAction,
     refocusBibInput,
+    isAssignDevice,
   ])
 
   const lastActionTone = getLastActionTone()
@@ -1437,7 +1484,9 @@ export default function CheckpointTimer() {
                       ? 'Results review'
                       : canCapture
                         ? 'Race active'
-                        : 'Waiting'}
+                        : isAssignDevice
+                          ? 'Assignment device'
+                          : 'Waiting'}
                 </div>
               </div>
 
@@ -1638,37 +1687,60 @@ export default function CheckpointTimer() {
           }}
         >
           <div style={{ padding: '14px 16px 12px' }}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              <button onClick={() => changeMode('capture_first')} style={modeBtn(inputMode === 'capture_first')}>
-                Capture First
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 10 }}>
+              <button
+                onClick={() => setDeviceRole('capture')}
+                style={pillBtn(deviceRole === 'capture')}
+              >
+                Capture Device
               </button>
-              <button onClick={() => changeMode('bib_first')} style={modeBtn(inputMode === 'bib_first')}>
-                Bib First
+              <button
+                onClick={() => setDeviceRole('assign')}
+                style={pillBtn(deviceRole === 'assign')}
+              >
+                Assign Device
               </button>
             </div>
+
+            {isCaptureDevice && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <button onClick={() => changeMode('capture_first')} style={modeBtn(inputMode === 'capture_first')}>
+                  Capture First
+                </button>
+                <button onClick={() => changeMode('bib_first')} style={modeBtn(inputMode === 'bib_first')}>
+                  Bib First
+                </button>
+              </div>
+            )}
 
             <div style={{ textAlign: 'center', fontSize: 11, color: T.muted, minHeight: 18, marginBottom: 10 }}>
-              {inputMode === 'capture_first'
+              {isAssignDevice
                 ? isFinishCheckpoint
-                  ? 'Tap finishers as they cross. Assign bibs afterward in place order.'
-                  : 'Tap racers as they pass. Assign bibs afterward.'
-                : isFinishCheckpoint
-                  ? 'Enter bib, then tap to record the finisher immediately.'
-                  : 'Enter bib, then tap to record immediately.'}
+                  ? 'Assignment-only mode. Capture is disabled on this device.'
+                  : 'Assignment-only mode. Tap capture is disabled on this device.'
+                : inputMode === 'capture_first'
+                  ? isFinishCheckpoint
+                    ? 'Tap finishers as they cross. Assign bibs afterward in place order.'
+                    : 'Tap racers as they pass. Assign bibs afterward.'
+                  : isFinishCheckpoint
+                    ? 'Enter bib, then tap to record the finisher immediately.'
+                    : 'Enter bib, then tap to record immediately.'}
             </div>
 
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
-              {[0, 300, 500].map(ms => (
-                <button
-                  key={ms}
-                  onClick={() => setRepeatGuardMs(ms)}
-                  style={guardBtn(repeatGuardMs === ms)}
-                  title="Optional protection against accidental repeat taps"
-                >
-                  {ms === 0 ? 'Guard Off' : `${(ms / 1000).toFixed(1)}s Guard`}
-                </button>
-              ))}
-            </div>
+            {isCaptureDevice && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {[0, 300, 500].map(ms => (
+                  <button
+                    key={ms}
+                    onClick={() => setRepeatGuardMs(ms)}
+                    style={pillBtn(repeatGuardMs === ms)}
+                    title="Optional protection against accidental repeat taps"
+                  >
+                    {ms === 0 ? 'Guard Off' : `${(ms / 1000).toFixed(1)}s Guard`}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={{ padding: '0 16px 16px' }}>
@@ -1700,7 +1772,7 @@ export default function CheckpointTimer() {
               </div>
             )}
 
-            {inputMode === 'capture_first' && (
+            {(isAssignDevice || inputMode === 'capture_first') && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 9, color: T.dim, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700, marginBottom: 6 }}>
                   {isFinishCheckpoint ? 'Assign next finisher' : 'Assign next bib'}
@@ -1785,45 +1857,53 @@ export default function CheckpointTimer() {
                   />
                   <button
                     onPointerDown={e => e.preventDefault()}
-                    onClick={showAssignMainButton ? captureLap : assignBib}
+                    onClick={isAssignDevice ? assignBib : (showAssignMainButton ? captureLap : assignBib)}
                     disabled={
-                      showAssignMainButton
-                        ? !canCapture
-                        : (!bibInput.trim() || !nextPending || savingAssign)
+                      isAssignDevice
+                        ? (!bibInput.trim() || !nextPending || savingAssign)
+                        : showAssignMainButton
+                          ? !canCapture
+                          : (!bibInput.trim() || !nextPending || savingAssign)
                     }
                     style={{
                       width: 100,
                       height: 58,
-                      background: showAssignMainButton ? T.accent : T.success,
+                      background: isAssignDevice ? T.success : (showAssignMainButton ? T.accent : T.success),
                       border: 'none',
                       borderRadius: 12,
                       color: T.buttonText,
                       fontSize: 15,
                       fontWeight: 900,
                       cursor:
-                        showAssignMainButton
-                          ? (canCapture ? 'pointer' : 'not-allowed')
-                          : (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer'),
+                        isAssignDevice
+                          ? (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer')
+                          : showAssignMainButton
+                            ? (canCapture ? 'pointer' : 'not-allowed')
+                            : (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer'),
                       fontFamily: F,
                       letterSpacing: 1.2,
                       opacity:
-                        showAssignMainButton
-                          ? (canCapture ? 1 : 0.35)
-                          : (!bibInput.trim() || !nextPending || savingAssign ? 0.35 : 1),
+                        isAssignDevice
+                          ? (!bibInput.trim() || !nextPending || savingAssign ? 0.35 : 1)
+                          : showAssignMainButton
+                            ? (canCapture ? 1 : 0.35)
+                            : (!bibInput.trim() || !nextPending || savingAssign ? 0.35 : 1),
                       textTransform: 'uppercase',
                     }}
                   >
-                    {showAssignMainButton
-                      ? captureLabel
-                      : savingAssign
-                        ? '…'
-                        : 'Assign'}
+                    {isAssignDevice
+                      ? (savingAssign ? '…' : 'Assign')
+                      : showAssignMainButton
+                        ? captureLabel
+                        : savingAssign
+                          ? '…'
+                          : 'Assign'}
                   </button>
                 </div>
               </div>
             )}
 
-            {inputMode === 'bib_first' && (
+            {isCaptureDevice && inputMode === 'bib_first' && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ minHeight: 18, margin: '0 0 8px', fontSize: 12 }}>
                   {preview?.found && (
@@ -1879,72 +1959,96 @@ export default function CheckpointTimer() {
                 alignItems: 'stretch',
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  alignItems: 'stretch',
-                }}
-              >
-                <button
-                  onPointerDown={e => {
-                    e.preventDefault()
-                    if (showAssignMainButton) {
-                      assignBib()
-                    } else if (canCapture) {
-                      captureLap()
-                    }
-                  }}
-                  disabled={
-                    showAssignMainButton
-                      ? (!bibInput.trim() || !nextPending || savingAssign)
-                      : (!canCapture || (inputMode === 'bib_first' && !bibInput.trim()))
-                  }
+              {isCaptureDevice ? (
+                <div
                   style={{
-                    width: '100%',
-                    minHeight: 112,
-                    borderRadius: 18,
-                    border: 'none',
-                    background: showAssignMainButton
-                      ? T.success
-                      : !canCapture
-                        ? T.dim
-                        : flash
-                          ? T.flash
-                          : inputMode === 'bib_first'
-                            ? T.accentAlt
-                            : T.accent,
-                    color: T.buttonText,
-                    fontSize: 22,
-                    fontWeight: 900,
-                    letterSpacing: 1.8,
-                    cursor:
-                      showAssignMainButton
-                        ? (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer')
-                        : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 'pointer' : 'not-allowed'),
-                    fontFamily: F,
-                    textTransform: 'uppercase',
-                    transform: flash ? 'scale(0.97)' : 'scale(1)',
-                    transition: 'background 0.08s, transform 0.08s',
-                    touchAction: 'manipulation',
-                    opacity:
-                      showAssignMainButton
-                        ? (!bibInput.trim() || !nextPending || savingAssign ? 0.6 : 1)
-                        : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 1 : 0.6),
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    alignItems: 'stretch',
                   }}
                 >
-                  {showAssignMainButton
-                    ? (savingAssign ? 'Assign…' : 'Assign')
-                    : event?.status === 'finished'
-                      ? 'Ended'
-                      : !canCapture
-                        ? 'Waiting'
-                        : inputMode === 'bib_first'
-                          ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : (isFinishCheckpoint ? 'Tap Finish' : 'Tap'))
-                          : captureLabel}
-                </button>
-              </div>
+                  <button
+                    onPointerDown={e => {
+                      e.preventDefault()
+                      if (showAssignMainButton) {
+                        assignBib()
+                      } else if (canCapture) {
+                        captureLap()
+                      }
+                    }}
+                    disabled={
+                      showAssignMainButton
+                        ? (!bibInput.trim() || !nextPending || savingAssign)
+                        : (!canCapture || (inputMode === 'bib_first' && !bibInput.trim()))
+                    }
+                    style={{
+                      width: '100%',
+                      minHeight: 112,
+                      borderRadius: 18,
+                      border: 'none',
+                      background: showAssignMainButton
+                        ? T.success
+                        : !canCapture
+                          ? T.dim
+                          : flash
+                            ? T.flash
+                            : inputMode === 'bib_first'
+                              ? T.accentAlt
+                              : T.accent,
+                      color: T.buttonText,
+                      fontSize: 22,
+                      fontWeight: 900,
+                      letterSpacing: 1.8,
+                      cursor:
+                        showAssignMainButton
+                          ? (!bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer')
+                          : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 'pointer' : 'not-allowed'),
+                      fontFamily: F,
+                      textTransform: 'uppercase',
+                      transform: flash ? 'scale(0.97)' : 'scale(1)',
+                      transition: 'background 0.08s, transform 0.08s',
+                      touchAction: 'manipulation',
+                      opacity:
+                        showAssignMainButton
+                          ? (!bibInput.trim() || !nextPending || savingAssign ? 0.6 : 1)
+                          : (canCapture && !(inputMode === 'bib_first' && !bibInput.trim()) ? 1 : 0.6),
+                    }}
+                  >
+                    {showAssignMainButton
+                      ? (savingAssign ? 'Assign…' : 'Assign')
+                      : event?.status === 'finished'
+                        ? 'Ended'
+                        : !canCapture
+                          ? 'Waiting'
+                          : inputMode === 'bib_first'
+                            ? (bibInput.trim() ? `Bib ${bibInput.trim()}` : (isFinishCheckpoint ? 'Tap Finish' : 'Tap'))
+                            : captureLabel}
+                  </button>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: 112,
+                    borderRadius: 18,
+                    border: `1px dashed ${T.border2}`,
+                    color: T.muted,
+                    fontFamily: F,
+                    fontWeight: 800,
+                    fontSize: 14,
+                    letterSpacing: 1.2,
+                    textTransform: 'uppercase',
+                    background: T.panel2,
+                    textAlign: 'center',
+                    padding: '0 12px',
+                  }}
+                >
+                  Assign Device
+                </div>
+              )}
 
               <div
                 style={{
@@ -2068,21 +2172,25 @@ export default function CheckpointTimer() {
                 </div>
 
                 <div style={{ textAlign: 'center', fontSize: 11, color: T.muted2, marginTop: 10 }}>
-                  {showAssignMainButton
+                  {isAssignDevice
                     ? isFinishCheckpoint
-                      ? 'Assign bib to the next pending finisher'
-                      : 'Assign bib to the next pending lap'
-                    : event?.status === 'finished'
-                      ? 'Race ended'
-                      : !canCapture
-                        ? 'Waiting for official race start'
-                        : inputMode === 'bib_first'
-                          ? isFinishCheckpoint
-                            ? 'Finish line · Enter bib then tap'
-                            : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Enter bib then tap`
-                          : isFinishCheckpoint
-                            ? 'Finish line · Tap or spacebar'
-                            : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Tap or spacebar`}
+                      ? 'Assignment device · No capture on this screen'
+                      : 'Assignment device · No tap capture on this screen'
+                    : showAssignMainButton
+                      ? isFinishCheckpoint
+                        ? 'Assign bib to the next pending finisher'
+                        : 'Assign bib to the next pending lap'
+                      : event?.status === 'finished'
+                        ? 'Race ended'
+                        : !canCapture
+                          ? 'Waiting for official race start'
+                          : inputMode === 'bib_first'
+                            ? isFinishCheckpoint
+                              ? 'Finish line · Enter bib then tap'
+                              : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Enter bib then tap`
+                            : isFinishCheckpoint
+                              ? 'Finish line · Tap or spacebar'
+                              : `Checkpoint ${checkpoint?.checkpoint_order ?? ''} · Tap or spacebar`}
                 </div>
               </div>
             </div>
@@ -2274,7 +2382,7 @@ export default function CheckpointTimer() {
                 {pendingLabel} ({pending.length})
               </div>
 
-              {isAdmin && inputMode === 'capture_first' && (
+              {isAdmin && inputMode === 'capture_first' && isCaptureDevice && (
                 <button
                   onClick={voidLastPending}
                   disabled={pending.length === 0}
