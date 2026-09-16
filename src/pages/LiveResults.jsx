@@ -576,7 +576,7 @@ export default function LiveResults() {
         { data: effectiveRowsData, error: effectiveRowsError },
       ] = await Promise.all([
         supabase.from('race_events').select('*').eq('id', eventId).single(),
-        supabase.from('event_entries').select('*').eq('event_id', eventId).order('bib_number'),
+        supabase.rpc('get_public_event_entries', { p_event_id: eventId }),
         supabase.from('race_checkpoints').select('*').eq('event_id', eventId).eq('is_active', true).order('checkpoint_order'),
         supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
         supabase.from('lap_events').select('*').eq('event_id', eventId),
