@@ -76,7 +76,9 @@ function AppRoutes() {
 
       {/* Protected staff routes */}
       <Route path="/" element={<ProtectedRoute><Events /></ProtectedRoute>} />
+      <Route path="/create-race" element={<ProtectedRoute><CreateRace /></ProtectedRoute>} />
       <Route path="/cv/:id" element={<ProtectedRoute><CVDashboard /></ProtectedRoute>} />
+      <Route path="/" element={<ProtectedRoute><Events /></ProtectedRoute>} />
       <Route path="/race/:id/setup" element={<ProtectedRoute><PreRaceSetup /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoints" element={<ProtectedRoute><CheckpointSelect /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoint-qr" element={<ProtectedRoute><CheckpointQrSheet /></ProtectedRoute>} />
