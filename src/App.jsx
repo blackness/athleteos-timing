@@ -16,6 +16,9 @@ import RaceMonitor from './pages/RaceMonitor'
 import RaceCorrections from './pages/RaceCorrections'
 import ResultsCorrectionsPage from './pages/ResultsCorrectionsPage'
 import RaceLiveBoard from './pages/RaceLiveBoard'
+import CreateRace from './pages/CreateRace'
+import CreateEvent from './pages/CreateEvent'
+import EventResultsPage from './pages/EventResultsPage'
 //import { Analytics } from '@vercel/analytics/react'
 
 function PublicLiveBoardTest() {
@@ -78,7 +81,6 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><Events /></ProtectedRoute>} />
       <Route path="/create-race" element={<ProtectedRoute><CreateRace /></ProtectedRoute>} />
       <Route path="/cv/:id" element={<ProtectedRoute><CVDashboard /></ProtectedRoute>} />
-      <Route path="/" element={<ProtectedRoute><Events /></ProtectedRoute>} />
       <Route path="/race/:id/setup" element={<ProtectedRoute><PreRaceSetup /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoints" element={<ProtectedRoute><CheckpointSelect /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoint-qr" element={<ProtectedRoute><CheckpointQrSheet /></ProtectedRoute>} />
@@ -88,7 +90,8 @@ function AppRoutes() {
       <Route path="/race/:id/corrections" element={<ProtectedRoute><RaceCorrections /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoint/:checkpointId" element={<ProtectedRoute><CheckpointTimer /></ProtectedRoute>} />
       <Route path="/race/:id/results/resultscorrectionspage" element={<ProtectedRoute><ResultsCorrectionsPage /></ProtectedRoute>} />
-
+      <Route path="/event/:id" element={<EventResultsPage />} />
+      <Route path="/create-event" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

@@ -1,20 +1,16 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
-export default function CreateRace() {
+export default function CreateEvent() {
   const navigate = useNavigate()
-  const location = useLocation()
   const { user } = useAuth()
 
-  const searchParams = new URLSearchParams(location.search)
-  const parentEventId = searchParams.get('parentEventId')
-
   const [name, setName] = useState('')
-  const [eventDate, setEventDate] = useState('')
-  const [locationValue, setLocationValue] = useState('')
-  const [distance, setDistance] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [location, setLocation] = useState('')
   const [sport, setSport] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -24,23 +20,21 @@ export default function CreateRace() {
     setError('')
 
     if (!name.trim()) {
-      setError('Race name is required.')
+      setError('Event name is required.')
       return
     }
 
     setSaving(true)
 
     const { data, error } = await supabase
-      .from('race_events')
+      .from('events')
       .insert({
         name: name.trim(),
-        event_date: eventDate || null,
-        location: locationValue.trim() || null,
-        distance: distance.trim() || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        location: location.trim() || null,
         sport: sport.trim() || null,
-        status: 'draft',
         user_id: user?.id || null,
-        parent_event_id: parentEventId || null,
       })
       .select()
       .single()
@@ -48,22 +42,15 @@ export default function CreateRace() {
     setSaving(false)
 
     if (error || !data) {
-      setError(error?.message || 'Could not create race.')
+      setError(error?.message || 'Could not create event.')
       return
     }
 
-    navigate(`/race/${data.id}/setup`)
+    navigate(`/create-race?parentEventId=${data.id}`)
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100dvh',
-        background: '#080b0f',
-        color: '#e2e8f0',
-        padding: 24,
-      }}
-    >
+    <div style={{ minHeight: '100dvh', background: '#080b0f', color: '#e2e8f0', padding: 24 }}>
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         <button
           type="button"
@@ -90,80 +77,66 @@ export default function CreateRace() {
           }}
         >
           <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>
-            Create Race
+            Create Event
           </div>
           <div style={{ color: '#94a3b8', marginBottom: 24 }}>
-            {parentEventId
-              ? 'Create a race under the selected event.'
-              : 'Create a standalone race or add one to an event later.'}
+            Create a parent event, then add one or more races under it.
           </div>
 
           <form onSubmit={handleCreate} style={{ display: 'grid', gap: 16 }}>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                Race Name *
-              </label>
+              <label style={labelStyle}>Event Name *</label>
               <input
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="Senior Boys 5K"
+                placeholder="City Endurance Festival 2026"
                 style={inputStyle}
               />
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                Event Date
-              </label>
-              <input
-                type="date"
-                value={eventDate}
-                onChange={e => setEventDate(e.target.value)}
-                style={inputStyle}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={labelStyle}>Start Date</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={e => setStartDate(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>End Date</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={e => setEndDate(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                Location
-              </label>
+              <label style={labelStyle}>Location</label>
               <input
-                value={locationValue}
-                onChange={e => setLocationValue(e.target.value)}
+                value={location}
+                onChange={e => setLocation(e.target.value)}
                 placeholder="City Park"
                 style={inputStyle}
               />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                Distance
-              </label>
-              <input
-                value={distance}
-                onChange={e => setDistance(e.target.value)}
-                placeholder="5K"
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                Sport
-              </label>
+              <label style={labelStyle}>Sport</label>
               <input
                 value={sport}
                 onChange={e => setSport(e.target.value)}
-                placeholder="Cross Country"
+                placeholder="Track & Field"
                 style={inputStyle}
               />
             </div>
 
-            {error && (
-              <div style={{ color: '#f87171', fontSize: 13 }}>
-                {error}
-              </div>
-            )}
+            {error && <div style={{ color: '#f87171', fontSize: 13 }}>{error}</div>}
 
             <button
               type="submit"
@@ -179,13 +152,20 @@ export default function CreateRace() {
                 opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? 'Creating…' : 'Create Race'}
+              {saving ? 'Creating…' : 'Create Event'}
             </button>
           </form>
         </div>
       </div>
     </div>
   )
+}
+
+const labelStyle = {
+  display: 'block',
+  fontSize: 12,
+  color: '#94a3b8',
+  marginBottom: 6,
 }
 
 const inputStyle = {
