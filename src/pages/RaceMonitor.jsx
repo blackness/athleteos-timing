@@ -377,7 +377,7 @@ export default function RaceMonitor() {
                 onClick={() => navigate(`/race/${eventId}/checkpoints`)}
                 style={navBtn(C.orange, C.border)}
               >
-                Checkpoints
+                Timer Devices
               </button>
 
               <button

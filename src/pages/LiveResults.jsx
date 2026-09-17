@@ -51,7 +51,6 @@ const fontMono = "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace"
 const DESKTOP_NAME_COL_WIDTH = 130
 const MOBILE_NAME_COL_WIDTH = 96
 const THEME_STORAGE_KEY = 'live_results_theme'
-const SURF_TURF_TAGLINE = '5 Legs. Tons of fun.'
 
 function fmtTime(ms) {
   if (ms == null) return '—'
@@ -736,9 +735,15 @@ export default function LiveResults() {
   }, [entries, effectiveCheckpointRows, finishes, entriesByBib])
 
   const countdownTargetMs = useMemo(() => {
-    const target = new Date('2026-06-18T09:30:00')
-    return target.getTime()
-  }, [])
+    if (event?.race_started_at) return null
+
+    if (event?.event_date) {
+      const target = new Date(event.event_date)
+      if (!Number.isNaN(target.getTime())) return target.getTime()
+    }
+
+    return null
+  }, [event?.event_date, event?.race_started_at])
 
   const countdownMs = useMemo(() => {
     return countdownTargetMs ? Math.max(0, countdownTargetMs - now) : null
@@ -1260,7 +1265,7 @@ export default function LiveResults() {
                   marginBottom: 8,
                 }}
               >
-                Surf'n Turf
+                Live Results
               </div>
 
               <div
@@ -1272,7 +1277,18 @@ export default function LiveResults() {
                   color: C.text,
                 }}
               >
-                {SURF_TURF_TAGLINE}
+                {event?.name || 'Race Event'}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 10,
+                  fontSize: 13,
+                  color: C.muted,
+                  lineHeight: 1.5,
+                }}
+              >
+                Standings, splits, and finish results will appear here when the race begins.
               </div>
             </div>
 
@@ -1300,7 +1316,7 @@ export default function LiveResults() {
                   marginBottom: 8,
                 }}
               >
-                Countdown to Event
+                Countdown to Start
               </div>
 
               <div
@@ -1314,11 +1330,13 @@ export default function LiveResults() {
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                {formatCountdown(countdownMs)}
+                {countdownMs != null ? formatCountdown(countdownMs) : 'TBD'}
               </div>
 
               <div style={{ marginTop: 10, fontSize: 12, color: C.muted }}>
-                Live results begin when the first wave starts.
+                {countdownMs != null
+                  ? 'Live results begin when the race starts.'
+                  : 'Start time has not been announced yet.'}
               </div>
             </div>
           </div>
