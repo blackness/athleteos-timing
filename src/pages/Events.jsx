@@ -305,10 +305,96 @@ function EventCard({ event, onOpen, onDelete, deletingId }) {
     </div>
   )
 }
+const [parentEvents, setParentEvents] = useState([])
+
+function ParentEventCard({ event, races, onOpenEvent, onCreateRaceUnderEvent, children }) {
+  const start = event.start_date || event.date || null
+  const end = event.end_date || null
+
+  return (
+    <div
+      style={{
+        border: '1px solid #e2e8f0',
+        borderRadius: 18,
+        background: '#fff',
+        overflow: 'hidden',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+      }}
+    >
+      <div
+        style={{
+          padding: 18,
+          borderBottom: '1px solid #e2e8f0',
+          background: 'linear-gradient(135deg, #fff7ed 0%, #ffffff 100%)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 12, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1.5 }}>
+              Event
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', marginTop: 4 }}>
+              {event.name}
+            </div>
+
+            <div style={{ marginTop: 8, color: '#64748b', fontSize: 13, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {event.location && <span>📍 {event.location}</span>}
+              {start && <span>Start: {formatEventDate(start)}</span>}
+              {end && <span>End: {formatEventDate(end)}</span>}
+              {event.sport && <span>{event.sport}</span>}
+              <span>{races.length} race{races.length === 1 ? '' : 's'}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => onOpenEvent(event.id)}
+              style={{
+                border: 'none',
+                borderRadius: 10,
+                padding: '10px 14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                color: '#fff',
+                background: '#f97316',
+              }}
+            >
+              View Event Page
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onCreateRaceUnderEvent(event.id)}
+              style={{
+                border: '1px solid #fed7aa',
+                borderRadius: 10,
+                padding: '10px 14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                color: '#c2410c',
+                background: '#fff',
+              }}
+            >
+              Add Race
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function Events() {
   const navigate = useNavigate()
   const [events, setEvents] = useState([])
+  const [parentEvents, setParentEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [deletingId, setDeletingId] = useState(null)
@@ -317,38 +403,54 @@ export default function Events() {
     setLoading(true)
     setError('')
 
-    const { data, error } = await supabase
-      .from('race_events')
-      .select('*')
-      .order('event_date', { ascending: true, nullsFirst: false })
+    const [{ data: raceData, error: raceError }, { data: parentData, error: parentError }] = await Promise.all([
+      supabase
+        .from('race_events')
+        .select('*')
+        .order('event_date', { ascending: true, nullsFirst: false }),
+      supabase
+        .from('events')
+        .select('*')
+        .order('start_date', { ascending: true, nullsFirst: false }),
+    ])
 
-    if (error) {
-      setError(error.message || 'Failed to load races.')
+    if (raceError || parentError) {
+      setError(raceError?.message || parentError?.message || 'Failed to load races.')
       setEvents([])
+      setParentEvents([])
       setLoading(false)
       return
     }
 
-    setEvents(data || [])
+    setEvents(raceData || [])
+    setParentEvents(parentData || [])
     setLoading(false)
   }
 
   useEffect(() => {
     loadEvents()
 
-    const channel = supabase
+    const raceChannel = supabase
       .channel('race-events-list')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'race_events' },
-        () => {
-          loadEvents()
-        }
+        () => loadEvents()
+      )
+      .subscribe()
+
+    const parentChannel = supabase
+      .channel('parent-events-list')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'events' },
+        () => loadEvents()
       )
       .subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(raceChannel)
+      supabase.removeChannel(parentChannel)
     }
   }, [])
 
@@ -383,6 +485,31 @@ export default function Events() {
       return dateA - dateB
     })
   }, [events])
+
+  const racesByParentEventId = useMemo(() => {
+    const map = {}
+
+    sortedEvents.forEach(race => {
+      if (!race.parent_event_id) return
+      if (!map[race.parent_event_id]) map[race.parent_event_id] = []
+      map[race.parent_event_id].push(race)
+    })
+
+    return map
+  }, [sortedEvents])
+
+  const eventSections = useMemo(() => {
+    return parentEvents
+      .map(parent => ({
+        parent,
+        races: racesByParentEventId[parent.id] || [],
+      }))
+      .filter(section => section.races.length > 0)
+  }, [parentEvents, racesByParentEventId])
+
+  const standaloneRaces = useMemo(() => {
+    return sortedEvents.filter(race => !race.parent_event_id)
+  }, [sortedEvents])
 
   async function handleDelete(event) {
     const confirmed = window.confirm(
@@ -449,7 +576,7 @@ export default function Events() {
               ? `Current Race: ${activeEvent.name}`
               : reviewEvent
                 ? `Reviewing Results: ${reviewEvent.name}`
-                : 'Your Races'}
+                : 'Your Events & Races'}
           </div>
 
           <div
@@ -464,7 +591,7 @@ export default function Events() {
               ? 'A race is currently live. Open Race Home to manage timing, devices, and live progress.'
               : reviewEvent
                 ? 'A race is waiting for final review. Check results, fix issues, and finalize when ready.'
-                : 'Create or open a race, set up timer devices, and follow the guided flow from Race Home.'}
+                : 'Create an event for multi-race days, or create a standalone race for a single competition.'}
           </div>
         </div>
 
@@ -630,9 +757,9 @@ export default function Events() {
             color: '#64748b',
           }}
         >
-          Loading races...
+          Loading events and races...
         </div>
-      ) : sortedEvents.length === 0 ? (
+      ) : eventSections.length === 0 && standaloneRaces.length === 0 ? (
         <div
           style={{
             border: '1px dashed #cbd5e1',
@@ -643,11 +770,12 @@ export default function Events() {
           }}
         >
           <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>
-            No races yet
+            No events or races yet
           </div>
           <div style={{ marginTop: 8, color: '#64748b' }}>
-            Create your first race to start setup, timing, and results tracking.
+            Create an event for multi-race weekends, or create a standalone race for a single competition.
           </div>
+
           <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
             <button
               type="button"
@@ -683,22 +811,52 @@ export default function Events() {
           </div>
         </div>
       ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: 16,
-          }}
-        >
-          {sortedEvents.map(event => (
-            <EventCard
-              key={event.id}
-              event={event}
-              onOpen={openPath}
-              onDelete={handleDelete}
-              deletingId={deletingId}
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {eventSections.map(({ parent, races }) => (
+            <ParentEventCard
+              key={parent.id}
+              event={parent}
+              races={races}
+              onOpenEvent={eventId => navigate(`/event/${eventId}`)}
+              onCreateRaceUnderEvent={eventId => navigate(`/create-race?parentEventId=${eventId}`)}
+            >
+              {races.map(event => (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  onOpen={openPath}
+                  onDelete={handleDelete}
+                  deletingId={deletingId}
+                />
+              ))}
+            </ParentEventCard>
           ))}
+
+          {standaloneRaces.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10, fontWeight: 800 }}>
+                Standalone Races
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                  gap: 16,
+                }}
+              >
+                {standaloneRaces.map(event => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    onOpen={openPath}
+                    onDelete={handleDelete}
+                    deletingId={deletingId}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

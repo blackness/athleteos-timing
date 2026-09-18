@@ -80,7 +80,7 @@ export default function CreateEvent() {
             Create Event
           </div>
           <div style={{ color: '#94a3b8', marginBottom: 24 }}>
-            Create a parent event, then add one or more races under it.
+            Create the event container first. On the next step, you’ll add the first race under it.
           </div>
 
           <form onSubmit={handleCreate} style={{ display: 'grid', gap: 16 }}>
@@ -152,7 +152,7 @@ export default function CreateEvent() {
                 opacity: saving ? 0.7 : 1,
               }}
             >
-              {saving ? 'Creating…' : 'Create Event'}
+              {saving ? 'Creating…' : 'Create Event & Continue'}
             </button>
           </form>
         </div>

@@ -343,7 +343,7 @@ function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
     setEditing(false)
     await onSaveActualTime(wave.id, draftActual)
   }
-
+  
   return (
     <div style={{ ...S.row, background: zebra ? '#0a0f16' : 'transparent', alignItems: 'center' }}>
       <span style={{ width: 70, color: '#60a5fa', fontWeight: 800, fontFamily: F }}>
@@ -1176,6 +1176,7 @@ export default function PreRaceSetup() {
   const fileRef = useRef()
 
   const [showAdHoc, setShowAdHoc] = useState(false)
+  const [parentEvent, setParentEvent] = useState(null)
   const [form, setForm] = useState({
     bib_number: '',
     first_name: '',
@@ -1211,7 +1212,7 @@ export default function PreRaceSetup() {
       supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
       supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
     ])
-    const [parentEvent, setParentEvent] = useState(null)
+    
     const localPending = loadRaceEventLocal(eventId)
     const mergedEvent = mergeEventWithLocal(ev, localPending)
 
