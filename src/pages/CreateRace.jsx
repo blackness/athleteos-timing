@@ -60,7 +60,7 @@ export default function CreateRace() {
   const [saving, setSaving] = useState(false)
   const [loadingParent, setLoadingParent] = useState(false)
   const [error, setError] = useState('')
-  const [submitMode, setSubmitMode] = useState('setup') // 'setup' | 'event'
+  const [submitMode, setSubmitMode] = useState('setup')
 
   useEffect(() => {
     if (!parentEventId) return

@@ -1,81 +1,171 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useAuth } from '../hooks/useAuth'
 
-function formatEventDisplayDate(value) {
-  if (!value) return null
+function formatDate(value) {
+  if (!value) return ''
   const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return null
+  if (Number.isNaN(d.getTime())) return ''
   return d.toLocaleDateString()
 }
 
-function formatLongDate(value) {
-  if (!value) return 'No date'
+function formatDateTime(value) {
+  if (!value) return ''
   const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return 'No date'
-  return d.toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString()
 }
 
-function getEventStartDisplay(event) {
+function normalizeLegacyEventDate(event) {
   if (!event) return null
-  return event.start_date || event.date || null
+  if (event.start_date) return event.start_date
+  if (event.date && typeof event.date === 'string') return event.date.slice(0, 10)
+  return null
 }
 
-function getRaceStatusMeta(status) {
-  switch (status) {
-    case 'active':
-      return {
-        label: 'Live',
-        color: '#166534',
-        background: '#dcfce7',
-        border: '#86efac',
-      }
-    case 'results_review':
-      return {
-        label: 'Review',
-        color: '#854d0e',
-        background: '#fef9c3',
-        border: '#fde68a',
-      }
-    case 'finished':
-      return {
-        label: 'Final',
-        color: '#475569',
-        background: '#f1f5f9',
-        border: '#cbd5e1',
-      }
-    default:
-      return {
-        label: 'Setup',
-        color: '#9a3412',
-        background: '#ffedd5',
-        border: '#fdba74',
-      }
+function formatEventDateRange(start, end) {
+  if (!start && !end) return ''
+  if (start && end && start !== end) {
+    return `${formatDate(start)} – ${formatDate(end)}`
   }
+  return formatDate(start || end)
+}
+
+function groupRacesByDate(races) {
+  const groups = new Map()
+
+  for (const race of races || []) {
+    const key = race?.event_date ? String(race.event_date).slice(0, 10) : 'undated'
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key).push(race)
+  }
+
+  return Array.from(groups.entries())
+    .map(([date, items]) => ({
+      date,
+      label: date === 'undated' ? 'TBD' : formatDate(date),
+      races: items.slice().sort((a, b) => {
+        const aTime = a?.event_date ? new Date(a.event_date).getTime() : 0
+        const bTime = b?.event_date ? new Date(b.event_date).getTime() : 0
+        return aTime - bTime
+      }),
+    }))
+    .sort((a, b) => {
+      if (a.date === 'undated') return 1
+      if (b.date === 'undated') return -1
+      return new Date(a.date).getTime() - new Date(b.date).getTime()
+    })
+}
+
+function getStatusColor(status) {
+  switch (status) {
+    case 'draft':
+      return { background: '#111827', color: '#9ca3af', border: '1px solid #1f2937' }
+    case 'ready':
+      return { background: '#0b1220', color: '#60a5fa', border: '1px solid #1e3a8a' }
+    case 'active':
+      return { background: '#052e16', color: '#4ade80', border: '1px solid #166534' }
+    case 'results_review':
+      return { background: '#3b2f0b', color: '#fbbf24', border: '1px solid #92400e' }
+    case 'finished':
+      return { background: '#2e1065', color: '#c084fc', border: '1px solid #6b21a8' }
+    default:
+      return { background: '#111827', color: '#94a3b8', border: '1px solid #1f2937' }
+  }
+}
+
+function ActionLink({ to, children, primary = false }) {
+  return (
+    <Link
+      to={to}
+      style={primary ? primaryButtonStyle : secondaryButtonStyle}
+    >
+      {children}
+    </Link>
+  )
+}
+
+function RaceCard({ race, eventId, isAuthenticated }) {
+  const statusStyle = getStatusColor(race.status)
+
+  return (
+    <div style={cardStyle}>
+      <div style={cardHeaderStyle}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <div style={raceTitleStyle}>{race.name}</div>
+
+          <div style={metaStyle}>
+            {race.event_date ? <span>{formatDateTime(race.event_date)}</span> : null}
+            {race.location ? <span> • {race.location}</span> : null}
+            {race.sport ? <span> • {race.sport}</span> : null}
+            {race.distance ? <span> • {race.distance}</span> : null}
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '6px 10px',
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 700,
+                ...statusStyle,
+              }}
+            >
+              {race.status || 'unknown'}
+            </span>
+          </div>
+
+          {race.notes ? (
+            <div style={{ marginTop: 12, fontSize: 13, color: '#cbd5e1' }}>
+              {race.notes}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={buttonRowStyle}>
+          <ActionLink to={`/race/${race.id}/results`}>Results</ActionLink>
+          <ActionLink to={`/race/${race.id}/live`}>Live Board</ActionLink>
+
+          {isAuthenticated ? (
+            <>
+              <ActionLink to={`/race/${race.id}`}>Race Home</ActionLink>
+              <ActionLink to={`/race/${race.id}/monitor`}>Monitor</ActionLink>
+              <ActionLink to={`/create-race?parentEventId=${eventId}&copyRaceId=${race.id}`}>
+                Add Similar Race
+              </ActionLink>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function EventResultsPage() {
   const { id } = useParams()
-  const navigate = useNavigate()
-  const { user } = useAuth()
 
+  const [loading, setLoading] = useState(true)
   const [event, setEvent] = useState(null)
   const [races, setRaces] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [session, setSession] = useState(null)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!id) return
+    let mounted = true
 
     async function load() {
       setLoading(true)
+      setError('')
 
-      const [{ data: eventData }, { data: raceData }] = await Promise.all([
+      const [
+        { data: sessionData },
+        { data: eventData, error: eventError },
+        { data: raceData, error: raceError },
+      ] = await Promise.all([
+        supabase.auth.getSession(),
         supabase.from('events').select('*').eq('id', id).single(),
         supabase
           .from('race_events')
@@ -84,30 +174,53 @@ export default function EventResultsPage() {
           .order('event_date', { ascending: true }),
       ])
 
+      if (!mounted) return
+
+      if (eventError) {
+        setError(eventError.message || 'Failed to load event.')
+        setLoading(false)
+        return
+      }
+
+      if (raceError) {
+        setError(raceError.message || 'Failed to load races.')
+        setLoading(false)
+        return
+      }
+
+      setSession(sessionData?.session || null)
       setEvent(eventData || null)
       setRaces(raceData || [])
       setLoading(false)
     }
 
     load()
+
+    return () => {
+      mounted = false
+    }
   }, [id])
 
-  const groupedRaces = useMemo(() => {
-    const groups = new Map()
-
-    races.forEach(race => {
-      const key = race.event_date ? formatLongDate(race.event_date) : 'Undated Races'
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key).push(race)
-    })
-
-    return Array.from(groups.entries())
-  }, [races])
+  const eventStartDate = normalizeLegacyEventDate(event)
+  const eventEndDate = event?.end_date || null
+  const groupedRaces = useMemo(() => groupRacesByDate(races), [races])
 
   if (loading) {
     return (
       <div style={pageStyle}>
-        <div style={{ color: '#94a3b8' }}>Loading event…</div>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={cardStyle}>Loading event…</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={pageStyle}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={errorStyle}>{error}</div>
+        </div>
       </div>
     )
   }
@@ -115,177 +228,72 @@ export default function EventResultsPage() {
   if (!event) {
     return (
       <div style={pageStyle}>
-        <div
-          style={{
-            maxWidth: 640,
-            background: '#0e1318',
-            border: '1px solid #1e2730',
-            borderRadius: 16,
-            padding: 24,
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 8 }}>
-            Event Not Found
-          </div>
-          <div style={{ color: '#94a3b8' }}>
-            This event could not be found.
-          </div>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={cardStyle}>Event not found.</div>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#080b0f', color: '#e2e8f0', padding: 24 }}>
+    <div style={pageStyle}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <div
-          style={{
-            background: '#0e1318',
-            border: '1px solid #1e2730',
-            borderRadius: 20,
-            padding: 24,
-            marginBottom: 20,
-          }}
-        >
-          <div style={{ fontSize: 12, color: '#f97316', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8 }}>
-            Event Hub
-          </div>
+        <div style={heroCardStyle}>
+          <div style={heroHeaderStyle}>
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <div style={kickerStyle}>Event Hub</div>
+              <div style={titleStyle}>{event.name}</div>
 
-          <div style={{ fontSize: 32, fontWeight: 900, color: '#f8fafc', marginBottom: 8 }}>
-            {event.name}
-          </div>
+              <div style={metaStyle}>
+                {formatEventDateRange(eventStartDate, eventEndDate) ? (
+                  <span>{formatEventDateRange(eventStartDate, eventEndDate)}</span>
+                ) : null}
+                {event.location ? <span> • {event.location}</span> : null}
+                {event.sport ? <span> • {event.sport}</span> : null}
+              </div>
 
-          <div style={{ color: '#94a3b8', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {event.location && <span>📍 {event.location}</span>}
-            {getEventStartDisplay(event) && (
-              <span>Start: {formatEventDisplayDate(getEventStartDisplay(event))}</span>
-            )}
-            {event.end_date && <span>End: {formatEventDisplayDate(event.end_date)}</span>}
-            {event.sport && <span>{event.sport}</span>}
-          </div>
-
-          {user && (
-            <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => navigate(`/create-race?parentEventId=${event.id}`)}
-                style={primaryBtn}
-              >
-                Add Race
-              </button>
+              {event.notes ? (
+                <div style={{ marginTop: 14, fontSize: 14, color: '#cbd5e1' }}>
+                  {event.notes}
+                </div>
+              ) : null}
             </div>
-          )}
+
+            <div style={buttonRowStyle}>
+              {session ? (
+                <ActionLink to={`/create-race?parentEventId=${event.id}`} primary>
+                  Add Race
+                </ActionLink>
+              ) : null}
+            </div>
+          </div>
         </div>
 
         {groupedRaces.length === 0 ? (
-          <div
-            style={{
-              background: '#0e1318',
-              border: '1px solid #1e2730',
-              borderRadius: 16,
-              padding: 24,
-              color: '#94a3b8',
-            }}
-          >
+          <div style={cardStyle}>
             No races have been added to this event yet.
           </div>
         ) : (
-          groupedRaces.map(([dateLabel, items]) => (
-            <div key={dateLabel} style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 10 }}>
-                {dateLabel}
+          groupedRaces.map(group => (
+            <section key={group.date} style={{ marginBottom: 28 }}>
+              <div style={sectionHeaderStyle}>
+                <div style={sectionTitleStyle}>{group.label}</div>
+                <div style={{ fontSize: 13, color: '#94a3b8' }}>
+                  {group.races.length} race{group.races.length === 1 ? '' : 's'}
+                </div>
               </div>
 
               <div style={{ display: 'grid', gap: 12 }}>
-                {items.map(race => {
-                  const badge = getRaceStatusMeta(race.status)
-
-                  return (
-                    <div
-                      key={race.id}
-                      style={{
-                        background: '#0e1318',
-                        border: '1px solid #1e2730',
-                        borderRadius: 14,
-                        padding: 18,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: 16,
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
-                          <div style={{ fontSize: 20, fontWeight: 800, color: '#f8fafc' }}>
-                            {race.name}
-                          </div>
-
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: badge.color,
-                              background: badge.background,
-                              border: `1px solid ${badge.border}`,
-                              borderRadius: 999,
-                              padding: '5px 9px',
-                            }}
-                          >
-                            {badge.label}
-                          </span>
-                        </div>
-
-                        <div style={{ color: '#94a3b8', fontSize: 13, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                          {race.distance && <span>{race.distance}</span>}
-                          {race.sport && <span>{race.sport}</span>}
-                          {race.location && <span>📍 {race.location}</span>}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        <a href={`/results/${race.id}`} style={linkBtn('#60a5fa')}>
-                          Results
-                        </a>
-
-                        <a href={`/public/race/${race.id}/live-board`} style={linkBtn('#a78bfa')}>
-                          Live Board
-                        </a>
-
-                        {user && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/race/${race.id}/setup`)}
-                              style={ghostBtn('#f97316')}
-                            >
-                              Race Home
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/race/${race.id}/monitor`)}
-                              style={ghostBtn('#38bdf8')}
-                            >
-                              Monitor
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/create-race?parentEventId=${event.id}&copyRaceId=${race.id}`)}
-                              style={ghostBtn('#34d399')}
-                            >
-                              Add Similar Race
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
+                {group.races.map(race => (
+                  <RaceCard
+                    key={race.id}
+                    race={race}
+                    eventId={event.id}
+                    isAuthenticated={!!session}
+                  />
+                ))}
               </div>
-            </div>
+            </section>
           ))
         )}
       </div>
@@ -297,45 +305,113 @@ const pageStyle = {
   minHeight: '100dvh',
   background: '#080b0f',
   color: '#e2e8f0',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
   padding: 24,
 }
 
-const primaryBtn = {
+const heroCardStyle = {
+  background: '#0e1318',
+  border: '1px solid #1a2030',
+  borderRadius: 16,
+  padding: 24,
+  marginBottom: 24,
+}
+
+const cardStyle = {
+  background: '#0e1318',
+  border: '1px solid #1a2030',
+  borderRadius: 16,
+  padding: 18,
+}
+
+const cardHeaderStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 16,
+  flexWrap: 'wrap',
+}
+
+const heroHeaderStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 16,
+  flexWrap: 'wrap',
+}
+
+const kickerStyle = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: '#60a5fa',
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  marginBottom: 8,
+}
+
+const titleStyle = {
+  fontSize: 32,
+  fontWeight: 800,
+  marginBottom: 10,
+}
+
+const raceTitleStyle = {
+  fontSize: 20,
+  fontWeight: 700,
+  marginBottom: 6,
+}
+
+const metaStyle = {
+  fontSize: 13,
+  color: '#94a3b8',
+  lineHeight: 1.5,
+}
+
+const sectionHeaderStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+  marginBottom: 12,
+  flexWrap: 'wrap',
+}
+
+const sectionTitleStyle = {
+  fontSize: 22,
+  fontWeight: 800,
+}
+
+const buttonRowStyle = {
+  display: 'flex',
+  gap: 10,
+  flexWrap: 'wrap',
+}
+
+const primaryButtonStyle = {
+  display: 'inline-block',
+  textDecoration: 'none',
   border: 'none',
   borderRadius: 10,
-  padding: '10px 14px',
-  fontWeight: 700,
-  cursor: 'pointer',
-  color: '#fff',
+  padding: '12px 16px',
+  fontWeight: 800,
   background: '#f97316',
+  color: '#fff',
 }
 
-function linkBtn(color) {
-  return {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    textDecoration: 'none',
-    border: '1px solid #1e2730',
-    borderRadius: 10,
-    padding: '10px 14px',
-    color,
-    background: 'transparent',
-    fontWeight: 700,
-  }
+const secondaryButtonStyle = {
+  display: 'inline-block',
+  textDecoration: 'none',
+  border: '1px solid #1e2730',
+  borderRadius: 10,
+  padding: '12px 16px',
+  fontWeight: 700,
+  background: '#0b1220',
+  color: '#60a5fa',
 }
 
-function ghostBtn(color) {
-  return {
-    border: '1px solid #1e2730',
-    borderRadius: 10,
-    padding: '10px 14px',
-    fontWeight: 700,
-    cursor: 'pointer',
-    color,
-    background: 'transparent',
-  }
+const errorStyle = {
+  background: '#2a0f13',
+  border: '1px solid #7f1d1d',
+  color: '#fca5a5',
+  borderRadius: 12,
+  padding: 16,
 }
