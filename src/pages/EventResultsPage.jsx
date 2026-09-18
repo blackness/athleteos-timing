@@ -2,6 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
+function formatEventDisplayDate(value) {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleDateString()
+}
+
+function getEventStartDisplay(event) {
+  if (!event) return null
+  return event.start_date || event.date || null
+}
+
 export default function EventResultsPage() {
   const { id } = useParams()
   const [event, setEvent] = useState(null)
@@ -32,10 +44,13 @@ export default function EventResultsPage() {
   }, [id])
 
   const groupedRaces = useMemo(() => {
-    const groups = new Map()
+  const groups = new Map()
 
     races.forEach(race => {
-      const key = race.event_date || 'No date'
+      const key = race.event_date
+        ? new Date(race.event_date).toLocaleDateString()
+        : 'No date'
+
       if (!groups.has(key)) groups.set(key, [])
       groups.get(key).push(race)
     })
@@ -95,8 +110,10 @@ export default function EventResultsPage() {
           </div>
           <div style={{ color: '#94a3b8', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {event.location && <span>📍 {event.location}</span>}
-            {event.start_date && <span>Start: {event.start_date}</span>}
-            {event.end_date && <span>End: {event.end_date}</span>}
+            {getEventStartDisplay(event) && (
+              <span>Start: {formatEventDisplayDate(getEventStartDisplay(event))}</span>
+            )}
+            {event.end_date && <span>End: {formatEventDisplayDate(event.end_date)}</span>}
             {event.sport && <span>{event.sport}</span>}
           </div>
         </div>

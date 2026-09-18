@@ -468,22 +468,40 @@ export default function Events() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate('/create-race')}
-          style={{
-            border: 'none',
-            borderRadius: 12,
-            padding: '12px 16px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            color: '#fff',
-            background: '#f97316',
-            boxShadow: '0 6px 18px rgba(249,115,22,0.22)',
-          }}
-        >
-          Create Race
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => navigate('/create-event')}
+            style={{
+              border: 'none',
+              borderRadius: 12,
+              padding: '12px 16px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              color: '#fff',
+              background: '#f97316',
+              boxShadow: '0 6px 18px rgba(249,115,22,0.22)',
+            }}
+          >
+            Create Event
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/create-race')}
+            style={{
+              border: '1px solid #fed7aa',
+              borderRadius: 12,
+              padding: '12px 16px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              color: '#c2410c',
+              background: '#fff',
+            }}
+          >
+            Create Standalone Race
+          </button>
+        </div>
       </div>
 
       {activeEvent && (
@@ -630,22 +648,39 @@ export default function Events() {
           <div style={{ marginTop: 8, color: '#64748b' }}>
             Create your first race to start setup, timing, and results tracking.
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/create-race')}
-            style={{
-              marginTop: 16,
-              border: 'none',
-              borderRadius: 12,
-              padding: '12px 16px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              color: '#fff',
-              background: '#f97316',
-            }}
-          >
-            Create First Race
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
+            <button
+              type="button"
+              onClick={() => navigate('/create-event')}
+              style={{
+                border: 'none',
+                borderRadius: 12,
+                padding: '12px 16px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                color: '#fff',
+                background: '#f97316',
+              }}
+            >
+              Create First Event
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/create-race')}
+              style={{
+                border: '1px solid #fed7aa',
+                borderRadius: 12,
+                padding: '12px 16px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                color: '#c2410c',
+                background: '#fff',
+              }}
+            >
+              Create Standalone Race
+            </button>
+          </div>
         </div>
       ) : (
         <div

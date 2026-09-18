@@ -1193,6 +1193,8 @@ export default function PreRaceSetup() {
 
   const RESET_PIN = '2468'
 
+  
+
   const loadSetupData = useCallback(async () => {
     if (!eventId) return
 
@@ -1209,13 +1211,27 @@ export default function PreRaceSetup() {
       supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
       supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
     ])
-
+    const [parentEvent, setParentEvent] = useState(null)
     const localPending = loadRaceEventLocal(eventId)
+    const mergedEvent = mergeEventWithLocal(ev, localPending)
 
-    setEvent(mergeEventWithLocal(ev, localPending))
+    setEvent(mergedEvent)
     setEntries(ent ?? [])
     setCheckpoints(cps ?? [])
     setWaves(wvs ?? [])
+
+    if (mergedEvent?.parent_event_id) {
+      const { data: parentData } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', mergedEvent.parent_event_id)
+        .single()
+
+      setParentEvent(parentData || null)
+    } else {
+      setParentEvent(null)
+    }
+
     setLoading(false)
   }, [eventId])
 
@@ -2248,21 +2264,49 @@ return (
           <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', fontFamily: F }}>
             {event?.name}
           </div>
+
+          {parentEvent?.name && (
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+              Part of {parentEvent.name}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {parentEvent?.id && (
+            <button
+              type="button"
+              style={{ ...S.backBtn, color: '#34d399' }}
+              onClick={() => navigate(`/event/${parentEvent.id}`)}
+            >
+              Event Page ↗
+            </button>
+          )}
+
           <button
-            type="button" style={{ ...S.backBtn, color: '#60a5fa' }} onClick={() => navigate(`/results/${eventId}`)}>
+            type="button"
+            style={{ ...S.backBtn, color: '#60a5fa' }}
+            onClick={() => navigate(`/results/${eventId}`)}
+          >
             Public Results ↗
           </button>
+
           <button
-            type="button" style={{ ...S.backBtn, color: '#a78bfa' }} onClick={() => navigate(`/race/${eventId}/corrections`)}>
+            type="button"
+            style={{ ...S.backBtn, color: '#a78bfa' }}
+            onClick={() => navigate(`/race/${eventId}/corrections`)}
+          >
             Review & Fix Results
           </button>
+
           <button
-            type="button" style={{ ...S.backBtn, color: '#f97316' }} onClick={() => navigate(`/race/${eventId}/checkpoints`)}>
+            type="button"
+            style={{ ...S.backBtn, color: '#f97316' }}
+            onClick={() => navigate(`/race/${eventId}/checkpoints`)}
+          >
             Timer Devices
           </button>
+
           <button
             type="button"
             style={{ ...S.backBtn, color: '#3b82f6' }}
