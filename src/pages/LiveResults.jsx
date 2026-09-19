@@ -565,25 +565,43 @@ export default function LiveResults() {
 
     async function loadAll() {
       const [
-        { data: eventData },
-        { data: entryData },
-        { data: checkpointData },
-        { data: waveData },
-        { data: lapData },
-        { data: finishData },
-        { data: adjustmentData },
-        { data: effectiveRowsData, error: effectiveRowsError },
-      ] = await Promise.all([
-        supabase.from('race_events').select('*').eq('id', eventId).single(),
-        supabase.rpc('get_public_event_entries', { p_event_id: eventId }),
-        supabase.from('race_checkpoints').select('*').eq('event_id', eventId).eq('is_active', true).order('checkpoint_order'),
-        supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
-        supabase.from('lap_events').select('*').eq('event_id', eventId),
-        supabase.from('race_finishes').select('*').eq('event_id', eventId).order('place', { ascending: true }),
-        supabase.from('race_result_adjustments').select('*').eq('event_id', eventId).order('created_at', { ascending: true }),
-        supabase.rpc('get_event_effective_checkpoint_results', { p_event_id: eventId }),
-      ])
+  { data: eventData, error: eventError },
+  { data: entryData, error: entryError },
+  { data: checkpointData, error: checkpointError },
+  { data: waveData, error: waveError },
+  { data: lapData, error: lapError },
+  { data: finishData, error: finishError },
+  { data: adjustmentData, error: adjustmentError },
+  { data: effectiveRowsData, error: effectiveRowsError },
+        ] = await Promise.all([
+          supabase.from('race_events').select('*').eq('id', eventId).single(),
+          supabase.rpc('get_public_event_entries', { p_event_id: eventId }),
+          supabase.from('race_checkpoints').select('*').eq('event_id', eventId).eq('is_active', true).order('checkpoint_order'),
+          supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
+          supabase.from('lap_events').select('*').eq('event_id', eventId),
+          supabase.from('race_finishes').select('*').eq('event_id', eventId).order('place', { ascending: true }),
+          supabase.from('race_result_adjustments').select('*').eq('event_id', eventId).order('created_at', { ascending: true }),
+          supabase.rpc('get_event_effective_checkpoint_results', { p_event_id: eventId }),
+        ])
 
+        if (eventError) console.error('LiveResults event load error:', eventError)
+        if (entryError) console.error('LiveResults entry load error:', entryError)
+        if (checkpointError) console.error('LiveResults checkpoint load error:', checkpointError)
+        if (waveError) console.error('LiveResults wave load error:', waveError)
+        if (lapError) console.error('LiveResults lap load error:', lapError)
+        if (finishError) console.error('LiveResults finish load error:', finishError)
+        if (adjustmentError) console.error('LiveResults adjustment load error:', adjustmentError)
+        if (effectiveRowsError) console.error('LiveResults effective rows load error:', effectiveRowsError)
+console.log('LiveResults loadAll data summary:', {
+  event: eventData,
+  entriesCount: entryData?.length,
+  checkpointsCount: checkpointData?.length,
+  wavesCount: waveData?.length,
+  lapsCount: lapData?.length,
+  finishesCount: finishData?.length,
+  adjustmentsCount: adjustmentData?.length,
+  effectiveRowsCount: effectiveRowsData?.length,
+})
       setEvent(eventData || null)
       setEntries(entryData || [])
       setCheckpoints(checkpointData || [])

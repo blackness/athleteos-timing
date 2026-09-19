@@ -19,6 +19,8 @@ import RaceLiveBoard from './pages/RaceLiveBoard'
 import CreateRace from './pages/CreateRace'
 import CreateEvent from './pages/CreateEvent'
 import EventResultsPage from './pages/EventResultsPage'
+import { ThemeProvider } from './contexts/ThemeContext'
+import RaceHomeRedirect from './pages/RaceHomeRedirect'
 //import { Analytics } from '@vercel/analytics/react'
 
 function PublicLiveBoardTest() {
@@ -81,6 +83,7 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><Events /></ProtectedRoute>} />
       <Route path="/create-race" element={<ProtectedRoute><CreateRace /></ProtectedRoute>} />
       <Route path="/cv/:id" element={<ProtectedRoute><CVDashboard /></ProtectedRoute>} />
+      <Route path="/race/:id" element={<ProtectedRoute><RaceHomeRedirect /></ProtectedRoute>} />
       <Route path="/race/:id/setup" element={<ProtectedRoute><PreRaceSetup /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoints" element={<ProtectedRoute><CheckpointSelect /></ProtectedRoute>} />
       <Route path="/race/:id/checkpoint-qr" element={<ProtectedRoute><CheckpointQrSheet /></ProtectedRoute>} />
@@ -100,9 +103,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <ThemeProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </ThemeProvider>
     </AuthProvider>
   )
 }

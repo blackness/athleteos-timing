@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth'
+import {
+  getCreateEventPath,
+  getCreateRacePath,
+  getEventHubPath,
+  getLiveBoardPath,
+  getRaceMonitorPath,
+  getRaceSetupPath,
+  getResultsPath,
+} from '../lib/routes'
 
 function formatDate(value) {
   if (!value) return ''
@@ -21,9 +31,21 @@ function formatEventDateRange(event) {
   const end = event?.end_date || null
 
   if (!start && !end) return ''
-  if (start && end && start !== end) {
-    return `${formatDate(start)} – ${formatDate(end)}`
+
+  if (start && end) {
+    const startTime = new Date(start).getTime()
+    const endTime = new Date(end).getTime()
+
+    if (!Number.isNaN(startTime) && !Number.isNaN(endTime)) {
+      if (endTime < startTime) {
+        return formatDate(start)
+      }
+      if (start !== end) {
+        return `${formatDate(start)} – ${formatDate(end)}`
+      }
+    }
   }
+
   return formatDate(start || end)
 }
 
@@ -31,6 +53,14 @@ function sortRacesByDate(a, b) {
   const aTime = a?.event_date ? new Date(a.event_date).getTime() : 0
   const bTime = b?.event_date ? new Date(b.event_date).getTime() : 0
   return aTime - bTime
+}
+
+function canShowSetup(status) {
+  return ['draft', 'ready', 'active', 'results_review', 'finished'].includes(status || 'draft')
+}
+
+function canShowMonitor(status) {
+  return ['ready', 'active', 'results_review'].includes(status)
 }
 
 function ActionLink({ to, children, primary = false }) {
@@ -64,8 +94,8 @@ function ParentEventCard({ event, races }) {
         </div>
 
         <div style={buttonRowStyle}>
-          <ActionLink to={`/event/${event.id}`}>Open Event Hub</ActionLink>
-          <ActionLink to={`/create-race?parentEventId=${event.id}`}>Add Race</ActionLink>
+          <ActionLink to={getEventHubPath(event.id)}>Open Event Hub</ActionLink>
+          <ActionLink to={getCreateRacePath({ parentEventId: event.id })}>Add Race</ActionLink>
         </div>
       </div>
 
@@ -88,13 +118,22 @@ function ParentEventCard({ event, races }) {
                 </div>
 
                 <div style={buttonRowStyle}>
-                  <ActionLink to={`/race/${race.id}`}>Race Home</ActionLink>
-                  <ActionLink to={`/race/${race.id}/monitor`}>Monitor</ActionLink>
-                  <ActionLink to={`/create-race?parentEventId=${event.id}&copyRaceId=${race.id}`}>
+                  {canShowSetup(race.status) ? (
+                    <ActionLink to={getRaceSetupPath(race.id)}>Race Home</ActionLink>
+                  ) : null}
+
+                  {canShowMonitor(race.status) ? (
+                    <ActionLink to={getRaceMonitorPath(race.id)}>Monitor</ActionLink>
+                  ) : null}
+
+                  <ActionLink
+                    to={getCreateRacePath({ parentEventId: event.id, copyRaceId: race.id })}
+                  >
                     Add Similar Race
                   </ActionLink>
-                  <ActionLink to={`/race/${race.id}/results`}>Results</ActionLink>
-                  <ActionLink to={`/race/${race.id}/live`}>Live Board</ActionLink>
+
+                  <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
+                  <ActionLink to={getLiveBoardPath(race.id)}>Live Board</ActionLink>
                 </div>
               </div>
             </div>
@@ -121,10 +160,16 @@ function StandaloneRaceCard({ race }) {
         </div>
 
         <div style={buttonRowStyle}>
-          <ActionLink to={`/race/${race.id}`}>Race Home</ActionLink>
-          <ActionLink to={`/race/${race.id}/monitor`}>Monitor</ActionLink>
-          <ActionLink to={`/race/${race.id}/results`}>Results</ActionLink>
-          <ActionLink to={`/race/${race.id}/live`}>Live Board</ActionLink>
+          {canShowSetup(race.status) ? (
+            <ActionLink to={getRaceSetupPath(race.id)}>Race Home</ActionLink>
+          ) : null}
+
+          {canShowMonitor(race.status) ? (
+            <ActionLink to={getRaceMonitorPath(race.id)}>Monitor</ActionLink>
+          ) : null}
+
+          <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
+          <ActionLink to={getLiveBoardPath(race.id)}>Live Board</ActionLink>
         </div>
       </div>
     </div>
@@ -133,6 +178,7 @@ function StandaloneRaceCard({ race }) {
 
 export default function Events() {
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [loading, setLoading] = useState(true)
   const [events, setEvents] = useState([])
@@ -143,6 +189,14 @@ export default function Events() {
     let mounted = true
 
     async function load() {
+      if (!user?.id) {
+        if (!mounted) return
+        setEvents([])
+        setRaces([])
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       setError('')
 
@@ -150,8 +204,15 @@ export default function Events() {
         { data: eventsData, error: eventsError },
         { data: racesData, error: racesError },
       ] = await Promise.all([
-        supabase.from('events').select('*'),
-        supabase.from('race_events').select('*').order('event_date', { ascending: true }),
+        supabase
+          .from('events')
+          .select('*')
+          .eq('user_id', user.id),
+        supabase
+          .from('race_events')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('event_date', { ascending: true }),
       ])
 
       if (!mounted) return
@@ -178,7 +239,7 @@ export default function Events() {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [user?.id])
 
   const { parentEventCards, standaloneRaces } = useMemo(() => {
     const eventMap = new Map((events || []).map(event => [event.id, event]))
@@ -224,7 +285,7 @@ export default function Events() {
             <div style={buttonRowStyle}>
               <button
                 type="button"
-                onClick={() => navigate('/create-event')}
+                onClick={() => navigate(getCreateEventPath())}
                 style={primaryButtonButtonStyle}
               >
                 Create Event
@@ -232,7 +293,7 @@ export default function Events() {
 
               <button
                 type="button"
-                onClick={() => navigate('/create-race')}
+                onClick={() => navigate(getCreateRacePath())}
                 style={secondaryButtonButtonStyle}
               >
                 Create Standalone Race
@@ -241,7 +302,11 @@ export default function Events() {
           </div>
         </div>
 
-        {loading ? (
+        {!user?.id ? (
+          <div style={cardStyle}>
+            Please sign in to view your events and races.
+          </div>
+        ) : loading ? (
           <div style={cardStyle}>Loading…</div>
         ) : error ? (
           <div style={errorStyle}>{error}</div>
