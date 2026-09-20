@@ -11,29 +11,10 @@ import {
   getRaceAssignPath,
   getRaceCorrectionsPath,
   getEventHubPath,
-  getStaffAccessPath,
 } from '../lib/routes'
 
 const F = "'Barlow Condensed', sans-serif"
 const FB = "'Barlow', sans-serif"
-
-function randomAccessCode(role) {
-  const prefix =
-    role === 'timer' ? 'TMR' :
-    role === 'assigner' ? 'ASN' :
-    'MON'
-
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let tail = ''
-  for (let i = 0; i < 6; i++) {
-    tail += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return `${prefix}${tail}`
-}
-
-function randomPin() {
-  return String(Math.floor(1000 + Math.random() * 9000))
-}
 
 function formatDateTime(value) {
   if (!value) return '—'
@@ -51,146 +32,20 @@ function StatCard({ label, value, tone = '#f1f5f9' }) {
   )
 }
 
-function StaffAccessCard({
-  role,
-  title,
-  description,
-  row,
-  creating,
-  updating,
-  onCreate,
-  onToggle,
-  onRegeneratePin,
-  onCopyLink,
-  onCopyPin,
-}) {
-  const isActive = !!row?.is_active
-  const shareUrl = row?.access_code ? `${window.location.origin}${getStaffAccessPath(row.access_code)}` : ''
-
-  return (
-    <div style={S.staffCard}>
-      <div style={S.staffCardTop}>
-        <div>
-          <div style={S.staffRoleTitle}>{title}</div>
-          <div style={S.staffRoleDescription}>{description}</div>
-        </div>
-
-        {!row ? (
-          <button
-            type="button"
-            onClick={() => onCreate(role)}
-            disabled={creating}
-            style={{
-              ...S.primaryBtn,
-              opacity: creating ? 0.7 : 1,
-              cursor: creating ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {creating ? 'Creating…' : 'Create Access'}
-          </button>
-        ) : (
-          <span
-            style={{
-              ...S.badge,
-              background: isActive ? 'rgba(16,185,129,0.10)' : 'rgba(107,114,128,0.12)',
-              border: isActive ? '1px solid rgba(16,185,129,0.25)' : '1px solid rgba(107,114,128,0.25)',
-              color: isActive ? '#10b981' : '#9ca3af',
-            }}
-          >
-            {isActive ? 'Active' : 'Inactive'}
-          </span>
-        )}
-      </div>
-
-      {row ? (
-        <>
-          <div style={S.staffInfoGrid}>
-            <div style={S.staffInfoBox}>
-              <div style={S.infoLabel}>Access Code</div>
-              <div style={S.codeText}>{row.access_code}</div>
-            </div>
-
-            <div style={S.staffInfoBox}>
-              <div style={S.infoLabel}>PIN</div>
-              <div style={S.codeText}>{row.pin_code}</div>
-            </div>
-          </div>
-
-          <div style={S.staffInfoBox}>
-            <div style={S.infoLabel}>Share Link</div>
-            <div style={S.urlText}>{shareUrl}</div>
-          </div>
-
-          <div style={S.staffMetaRow}>
-            <span>Created: {formatDateTime(row.created_at)}</span>
-            <span>Last used: {formatDateTime(row.last_used_at)}</span>
-            <span>Expires: {row.expires_at ? formatDateTime(row.expires_at) : 'No expiry'}</span>
-          </div>
-
-          <div style={S.buttonRow}>
-            <button
-              type="button"
-              onClick={() => onCopyLink(shareUrl)}
-              style={S.secondaryBtn}
-            >
-              Copy Link
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onCopyPin(row.pin_code)}
-              style={S.secondaryBtn}
-            >
-              Copy PIN
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onRegeneratePin(row)}
-              disabled={updating}
-              style={S.secondaryBtn}
-            >
-              {updating ? 'Updating…' : 'Regenerate PIN'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onToggle(row)}
-              disabled={updating}
-              style={{
-                ...S.secondaryBtn,
-                color: row.is_active ? '#fca5a5' : '#86efac',
-              }}
-            >
-              {updating ? 'Saving…' : row.is_active ? 'Disable Access' : 'Enable Access'}
-            </button>
-          </div>
-        </>
-      ) : (
-        <div style={S.emptyText}>
-          No staff access created yet for this role.
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function RaceDirectorPage() {
   const { id: raceId } = useParams()
   const navigate = useNavigate()
 
   const [race, setRace] = useState(null)
   const [parentEvent, setParentEvent] = useState(null)
-  const [staffRows, setStaffRows] = useState([])
   const [finishCount, setFinishCount] = useState(0)
   const [officialFinishCount, setOfficialFinishCount] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [creatingRole, setCreatingRole] = useState('')
-  const [updatingRole, setUpdatingRole] = useState('')
-  const [copied, setCopied] = useState('')
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deletingRace, setDeletingRace] = useState(false)
 
   const [now, setNow] = useState(Date.now())
 
@@ -208,7 +63,6 @@ export default function RaceDirectorPage() {
 
     const [
       raceRes,
-      staffRes,
       finishRes,
       pendingRes,
     ] = await Promise.all([
@@ -217,11 +71,6 @@ export default function RaceDirectorPage() {
         .select('*')
         .eq('id', raceId)
         .single(),
-      supabase
-        .from('race_staff_access')
-        .select('*')
-        .eq('race_event_id', raceId)
-        .order('created_at', { ascending: true }),
       supabase
         .from('race_finishes')
         .select('id, status', { count: 'exact' })
@@ -241,7 +90,6 @@ export default function RaceDirectorPage() {
 
     const raceData = raceRes.data || null
     setRace(raceData)
-    setStaffRows(staffRes.data || [])
 
     const allFinishes = finishRes.data || []
     setFinishCount(finishRes.count || allFinishes.length || 0)
@@ -267,125 +115,78 @@ export default function RaceDirectorPage() {
     loadData()
   }, [loadData])
 
-  const byRole = useMemo(() => {
-    const map = {
-      timer: null,
-      assigner: null,
-      monitor: null,
-    }
-
-    for (const row of staffRows || []) {
-      if (!map[row.role]) {
-        map[row.role] = row
-      }
-    }
-
-    return map
-  }, [staffRows])
-
   const elapsedMs = useMemo(() => getRaceElapsedMs(race, now), [race, now])
 
-  const createAccess = async role => {
-    if (!race?.id || creatingRole) return
+  const statusBadge = useMemo(() => {
+    if (race?.status === 'active') {
+      return {
+        text: 'LIVE',
+        color: '#ef4444',
+        bg: 'rgba(239,68,68,0.10)',
+        border: 'rgba(239,68,68,0.25)',
+      }
+    }
+    if (race?.status === 'results_review') {
+      return {
+        text: 'RESULTS REVIEW',
+        color: '#eab308',
+        bg: 'rgba(234,179,8,0.10)',
+        border: 'rgba(234,179,8,0.25)',
+      }
+    }
+    if (race?.status === 'finished') {
+      return {
+        text: 'FINAL',
+        color: '#10b981',
+        bg: 'rgba(16,185,129,0.10)',
+        border: 'rgba(16,185,129,0.25)',
+      }
+    }
+    return {
+      text: 'READY',
+      color: '#3b82f6',
+      bg: 'rgba(59,130,246,0.10)',
+      border: 'rgba(59,130,246,0.25)',
+    }
+  }, [race?.status])
 
-    if (byRole[role]) {
-      window.alert(`A ${role} access record already exists.`)
+  const deleteRace = async () => {
+    if (!race?.id || deletingRace) return
+
+    if (deleteConfirmText !== 'DELETE') {
+      window.alert('Type DELETE to confirm.')
       return
     }
 
-    setCreatingRole(role)
-
-    const payload = {
-      race_event_id: race.id,
-      role,
-      access_code: randomAccessCode(role),
-      pin_code: randomPin(),
-      label:
-        role === 'timer'
-          ? 'Timer Access'
-          : role === 'assigner'
-            ? 'Assigner Access'
-            : 'Monitor Access',
-      is_active: true,
-    }
-
-    const { error } = await supabase
-      .from('race_staff_access')
-      .insert(payload)
-
-    setCreatingRole('')
-
-    if (error) {
-      window.alert(`Could not create ${role} access: ${error.message}`)
-      return
-    }
-
-    await loadData()
-  }
-
-  const toggleAccess = async row => {
-    if (!row?.id || updatingRole) return
-
-    setUpdatingRole(row.role)
-
-    const { error } = await supabase
-      .from('race_staff_access')
-      .update({
-        is_active: !row.is_active,
-      })
-      .eq('id', row.id)
-
-    setUpdatingRole('')
-
-    if (error) {
-      window.alert(`Could not update ${row.role} access: ${error.message}`)
-      return
-    }
-
-    await loadData()
-  }
-
-  const regeneratePin = async row => {
-    if (!row?.id || updatingRole) return
-
-    const ok = window.confirm(`Regenerate PIN for ${row.role} access?`)
+    const ok = window.confirm(
+      `Delete race "${race.name}"?\n\nThis will permanently delete the race and its related timing/config data. This cannot be undone.`
+    )
     if (!ok) return
 
-    setUpdatingRole(row.role)
+    setDeletingRace(true)
 
-    const { error } = await supabase
-      .from('race_staff_access')
-      .update({
-        pin_code: randomPin(),
-      })
-      .eq('id', row.id)
-
-    setUpdatingRole('')
-
-    if (error) {
-      window.alert(`Could not regenerate PIN: ${error.message}`)
-      return
-    }
-
-    await loadData()
-  }
-
-  const copyText = async (text, key) => {
     try {
-      await navigator.clipboard.writeText(text)
-      setCopied(key)
-      setTimeout(() => setCopied(''), 1200)
-    } catch {
-      window.alert('Could not copy.')
+      await supabase.from('lap_events').delete().eq('event_id', race.id)
+      await supabase.from('race_finishes').delete().eq('event_id', race.id)
+      await supabase.from('checkpoint_time_adjustments').delete().eq('event_id', race.id)
+      await supabase.from('race_result_adjustments').delete().eq('event_id', race.id)
+      await supabase.from('event_entries').delete().eq('event_id', race.id)
+      await supabase.from('race_waves').delete().eq('event_id', race.id)
+      await supabase.from('race_checkpoints').delete().eq('event_id', race.id)
+
+      const { error } = await supabase
+        .from('race_events')
+        .delete()
+        .eq('id', race.id)
+
+      if (error) throw error
+
+      navigate('/', { replace: true })
+    } catch (err) {
+      window.alert(`Could not delete race: ${err.message || 'Unknown error'}`)
+      setDeletingRace(false)
     }
   }
-
-  const statusBadge = useMemo(() => {
-    if (race?.status === 'active') return { text: 'LIVE', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.25)' }
-    if (race?.status === 'results_review') return { text: 'RESULTS REVIEW', color: '#eab308', bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.25)' }
-    if (race?.status === 'finished') return { text: 'FINAL', color: '#10b981', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.25)' }
-    return { text: 'READY', color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' }
-  }, [race?.status])
 
   if (loading) {
     return (
@@ -411,7 +212,11 @@ export default function RaceDirectorPage() {
       />
 
       <div style={S.header}>
-        <button type="button" style={S.backBtn} onClick={() => navigate(getRaceSetupPath(raceId))}>
+        <button
+          type="button"
+          style={S.backBtn}
+          onClick={() => navigate(getRaceSetupPath(raceId))}
+        >
           ← Race Home
         </button>
 
@@ -490,23 +295,16 @@ export default function RaceDirectorPage() {
           </div>
 
           <div style={S.statsGrid}>
-            <StatCard label="Pending Assignments" value={pendingCount} tone={pendingCount > 0 ? '#f59e0b' : '#f1f5f9'} />
+            <StatCard
+              label="Pending Assignments"
+              value={pendingCount}
+              tone={pendingCount > 0 ? '#f59e0b' : '#f1f5f9'}
+            />
             <StatCard label="Finish Records" value={finishCount} />
             <StatCard label="Official Finishes" value={officialFinishCount} />
-            <StatCard label="Staff Links" value={staffRows.length} />
+            <StatCard label="Race Status" value={race?.status || 'draft'} />
           </div>
         </div>
-
-        {copied ? (
-          <div style={S.copyBanner}>
-            {copied === 'timer-link' && 'Timer link copied'}
-            {copied === 'timer-pin' && 'Timer PIN copied'}
-            {copied === 'assigner-link' && 'Assigner link copied'}
-            {copied === 'assigner-pin' && 'Assigner PIN copied'}
-            {copied === 'monitor-link' && 'Monitor link copied'}
-            {copied === 'monitor-pin' && 'Monitor PIN copied'}
-          </div>
-        ) : null}
 
         <div style={S.section}>
           <div style={S.sectionTitle}>Quick Actions</div>
@@ -518,7 +316,9 @@ export default function RaceDirectorPage() {
               style={S.quickCard}
             >
               <div style={S.quickTitle}>Race Home</div>
-              <div style={S.quickText}>Pre-race setup, roster, checkpoints, and public sharing.</div>
+              <div style={S.quickText}>
+                Pre-race setup, roster, checkpoints, and public sharing.
+              </div>
             </button>
 
             <button
@@ -527,7 +327,9 @@ export default function RaceDirectorPage() {
               style={S.quickCard}
             >
               <div style={S.quickTitle}>Timer Devices</div>
-              <div style={S.quickText}>Open staff device/timing setup flow.</div>
+              <div style={S.quickText}>
+                Open timing and checkpoint device workflows.
+              </div>
             </button>
 
             <button
@@ -536,7 +338,9 @@ export default function RaceDirectorPage() {
               style={S.quickCard}
             >
               <div style={S.quickTitle}>Assign Bibs</div>
-              <div style={S.quickText}>Resolve pending finish identities.</div>
+              <div style={S.quickText}>
+                Resolve pending finish identities.
+              </div>
             </button>
 
             <button
@@ -545,7 +349,9 @@ export default function RaceDirectorPage() {
               style={S.quickCard}
             >
               <div style={S.quickTitle}>Monitor</div>
-              <div style={S.quickText}>Watch live race flow and counts.</div>
+              <div style={S.quickText}>
+                Watch live race flow and counts.
+              </div>
             </button>
 
             <button
@@ -554,7 +360,9 @@ export default function RaceDirectorPage() {
               style={S.quickCard}
             >
               <div style={S.quickTitle}>Results</div>
-              <div style={S.quickText}>Open public results for verification.</div>
+              <div style={S.quickText}>
+                Open public results for verification.
+              </div>
             </button>
 
             <button
@@ -563,59 +371,92 @@ export default function RaceDirectorPage() {
               style={S.quickCard}
             >
               <div style={S.quickTitle}>Review & Fix</div>
-              <div style={S.quickText}>Corrections and result cleanup.</div>
+              <div style={S.quickText}>
+                Corrections and result cleanup.
+              </div>
             </button>
           </div>
         </div>
 
         <div style={S.section}>
-          <div style={S.sectionTitle}>Staff Access</div>
-          <div style={S.sectionSub}>
-            Create role-limited links for race-day staff. Share the link or print it as a QR later, and give the 4-digit PIN separately.
-          </div>
+          <div style={S.sectionTitle}>Danger Zone</div>
 
-          <div style={S.staffGrid}>
-            <StaffAccessCard
-              role="timer"
-              title="Timer Access"
-              description="Use for timing staff operating device flows."
-              row={byRole.timer}
-              creating={creatingRole === 'timer'}
-              updating={updatingRole === 'timer'}
-              onCreate={createAccess}
-              onToggle={toggleAccess}
-              onRegeneratePin={regeneratePin}
-              onCopyLink={url => copyText(url, 'timer-link')}
-              onCopyPin={pin => copyText(pin, 'timer-pin')}
-            />
+          <div
+            style={{
+              background: 'rgba(127,29,29,0.10)',
+              border: '1px solid rgba(239,68,68,0.35)',
+              borderRadius: 16,
+              padding: 18,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: '#f87171',
+                textTransform: 'uppercase',
+                letterSpacing: 2,
+                marginBottom: 8,
+                fontFamily: F,
+                fontWeight: 800,
+              }}
+            >
+              Delete Race
+            </div>
 
-            <StaffAccessCard
-              role="assigner"
-              title="Assigner Access"
-              description="Use for finish-line staff resolving bib identities."
-              row={byRole.assigner}
-              creating={creatingRole === 'assigner'}
-              updating={updatingRole === 'assigner'}
-              onCreate={createAccess}
-              onToggle={toggleAccess}
-              onRegeneratePin={regeneratePin}
-              onCopyLink={url => copyText(url, 'assigner-link')}
-              onCopyPin={pin => copyText(pin, 'assigner-pin')}
-            />
+            <div
+              style={{
+                fontSize: 15,
+                color: '#fecaca',
+                marginBottom: 8,
+                fontWeight: 800,
+              }}
+            >
+              Permanently delete this race
+            </div>
 
-            <StaffAccessCard
-              role="monitor"
-              title="Monitor Access"
-              description="Use for read-only race oversight and monitoring."
-              row={byRole.monitor}
-              creating={creatingRole === 'monitor'}
-              updating={updatingRole === 'monitor'}
-              onCreate={createAccess}
-              onToggle={toggleAccess}
-              onRegeneratePin={regeneratePin}
-              onCopyLink={url => copyText(url, 'monitor-link')}
-              onCopyPin={pin => copyText(pin, 'monitor-pin')}
-            />
+            <div
+              style={{
+                fontSize: 13,
+                color: '#fca5a5',
+                lineHeight: 1.6,
+                marginBottom: 14,
+              }}
+            >
+              This deletes the race record and related entries, waves, checkpoints,
+              lap events, finishes, and adjustments. This action cannot be undone.
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: 10,
+                flexWrap: 'wrap',
+                alignItems: 'end',
+              }}
+            >
+              <div style={{ minWidth: 220, flex: 1 }}>
+                <div style={S.dangerLabel}>Type DELETE to confirm</div>
+                <input
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  style={S.dangerInput}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={deleteRace}
+                disabled={deletingRace}
+                style={{
+                  ...S.dangerButton,
+                  opacity: deletingRace ? 0.75 : 1,
+                  cursor: deletingRace ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {deletingRace ? 'Deleting…' : 'Delete Race'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -748,15 +589,6 @@ const S = {
     fontFamily: F,
     fontWeight: 700,
   },
-  copyBanner: {
-    marginBottom: 18,
-    background: 'rgba(16,185,129,0.10)',
-    border: '1px solid rgba(16,185,129,0.25)',
-    color: '#86efac',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-  },
   section: {
     marginBottom: 28,
   },
@@ -766,12 +598,6 @@ const S = {
     marginBottom: 8,
     fontFamily: F,
     color: '#f1f5f9',
-  },
-  sectionSub: {
-    color: '#94a3b8',
-    fontSize: 13,
-    lineHeight: 1.6,
-    marginBottom: 14,
   },
   quickGrid: {
     display: 'grid',
@@ -799,105 +625,37 @@ const S = {
     color: '#94a3b8',
     lineHeight: 1.5,
   },
-  staffGrid: {
-    display: 'grid',
-    gap: 14,
-  },
-  staffCard: {
-    background: '#0e1318',
-    border: '1px solid #1a2030',
-    borderRadius: 16,
-    padding: 18,
-  },
-  staffCardTop: {
+  buttonRow: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
+    gap: 10,
     flexWrap: 'wrap',
-    marginBottom: 14,
   },
-  staffRoleTitle: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: '#f8fafc',
-    fontFamily: F,
-    marginBottom: 4,
-  },
-  staffRoleDescription: {
-    fontSize: 13,
-    color: '#94a3b8',
-    lineHeight: 1.5,
-  },
-  staffInfoGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 12,
-    marginBottom: 12,
-  },
-  staffInfoBox: {
-    background: '#080b0f',
-    border: '1px solid #1e2730',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  infoLabel: {
+  dangerLabel: {
     fontSize: 10,
-    color: '#4a5568',
+    color: '#fca5a5',
     textTransform: 'uppercase',
     letterSpacing: 1.4,
     marginBottom: 6,
     fontFamily: F,
     fontWeight: 700,
   },
-  codeText: {
-    fontSize: 22,
-    fontWeight: 900,
-    color: '#f8fafc',
-    letterSpacing: 1.5,
-    fontFamily: F,
+  dangerInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '10px 12px',
+    borderRadius: 10,
+    border: '1px solid rgba(248,113,113,0.35)',
+    background: '#120b0b',
+    color: '#fff',
+    outline: 'none',
   },
-  urlText: {
-    fontSize: 12,
-    color: '#cbd5e1',
-    wordBreak: 'break-all',
-    lineHeight: 1.5,
-  },
-  staffMetaRow: {
-    display: 'flex',
-    gap: 14,
-    flexWrap: 'wrap',
-    color: '#64748b',
-    fontSize: 12,
-    marginBottom: 14,
-  },
-  buttonRow: {
-    display: 'flex',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  primaryBtn: {
+  dangerButton: {
     border: 'none',
     borderRadius: 10,
     padding: '12px 16px',
-    background: '#f97316',
+    background: '#dc2626',
     color: '#fff',
     fontWeight: 800,
-    cursor: 'pointer',
-  },
-  secondaryBtn: {
-    border: '1px solid #1e2730',
-    borderRadius: 10,
-    padding: '10px 14px',
-    background: '#0b1220',
-    color: '#60a5fa',
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  emptyText: {
-    color: '#94a3b8',
-    fontSize: 13,
   },
   centerCard: {
     maxWidth: 720,

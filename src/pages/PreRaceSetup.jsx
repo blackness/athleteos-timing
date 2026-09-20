@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { exportRawLapEvents, exportLapSummary } from '../lib/exportLapResults'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
@@ -16,7 +16,6 @@ import {
   getRaceCheckpointsPath,
   getRaceCorrectionsPath,
   getResultsPath,
-  getLiveBoardPath,
   getEventHubPath,
 } from '../lib/routes'
 
@@ -539,7 +538,7 @@ function RaceControlPanel({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 10 }}>
         <button
           type="button"
           onClick={onStartRace}
@@ -570,25 +569,6 @@ function RaceControlPanel({
                   : startingRace
                     ? 'Starting…'
                     : 'Start Race'}
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate(getRaceDirectorPath(eventId))}
-          style={{
-            height: 50,
-            borderRadius: 10,
-            border: '1px solid #f97316',
-            background: 'rgba(249,115,22,0.10)',
-            color: '#f97316',
-            cursor: 'pointer',
-            fontFamily: F,
-            fontWeight: 800,
-            fontSize: 14,
-            letterSpacing: 1.5,
-            textTransform: 'uppercase',
-          }}
-        >
-          Director Page
         </button>
         <button
           type="button"
@@ -653,7 +633,7 @@ function RaceControlPanel({
         </button>
       </div>
 
-<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, marginTop: 10 }}>
+<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginTop: 10 }}>
         <button
           type="button"
           onClick={onFinalizeRace}
@@ -697,29 +677,9 @@ function RaceControlPanel({
         >
           {resettingRaceData ? 'Resetting…' : 'False Start'}
         </button>
-
         <button
-            type="button"
-          onClick={() => navigate(getResultsPath(eventId))}
-          style={{
-            height: 44,
-            borderRadius: 10,
-            border: '1px solid #1e2730',
-            background: 'transparent',
-            color: '#60a5fa',
-            cursor: 'pointer',
-            fontFamily: F,
-            fontWeight: 700,
-            fontSize: 13,
-            letterSpacing: 1.2,
-            textTransform: 'uppercase',
-          }}
-        >
-          Public Results ↗
-        </button>
-
-        <button
-          onClick={() => navigate(`/race/${eventId}/corrections`)}
+          type="button"
+          onClick={() => navigate(getRaceCorrectionsPath(eventId))}
           style={{
             height: 44,
             borderRadius: 10,
@@ -736,7 +696,6 @@ function RaceControlPanel({
         >
           Review & Fix Results
         </button>
-
         <button
           type="button"
           onClick={() => navigate(`/race/${eventId}/checkpoint-qr`)}
@@ -2834,14 +2793,12 @@ return (
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-              <button onClick={() => navigate(getRaceCheckpointsPath(eventId))} style={{ ...S.addBtn, flex: 1 }}>
+              <button
+                type="button"
+                onClick={() => navigate(getRaceCheckpointsPath(eventId))}
+                style={{ ...S.addBtn, flex: 1 }}
+              >
                 Open Timer Devices
-              </button>
-              <button onClick={() => navigate(getResultsPath(eventId))} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
-                View Public Results
-              </button>
-              <button onClick={() => navigate(getRaceCorrectionsPath(eventId))} style={{ ...S.backBtn, flex: 1, color: '#a78bfa' }}>
-                Review & Fix Results
               </button>
             </div>
 
