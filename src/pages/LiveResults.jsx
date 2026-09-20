@@ -3,6 +3,13 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
 import AdjustmentMarker from '../components/AdjustmentMarker'
+import PublicNav from '../components/PublicNav'
+import { useTheme } from '../contexts/ThemeContext'
+import {
+  getEventHubPath,
+  getLiveBoardPath,
+  getResultsPath,
+} from '../lib/routes'
 import {
   groupAdjustmentsByEntryOrBib,
   getAdjustmentKey,
@@ -50,7 +57,6 @@ const fontMono = "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace"
 
 const DESKTOP_NAME_COL_WIDTH = 130
 const MOBILE_NAME_COL_WIDTH = 96
-const THEME_STORAGE_KEY = 'live_results_theme'
 
 function fmtTime(ms) {
   if (ms == null) return '—'
@@ -195,7 +201,7 @@ function compareValues(a, b, dir = 'asc', type = 'string') {
   return av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }) * mul
 }
 
-function ThemeToggle({ theme, setTheme, C }) {
+function ThemeToggle({ mode, setMode, C }) {
   const btn = active => ({
     padding: '6px 10px',
     borderRadius: 999,
@@ -212,10 +218,10 @@ function ThemeToggle({ theme, setTheme, C }) {
 
   return (
     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-      <button style={btn(theme === 'light')} onClick={() => setTheme('light')}>
+      <button style={btn(mode === 'light')} onClick={() => setMode('light')}>
         ☀ Light
       </button>
-      <button style={btn(theme === 'dark')} onClick={() => setTheme('dark')}>
+      <button style={btn(mode === 'dark')} onClick={() => setMode('dark')}>
         🌙 Dark
       </button>
     </div>
@@ -513,6 +519,7 @@ function ResultsTable({ rows, displayCheckpoints, sortConfig, onSort, C, isMobil
 
 export default function LiveResults() {
   const { id: eventId } = useParams()
+  const { mode, setMode } = useTheme()
 
   const [event, setEvent] = useState(null)
   const [entries, setEntries] = useState([])
@@ -527,27 +534,39 @@ export default function LiveResults() {
   const [checkpointSortMode, setCheckpointSortMode] = useState('cumulative')
   const [lastUpdate, setLastUpdate] = useState(null)
   const [now, setNow] = useState(Date.now())
-  const [theme, setTheme] = useState('light')
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
   const [showFinishersOnly, setShowFinishersOnly] = useState(false)
+  const [loadWarnings, setLoadWarnings] = useState([])
 
   const [resultsSort, setResultsSort] = useState({ key: 'place', dir: 'asc', type: 'number' })
 
-  const C = THEMES[theme]
+  const C = THEMES[mode]
   const nameColWidth = isMobile ? MOBILE_NAME_COL_WIDTH : DESKTOP_NAME_COL_WIDTH
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY)
-    if (savedTheme === 'light' || savedTheme === 'dark') {
-      setTheme(savedTheme)
-    } else {
-      setTheme('light')
-    }
-  }, [])
+  const publicNavLinks = useMemo(() => {
+    const links = []
 
-  useEffect(() => {
-    localStorage.setItem(THEME_STORAGE_KEY, theme)
-  }, [theme])
+    if (event?.parent_event_id) {
+      links.push({
+        to: getEventHubPath(event.parent_event_id),
+        label: 'Event Hub',
+      })
+    }
+
+    if (eventId) {
+      links.push({
+        to: getResultsPath(eventId),
+        label: 'Results',
+      })
+
+      links.push({
+        to: getLiveBoardPath(eventId),
+        label: 'Live Board',
+      })
+    }
+
+    return links
+  }, [event?.parent_event_id, eventId])
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
@@ -565,43 +584,61 @@ export default function LiveResults() {
 
     async function loadAll() {
       const [
-  { data: eventData, error: eventError },
-  { data: entryData, error: entryError },
-  { data: checkpointData, error: checkpointError },
-  { data: waveData, error: waveError },
-  { data: lapData, error: lapError },
-  { data: finishData, error: finishError },
-  { data: adjustmentData, error: adjustmentError },
-  { data: effectiveRowsData, error: effectiveRowsError },
-        ] = await Promise.all([
-          supabase.from('race_events').select('*').eq('id', eventId).single(),
-          supabase.rpc('get_public_event_entries', { p_event_id: eventId }),
-          supabase.from('race_checkpoints').select('*').eq('event_id', eventId).eq('is_active', true).order('checkpoint_order'),
-          supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
-          supabase.from('lap_events').select('*').eq('event_id', eventId),
-          supabase.from('race_finishes').select('*').eq('event_id', eventId).order('place', { ascending: true }),
-          supabase.from('race_result_adjustments').select('*').eq('event_id', eventId).order('created_at', { ascending: true }),
-          supabase.rpc('get_event_effective_checkpoint_results', { p_event_id: eventId }),
-        ])
+        { data: eventData, error: eventError },
+        { data: entryData, error: entryError },
+        { data: checkpointData, error: checkpointError },
+        { data: waveData, error: waveError },
+        { data: lapData, error: lapError },
+        { data: finishData, error: finishError },
+        { data: adjustmentData, error: adjustmentError },
+        { data: effectiveRowsData, error: effectiveRowsError },
+      ] = await Promise.all([
+        supabase.from('race_events').select('*').eq('id', eventId).single(),
+        supabase.rpc('get_public_event_entries', { p_event_id: eventId }),
+        supabase.from('race_checkpoints').select('*').eq('event_id', eventId).eq('is_active', true).order('checkpoint_order'),
+        supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
+        supabase.from('lap_events').select('*').eq('event_id', eventId),
+        supabase.from('race_finishes').select('*').eq('event_id', eventId).order('place', { ascending: true }),
+        supabase.from('race_result_adjustments').select('*').eq('event_id', eventId).order('created_at', { ascending: true }),
+        supabase.rpc('get_event_effective_checkpoint_results', { p_event_id: eventId }),
+      ])
 
-        if (eventError) console.error('LiveResults event load error:', eventError)
-        if (entryError) console.error('LiveResults entry load error:', entryError)
-        if (checkpointError) console.error('LiveResults checkpoint load error:', checkpointError)
-        if (waveError) console.error('LiveResults wave load error:', waveError)
-        if (lapError) console.error('LiveResults lap load error:', lapError)
-        if (finishError) console.error('LiveResults finish load error:', finishError)
-        if (adjustmentError) console.error('LiveResults adjustment load error:', adjustmentError)
-        if (effectiveRowsError) console.error('LiveResults effective rows load error:', effectiveRowsError)
-console.log('LiveResults loadAll data summary:', {
-  event: eventData,
-  entriesCount: entryData?.length,
-  checkpointsCount: checkpointData?.length,
-  wavesCount: waveData?.length,
-  lapsCount: lapData?.length,
-  finishesCount: finishData?.length,
-  adjustmentsCount: adjustmentData?.length,
-  effectiveRowsCount: effectiveRowsData?.length,
-})
+      const warnings = []
+
+      if (eventError) {
+        console.error('LiveResults event load error:', eventError)
+        warnings.push('Event details failed to load.')
+      }
+      if (entryError) {
+        console.error('LiveResults entry load error:', entryError)
+        warnings.push('Participant list failed to load.')
+      }
+      if (checkpointError) {
+        console.error('LiveResults checkpoint load error:', checkpointError)
+        warnings.push('Checkpoint configuration failed to load.')
+      }
+      if (waveError) {
+        console.error('LiveResults wave load error:', waveError)
+        warnings.push('Wave data failed to load.')
+      }
+      if (lapError) {
+        console.error('LiveResults lap load error:', lapError)
+        warnings.push('Live lap events failed to load.')
+      }
+      if (finishError) {
+        console.error('LiveResults finish load error:', finishError)
+        warnings.push('Finish data failed to load.')
+      }
+      if (adjustmentError) {
+        console.error('LiveResults adjustment load error:', adjustmentError)
+        warnings.push('Result adjustments failed to load.')
+      }
+      if (effectiveRowsError) {
+        console.error('LiveResults effective rows load error:', effectiveRowsError)
+        warnings.push('Effective checkpoint results failed to load.')
+      }
+
+      setLoadWarnings(warnings)
       setEvent(eventData || null)
       setEntries(entryData || [])
       setCheckpoints(checkpointData || [])
@@ -609,11 +646,6 @@ console.log('LiveResults loadAll data summary:', {
       setLaps(lapData || [])
       setFinishes(finishData || [])
       setAdjustments(adjustmentData || [])
-
-      if (effectiveRowsError) {
-        console.error('Failed to load effective checkpoint results', effectiveRowsError)
-      }
-
       setEffectiveCheckpointRows(effectiveRowsData || [])
       setLastUpdate(new Date())
     }
@@ -622,41 +654,13 @@ console.log('LiveResults loadAll data summary:', {
 
     const ch = supabase
       .channel(`live-results:${eventId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'race_finishes', filter: `event_id=eq.${eventId}` },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'race_waves', filter: `event_id=eq.${eventId}` },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'event_entries', filter: `event_id=eq.${eventId}` },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'race_result_adjustments', filter: `event_id=eq.${eventId}` },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'checkpoint_time_adjustments', filter: `event_id=eq.${eventId}` },
-        () => loadAll()
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'race_finishes', filter: `event_id=eq.${eventId}` }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'race_waves', filter: `event_id=eq.${eventId}` }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_entries', filter: `event_id=eq.${eventId}` }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'race_result_adjustments', filter: `event_id=eq.${eventId}` }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkpoint_time_adjustments', filter: `event_id=eq.${eventId}` }, () => loadAll())
       .subscribe((status) => {
         console.log('LiveResults realtime status:', status)
       })
@@ -705,15 +709,11 @@ console.log('LiveResults loadAll data summary:', {
 
   const finishLapEvents = useMemo(() => {
     if (!finishCheckpointId) return []
-
-    return laps.filter(l =>
-      l.status !== 'void' &&
-      l.checkpoint_id === finishCheckpointId
-    )
+    return laps.filter(l => l.status !== 'void' && l.checkpoint_id === finishCheckpointId)
   }, [laps, finishCheckpointId])
 
   const pendingFinishLapEvents = useMemo(() => {
-    return finishLapEvents.filter(l => !l.bib_number)
+    return finishLapEvents.filter(l => l.status === 'pending')
   }, [finishLapEvents])
 
   const pendingFinishCount = pendingFinishLapEvents.length
@@ -754,12 +754,10 @@ console.log('LiveResults loadAll data summary:', {
 
   const countdownTargetMs = useMemo(() => {
     if (event?.race_started_at) return null
-
     if (event?.event_date) {
       const target = new Date(event.event_date)
       if (!Number.isNaN(target.getTime())) return target.getTime()
     }
-
     return null
   }, [event?.event_date, event?.race_started_at])
 
@@ -789,11 +787,9 @@ console.log('LiveResults loadAll data summary:', {
     entries.forEach(entry => {
       if (entry.bib_number) allBibs.add(entry.bib_number)
     })
-
     effectiveCheckpointRows.forEach(row => {
       if (row.bib_number) allBibs.add(row.bib_number)
     })
-
     finishes.forEach(f => {
       if (f.bib_number) allBibs.add(f.bib_number)
     })
@@ -820,10 +816,7 @@ console.log('LiveResults loadAll data summary:', {
           cpRow.checkpoint_order > latestCheckpointOrder ||
           (
             cpRow.checkpoint_order === latestCheckpointOrder &&
-            (
-              latestCheckpointElapsedMs == null ||
-              cpRow.effective_elapsed_ms < latestCheckpointElapsedMs
-            )
+            (latestCheckpointElapsedMs == null || cpRow.effective_elapsed_ms < latestCheckpointElapsedMs)
           )
         ) {
           latestCheckpointOrder = cpRow.checkpoint_order
@@ -904,27 +897,12 @@ console.log('LiveResults loadAll data summary:', {
     })
 
     return rows
-  }, [
-    entries,
-    finishes,
-    entriesByBib,
-    finishMapFromTable,
-    wavesById,
-    adjustmentMap,
-    effectiveCheckpointRows,
-    effectiveRowsByBib,
-  ])
+  }, [entries, finishes, entriesByBib, finishMapFromTable, wavesById, adjustmentMap, effectiveCheckpointRows, effectiveRowsByBib])
 
   const resultsGenderTabs = useMemo(() => {
     const found = new Set()
-
-    baseResultsRows.forEach(r => {
-      found.add(r.normalizedGender)
-    })
-
-    const ordered = ['Men', 'Women', 'Non-Binary', 'Other', 'Unspecified']
-      .filter(x => found.has(x))
-
+    baseResultsRows.forEach(r => found.add(r.normalizedGender))
+    const ordered = ['Men', 'Women', 'Non-Binary', 'Other', 'Unspecified'].filter(x => found.has(x))
     return ['Overall', ...ordered]
   }, [baseResultsRows])
 
@@ -984,10 +962,8 @@ console.log('LiveResults loadAll data summary:', {
         if (a.latestCheckpointOrder !== b.latestCheckpointOrder) {
           return b.latestCheckpointOrder - a.latestCheckpointOrder
         }
-
         const aElapsed = a.latestCheckpointElapsedMs == null ? Infinity : a.latestCheckpointElapsedMs
         const bElapsed = b.latestCheckpointElapsedMs == null ? Infinity : b.latestCheckpointElapsedMs
-
         if (aElapsed !== bElapsed) return aElapsed - bElapsed
       }
 
@@ -995,28 +971,15 @@ console.log('LiveResults loadAll data summary:', {
     })
 
     let finishPlace = 0
-
     return sorted.map(r => {
       const isPlaced = r.is_finished
       if (isPlaced) finishPlace += 1
-
-      return {
-        ...r,
-        place: isPlaced ? finishPlace : null,
-      }
+      return { ...r, place: isPlaced ? finishPlace : null }
     })
-  }, [
-    baseResultsRows,
-    resultsGenderFilter,
-    resultsDivisionFilter,
-    resultsSort,
-    checkpointSortMode,
-    showFinishersOnly,
-  ])
+  }, [baseResultsRows, resultsGenderFilter, resultsDivisionFilter, resultsSort, checkpointSortMode, showFinishersOnly])
 
   const teamStandings = useMemo(() => {
     const finished = filteredResultsRows.filter(r => r.is_finished && r.team)
-
     const grouped = new Map()
 
     finished.forEach(r => {
@@ -1036,7 +999,6 @@ console.log('LiveResults loadAll data summary:', {
       })
 
       const scorers = sorted.slice(0, 4)
-
       const row = {
         team,
         finishers: sorted.length,
@@ -1050,11 +1012,9 @@ console.log('LiveResults loadAll data summary:', {
 
     complete.sort((a, b) => {
       if (a.score !== b.score) return a.score - b.score
-
       const a4 = a.scorers[3]?.place ?? Infinity
       const b4 = b.scorers[3]?.place ?? Infinity
       if (a4 !== b4) return a4 - b4
-
       return a.team.localeCompare(b.team)
     })
 
@@ -1094,6 +1054,17 @@ console.log('LiveResults loadAll data summary:', {
 
   return (
     <div style={{ minHeight: '100dvh', background: C.bg, color: C.text, fontFamily: fontBody }}>
+      <PublicNav
+        theme={{
+          cardBg: C.surface,
+          border: C.border,
+          text: C.text,
+          secondaryText: C.blue,
+        }}
+        currentPath={getResultsPath(eventId)}
+        extraLinks={publicNavLinks}
+      />
+
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: isMobile ? '12px 14px' : '14px 20px' }}>
@@ -1132,7 +1103,7 @@ console.log('LiveResults loadAll data summary:', {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'flex-end', gap: 8 }}>
-            <ThemeToggle theme={theme} setTheme={setTheme} C={C} />
+            <ThemeToggle mode={mode} setMode={setMode} C={C} />
 
             <div style={{ textAlign: isMobile ? 'left' : 'right' }}>
               <div
@@ -1246,6 +1217,35 @@ console.log('LiveResults loadAll data summary:', {
           </div>
         </div>
       </div>
+
+      {loadWarnings.length > 0 && (
+        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+          <div
+            style={{
+              maxWidth: 1200,
+              margin: '0 auto',
+              padding: isMobile ? '10px 14px' : '12px 20px',
+            }}
+          >
+            <div
+              style={{
+                border: `1px solid ${C.yellow}`,
+                background: `${C.yellow}14`,
+                color: C.yellow,
+                borderRadius: 10,
+                padding: isMobile ? '10px 12px' : '12px 14px',
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>Some live data may be incomplete.</strong>
+              <div style={{ marginTop: 6 }}>
+                {loadWarnings.join(' ')}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!event?.race_started_at && (
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
@@ -1450,11 +1450,7 @@ console.log('LiveResults loadAll data summary:', {
       <div style={{ position: 'sticky', top: 0, zIndex: 20, background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', minWidth: 'max-content' }}>
           {resultsGenderTabs.map(g => (
-            <button
-              key={g}
-              style={subTabBtn(resultsGenderFilter === g)}
-              onClick={() => setResultsGenderFilter(g)}
-            >
+            <button key={g} style={subTabBtn(resultsGenderFilter === g)} onClick={() => setResultsGenderFilter(g)}>
               {g}
             </button>
           ))}
@@ -1581,11 +1577,7 @@ console.log('LiveResults loadAll data summary:', {
           </div>
         </div>
 
-        <TeamStandingsCard
-          standings={teamStandings}
-          C={C}
-          isMobile={isMobile}
-        />
+        <TeamStandingsCard standings={teamStandings} C={C} isMobile={isMobile} />
 
         <ResultsTable
           rows={filteredResultsRows}

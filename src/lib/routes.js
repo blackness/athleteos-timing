@@ -59,3 +59,14 @@ export function getCreateEventPath() {
 export function getEventHubPath(eventId) {
   return `/event/${eventId}`
 }
+
+export function getPublicHomePath() {
+  return '/public'
+}
+export function getRaceDirectorPath(raceId) {
+  return `/race/${raceId}/director`
+}
+
+export function getStaffAccessPath(accessCode) {
+  return `/staff/${accessCode}`
+}

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
+import PublicNav from '../components/PublicNav'
 import {
   getCreateRacePath,
+  getEventHubPath,
   getLiveBoardPath,
+  getPublicHomePath,
   getRaceMonitorPath,
   getRaceSetupPath,
   getResultsPath,
@@ -104,6 +107,27 @@ function canShowMonitor(status) {
   return ['ready', 'active', 'results_review'].includes(status)
 }
 
+function ThemeToggle({ mode, setMode, theme }) {
+  const styles = getStyles(theme)
+
+  const btn = active => ({
+    ...styles.secondaryButton,
+    background: active ? theme.cardAltBg : theme.secondaryBg,
+    color: active ? theme.text : theme.secondaryText,
+  })
+
+  return (
+    <div style={styles.buttonRow}>
+      <button type="button" style={btn(mode === 'light')} onClick={() => setMode('light')}>
+        ☀ Light
+      </button>
+      <button type="button" style={btn(mode === 'dark')} onClick={() => setMode('dark')}>
+        🌙 Dark
+      </button>
+    </div>
+  )
+}
+
 function ActionLink({ to, children, primary = false, theme }) {
   const styles = getStyles(theme)
 
@@ -181,8 +205,9 @@ function RaceCard({ race, eventId, isAuthenticated, theme }) {
 
 export default function EventResultsPage() {
   const { id } = useParams()
-  const { theme } = useTheme()
+  const { theme, mode, setMode } = useTheme()
   const styles = getStyles(theme)
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [loading, setLoading] = useState(true)
   const [event, setEvent] = useState(null)
@@ -240,11 +265,48 @@ export default function EventResultsPage() {
 
   const eventStartDate = normalizeLegacyEventDate(event)
   const eventEndDate = event?.end_date || null
+
+  const sortedRaces = useMemo(() => {
+    return [...races].sort((a, b) => {
+      const aTime = a?.event_date ? new Date(a.event_date).getTime() : 0
+      const bTime = b?.event_date ? new Date(b.event_date).getTime() : 0
+      return aTime - bTime
+    })
+  }, [races])
+
   const groupedRaces = useMemo(() => groupRacesByDate(races), [races])
+
+  const activeTab = searchParams.get('race') || 'overview'
+
+  const activeRace = useMemo(() => {
+    if (activeTab === 'overview') return null
+    return sortedRaces.find(race => race.id === activeTab) || null
+  }, [activeTab, sortedRaces])
+
+  useEffect(() => {
+    if (activeTab === 'overview') return
+    if (!sortedRaces.some(race => race.id === activeTab)) {
+      setSearchParams({})
+    }
+  }, [sortedRaces, activeTab, setSearchParams])
+
+  function setTab(tab) {
+    if (tab === 'overview') {
+      setSearchParams({})
+    } else {
+      setSearchParams({ race: tab })
+    }
+  }
 
   if (loading) {
     return (
       <div style={styles.page}>
+        <PublicNav
+          theme={theme}
+          extraLinks={[
+            { to: getPublicHomePath(), label: 'Public Home' },
+          ]}
+        />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.card}>Loading event…</div>
         </div>
@@ -255,6 +317,12 @@ export default function EventResultsPage() {
   if (error) {
     return (
       <div style={styles.page}>
+        <PublicNav
+          theme={theme}
+          extraLinks={[
+            { to: getPublicHomePath(), label: 'Public Home' },
+          ]}
+        />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.error}>{error}</div>
         </div>
@@ -265,6 +333,12 @@ export default function EventResultsPage() {
   if (!event) {
     return (
       <div style={styles.page}>
+        <PublicNav
+          theme={theme}
+          extraLinks={[
+            { to: getPublicHomePath(), label: 'Public Home' },
+          ]}
+        />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.card}>Event not found.</div>
         </div>
@@ -272,8 +346,27 @@ export default function EventResultsPage() {
     )
   }
 
+  const tabButtonStyle = active => ({
+    border: `1px solid ${active ? theme.secondaryText : theme.borderSoft}`,
+    background: active ? theme.cardAltBg : theme.secondaryBg,
+    color: active ? theme.text : theme.secondaryText,
+    borderRadius: 999,
+    padding: '10px 14px',
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: 'pointer',
+  })
+
   return (
     <div style={styles.page}>
+      <PublicNav
+        theme={theme}
+        extraLinks={[
+          { to: getPublicHomePath(), label: 'Public Home' },
+          { to: getEventHubPath(id), label: event?.name || 'Event Hub' },
+        ]}
+      />
+
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={styles.heroCard}>
           <div style={styles.heroHeader}>
@@ -297,6 +390,8 @@ export default function EventResultsPage() {
             </div>
 
             <div style={styles.buttonRow}>
+              <ThemeToggle mode={mode} setMode={setMode} theme={theme} />
+
               {session ? (
                 <ActionLink
                   to={getCreateRacePath({ parentEventId: event.id })}
@@ -310,33 +405,76 @@ export default function EventResultsPage() {
           </div>
         </div>
 
-        {groupedRaces.length === 0 ? (
-          <div style={styles.card}>
-            No races have been added to this event yet.
-          </div>
-        ) : (
-          groupedRaces.map(group => (
-            <section key={group.date} style={{ marginBottom: 28 }}>
-              <div style={styles.sectionHeader}>
-                <div style={styles.sectionTitle}>{group.label}</div>
-                <div style={{ fontSize: 13, color: theme.textMuted }}>
-                  {group.races.length} race{group.races.length === 1 ? '' : 's'}
-                </div>
-              </div>
+        {sortedRaces.length > 0 ? (
+          <div style={{ marginBottom: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              style={tabButtonStyle(activeTab === 'overview')}
+              onClick={() => setTab('overview')}
+            >
+              Overview
+            </button>
 
-              <div style={{ display: 'grid', gap: 12 }}>
-                {group.races.map(race => (
-                  <RaceCard
-                    key={race.id}
-                    race={race}
-                    eventId={event.id}
-                    isAuthenticated={!!session}
-                    theme={theme}
-                  />
-                ))}
+            {sortedRaces.map(race => (
+              <button
+                key={race.id}
+                type="button"
+                style={tabButtonStyle(activeTab === race.id)}
+                onClick={() => setTab(race.id)}
+              >
+                {race.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {activeTab === 'overview' ? (
+          groupedRaces.length === 0 ? (
+            <div style={styles.card}>
+              No races have been added to this event yet.
+            </div>
+          ) : (
+            groupedRaces.map(group => (
+              <section key={group.date} style={{ marginBottom: 28 }}>
+                <div style={styles.sectionHeader}>
+                  <div style={styles.sectionTitle}>{group.label}</div>
+                  <div style={{ fontSize: 13, color: theme.textMuted }}>
+                    {group.races.length} race{group.races.length === 1 ? '' : 's'}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {group.races.map(race => (
+                    <RaceCard
+                      key={race.id}
+                      race={race}
+                      eventId={event.id}
+                      isAuthenticated={!!session}
+                      theme={theme}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))
+          )
+        ) : activeRace ? (
+          <section>
+            <div style={styles.sectionHeader}>
+              <div style={styles.sectionTitle}>{activeRace.name}</div>
+              <div style={{ fontSize: 13, color: theme.textMuted }}>
+                Focused race view
               </div>
-            </section>
-          ))
+            </div>
+
+            <RaceCard
+              race={activeRace}
+              eventId={event.id}
+              isAuthenticated={!!session}
+              theme={theme}
+            />
+          </section>
+        ) : (
+          <div style={styles.card}>Race not found.</div>
         )}
       </div>
     </div>
@@ -437,6 +575,7 @@ function getStyles(theme) {
       fontWeight: 700,
       background: theme.secondaryBg,
       color: theme.secondaryText,
+      cursor: 'pointer',
     },
     error: {
       background: theme.dangerBg,

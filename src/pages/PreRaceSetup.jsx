@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { exportRawLapEvents, exportLapSummary } from '../lib/exportLapResults'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
@@ -9,6 +9,16 @@ import {
   clearRaceEventLocal,
   mergeEventWithLocal,
 } from '../lib/raceEventLocalState'
+
+import {
+  getRaceDirectorPath,
+  getRaceMonitorPath,
+  getRaceCheckpointsPath,
+  getRaceCorrectionsPath,
+  getResultsPath,
+  getLiveBoardPath,
+  getEventHubPath,
+} from '../lib/routes'
 
 function parseDelimitedLine(line, sep) {
   const cells = []
@@ -529,7 +539,7 @@ function RaceControlPanel({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr', gap: 10 }}>
         <button
           type="button"
           onClick={onStartRace}
@@ -561,7 +571,25 @@ function RaceControlPanel({
                     ? 'Starting…'
                     : 'Start Race'}
         </button>
-
+        <button
+          type="button"
+          onClick={() => navigate(getRaceDirectorPath(eventId))}
+          style={{
+            height: 50,
+            borderRadius: 10,
+            border: '1px solid #f97316',
+            background: 'rgba(249,115,22,0.10)',
+            color: '#f97316',
+            cursor: 'pointer',
+            fontFamily: F,
+            fontWeight: 800,
+            fontSize: 14,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
+          }}
+        >
+          Director Page
+        </button>
         <button
           type="button"
           onClick={onFinishRace}
@@ -586,7 +614,7 @@ function RaceControlPanel({
 
         <button
           type="button"
-          onClick={() => navigate(`/race/${eventId}/monitor`)}
+          onClick={() => navigate(getRaceMonitorPath(eventId))}
           style={{
             height: 50,
             borderRadius: 10,
@@ -606,7 +634,7 @@ function RaceControlPanel({
 
         <button
           type="button"
-          onClick={() => navigate(`/race/${eventId}/checkpoints`)}
+          onClick={() => navigate(getRaceCheckpointsPath(eventId))}
           style={{
             height: 50,
             borderRadius: 10,
@@ -672,7 +700,7 @@ function RaceControlPanel({
 
         <button
             type="button"
-          onClick={() => navigate(`/results/${eventId}`)}
+          onClick={() => navigate(getResultsPath(eventId))}
           style={{
             height: 44,
             borderRadius: 10,
@@ -2274,11 +2302,24 @@ return (
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            style={{
+              ...S.backBtn,
+              color: '#fff',
+              background: '#f97316',
+              border: '1px solid #f97316',
+            }}
+            onClick={() => navigate(getRaceDirectorPath(eventId))}
+          >
+            Director
+          </button>
+
           {parentEvent?.id && (
             <button
               type="button"
               style={{ ...S.backBtn, color: '#34d399' }}
-              onClick={() => navigate(`/event/${parentEvent.id}`)}
+              onClick={() => navigate(getEventHubPath(parentEvent.id))}
             >
               Event Page ↗
             </button>
@@ -2287,7 +2328,7 @@ return (
           <button
             type="button"
             style={{ ...S.backBtn, color: '#60a5fa' }}
-            onClick={() => navigate(`/results/${eventId}`)}
+            onClick={() => navigate(getResultsPath(eventId))}
           >
             Public Results ↗
           </button>
@@ -2295,7 +2336,7 @@ return (
           <button
             type="button"
             style={{ ...S.backBtn, color: '#a78bfa' }}
-            onClick={() => navigate(`/race/${eventId}/corrections`)}
+            onClick={() => navigate(getRaceCorrectionsPath(eventId))}
           >
             Review & Fix Results
           </button>
@@ -2303,7 +2344,7 @@ return (
           <button
             type="button"
             style={{ ...S.backBtn, color: '#f97316' }}
-            onClick={() => navigate(`/race/${eventId}/checkpoints`)}
+            onClick={() => navigate(getRaceCheckpointsPath(eventId))}
           >
             Timer Devices
           </button>
@@ -2311,7 +2352,7 @@ return (
           <button
             type="button"
             style={{ ...S.backBtn, color: '#3b82f6' }}
-            onClick={() => navigate(`/race/${eventId}/monitor`)}
+            onClick={() => navigate(getRaceMonitorPath(eventId))}
           >
             Live Race View
           </button>
@@ -2793,13 +2834,13 @@ return (
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-              <button onClick={() => navigate(`/race/${eventId}/checkpoints`)} style={{ ...S.addBtn, flex: 1 }}>
+              <button onClick={() => navigate(getRaceCheckpointsPath(eventId))} style={{ ...S.addBtn, flex: 1 }}>
                 Open Timer Devices
               </button>
-              <button onClick={() => navigate(`/results/${eventId}`)} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
+              <button onClick={() => navigate(getResultsPath(eventId))} style={{ ...S.backBtn, flex: 1, color: '#60a5fa' }}>
                 View Public Results
               </button>
-              <button onClick={() => navigate(`/race/${eventId}/corrections`)} style={{ ...S.backBtn, flex: 1, color: '#a78bfa' }}>
+              <button onClick={() => navigate(getRaceCorrectionsPath(eventId))} style={{ ...S.backBtn, flex: 1, color: '#a78bfa' }}>
                 Review & Fix Results
               </button>
             </div>

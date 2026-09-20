@@ -2,9 +2,59 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getRaceElapsedMs } from '../lib/raceClock'
+import { useTheme } from '../contexts/ThemeContext'
 
 const F = "'Barlow Condensed', sans-serif"
 const FB = "'Barlow', sans-serif"
+
+const THEMES = {
+  dark: {
+    bg: `
+      radial-gradient(circle at 12% 8%, rgba(249,115,22,0.22), transparent 24%),
+      radial-gradient(circle at 88% 12%, rgba(59,130,246,0.18), transparent 22%),
+      linear-gradient(180deg, #0b0f16 0%, #05070c 100%)
+    `,
+    cardBg: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
+    cardBgStrong: 'linear-gradient(180deg, rgba(249,115,22,0.20), rgba(255,255,255,0.04))',
+    cardBgHighlight: 'linear-gradient(180deg, rgba(249,115,22,0.20), rgba(255,255,255,0.05))',
+    border: 'rgba(255,255,255,0.08)',
+    borderStrong: 'rgba(249,115,22,0.34)',
+    text: '#f8fafc',
+    textSoft: '#cbd5e1',
+    textMuted: '#94a3b8',
+    textDim: '#475569',
+    orange: '#fb923c',
+    blue: '#60a5fa',
+    buttonBg: 'rgba(255,255,255,0.05)',
+    buttonActiveBg: 'rgba(59,130,246,0.18)',
+    shadow: '0 24px 70px rgba(0,0,0,0.35)',
+    rowAlt: 'rgba(255,255,255,0.025)',
+    rowFlash: 'linear-gradient(90deg, rgba(249,115,22,0.24), rgba(249,115,22,0.05))',
+  },
+  light: {
+    bg: `
+      radial-gradient(circle at 12% 8%, rgba(249,115,22,0.10), transparent 24%),
+      radial-gradient(circle at 88% 12%, rgba(59,130,246,0.08), transparent 22%),
+      linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)
+    `,
+    cardBg: 'linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.88))',
+    cardBgStrong: 'linear-gradient(180deg, rgba(249,115,22,0.12), rgba(255,255,255,0.92))',
+    cardBgHighlight: 'linear-gradient(180deg, rgba(249,115,22,0.10), rgba(255,255,255,0.94))',
+    border: 'rgba(148,163,184,0.28)',
+    borderStrong: 'rgba(249,115,22,0.34)',
+    text: '#0f172a',
+    textSoft: '#334155',
+    textMuted: '#64748b',
+    textDim: '#94a3b8',
+    orange: '#ea580c',
+    blue: '#2563eb',
+    buttonBg: 'rgba(255,255,255,0.75)',
+    buttonActiveBg: 'rgba(37,99,235,0.12)',
+    shadow: '0 18px 50px rgba(15,23,42,0.10)',
+    rowAlt: 'rgba(148,163,184,0.06)',
+    rowFlash: 'linear-gradient(90deg, rgba(249,115,22,0.18), rgba(249,115,22,0.04))',
+  },
+}
 
 function fmt(ms, includeCenti = true) {
   if (ms == null) return '00:00'
@@ -25,8 +75,37 @@ function fmt(ms, includeCenti = true) {
     : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
+function ThemeToggle({ mode, setMode, C }) {
+  const btn = active => ({
+    padding: '8px 12px',
+    borderRadius: 999,
+    border: `1px solid ${C.border}`,
+    background: active ? C.buttonActiveBg : C.buttonBg,
+    color: active ? C.text : C.textMuted,
+    cursor: 'pointer',
+    fontFamily: F,
+    fontWeight: 800,
+    fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  })
+
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <button style={btn(mode === 'light')} onClick={() => setMode('light')}>
+        ☀ Light
+      </button>
+      <button style={btn(mode === 'dark')} onClick={() => setMode('dark')}>
+        🌙 Dark
+      </button>
+    </div>
+  )
+}
+
 export default function RaceLiveBoard() {
   const { id: eventId } = useParams()
+  const { mode, setMode } = useTheme()
+  const C = THEMES[mode]
 
   const [event, setEvent] = useState(null)
   const [entries, setEntries] = useState({})
@@ -42,10 +121,10 @@ export default function RaceLiveBoard() {
   useEffect(() => {
     async function load() {
       const [
-        { data: eventData },
-        { data: entryData },
-        { data: checkpointData },
-        { data: lapData },
+        { data: eventData, error: eventError },
+        { data: entryData, error: entryError },
+        { data: checkpointData, error: checkpointError },
+        { data: lapData, error: lapError },
       ] = await Promise.all([
         supabase.from('race_events').select('*').eq('id', eventId).single(),
         supabase.rpc('get_public_event_entries', { p_event_id: eventId }),
@@ -57,6 +136,11 @@ export default function RaceLiveBoard() {
           .order('captured_at', { ascending: false })
           .limit(100),
       ])
+
+      if (eventError) console.error('RaceLiveBoard event load error:', eventError)
+      if (entryError) console.error('RaceLiveBoard entry load error:', entryError)
+      if (checkpointError) console.error('RaceLiveBoard checkpoint load error:', checkpointError)
+      if (lapError) console.error('RaceLiveBoard lap load error:', lapError)
 
       setEvent(eventData || null)
 
@@ -165,10 +249,14 @@ export default function RaceLiveBoard() {
         displayName,
         team: entry?.team || '',
         checkpointLabel: checkpoint?.name || `Checkpoint ${checkpoint?.checkpoint_order ?? ''}`,
-        isPendingIdentity: !l.bib_number,
+        isPendingIdentity: l.status === 'pending',
       }
     })
   }, [laps, entries, checkpoints])
+
+  const pendingCount = useMemo(() => {
+    return enrichedLaps.filter(l => l.isPendingIdentity).length
+  }, [enrichedLaps])
 
   const visibleLaps = useMemo(() => {
     return hidePending ? enrichedLaps.filter(l => !l.isPendingIdentity) : enrichedLaps
@@ -182,19 +270,18 @@ export default function RaceLiveBoard() {
     <div
       style={{
         minHeight: '100vh',
-        background: `
-          radial-gradient(circle at 12% 8%, rgba(249,115,22,0.22), transparent 24%),
-          radial-gradient(circle at 88% 12%, rgba(59,130,246,0.18), transparent 22%),
-          linear-gradient(180deg, #0b0f16 0%, #05070c 100%)
-        `,
-        color: '#f8fafc',
+        background: C.bg,
+        color: C.text,
         fontFamily: FB,
         padding: '28px 30px',
         boxSizing: 'border-box',
         overflow: 'hidden',
       }}
     >
-      <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600;700&display=swap"
+        rel="stylesheet"
+      />
 
       <div
         style={{
@@ -209,9 +296,9 @@ export default function RaceLiveBoard() {
           style={{
             padding: '22px 24px',
             borderRadius: 28,
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+            background: C.cardBg,
+            border: `1px solid ${C.border}`,
+            boxShadow: C.shadow,
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
@@ -226,7 +313,7 @@ export default function RaceLiveBoard() {
                 fontWeight: 800,
                 letterSpacing: 4,
                 textTransform: 'uppercase',
-                color: '#fb923c',
+                color: C.orange,
               }}
             >
               Live Splits
@@ -257,7 +344,7 @@ export default function RaceLiveBoard() {
               flexWrap: 'wrap',
             }}
           >
-            <div style={{ fontSize: 18, color: '#94a3b8' }}>
+            <div style={{ fontSize: 18, color: C.textMuted }}>
               {event?.status === 'finished'
                 ? 'Unofficial final live board'
                 : event?.status === 'active'
@@ -265,24 +352,28 @@ export default function RaceLiveBoard() {
                   : 'Awaiting official start'}
             </div>
 
-            <button
-              onClick={() => setHidePending(v => !v)}
-              style={{
-                border: '1px solid rgba(255,255,255,0.12)',
-                background: hidePending ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.05)',
-                color: '#f8fafc',
-                borderRadius: 999,
-                padding: '10px 16px',
-                fontFamily: F,
-                fontSize: 16,
-                fontWeight: 800,
-                letterSpacing: 1.5,
-                textTransform: 'uppercase',
-                cursor: 'pointer',
-              }}
-            >
-              {hidePending ? 'Showing Named Only' : 'Showing All Crossings'}
-            </button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <ThemeToggle mode={mode} setMode={setMode} C={C} />
+
+              <button
+                onClick={() => setHidePending(v => !v)}
+                style={{
+                  border: `1px solid ${C.border}`,
+                  background: hidePending ? C.buttonActiveBg : C.buttonBg,
+                  color: C.text,
+                  borderRadius: 999,
+                  padding: '10px 16px',
+                  fontFamily: F,
+                  fontSize: 16,
+                  fontWeight: 800,
+                  letterSpacing: 1.5,
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                }}
+              >
+                {hidePending ? 'Showing Named Only' : 'Showing All Crossings'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -290,9 +381,9 @@ export default function RaceLiveBoard() {
           style={{
             padding: '20px 24px',
             borderRadius: 28,
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 24px 70px rgba(0,0,0,0.35)',
+            background: C.cardBg,
+            border: `1px solid ${C.border}`,
+            boxShadow: C.shadow,
             minHeight: 160,
             display: 'flex',
             flexDirection: 'column',
@@ -307,7 +398,7 @@ export default function RaceLiveBoard() {
               fontSize: 20,
               letterSpacing: 3,
               textTransform: 'uppercase',
-              color: '#94a3b8',
+              color: C.textMuted,
             }}
           >
             Race Clock
@@ -322,8 +413,8 @@ export default function RaceLiveBoard() {
               lineHeight: 1,
               letterSpacing: -2.6,
               fontVariantNumeric: 'tabular-nums',
-              color: event?.race_started_at ? '#ffffff' : '#475569',
-              textShadow: '0 12px 36px rgba(0,0,0,0.35)',
+              color: event?.race_started_at ? C.text : C.textDim,
+              textShadow: mode === 'dark' ? '0 12px 36px rgba(0,0,0,0.35)' : 'none',
             }}
           >
             {fmt(elapsed)}
@@ -360,12 +451,9 @@ export default function RaceLiveBoard() {
                 style={{
                   borderRadius: 22,
                   padding: '18px 18px 16px',
-                  background:
-                    idx === 0
-                      ? 'linear-gradient(180deg, rgba(249,115,22,0.20), rgba(255,255,255,0.05))'
-                      : 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
-                  border: `1px solid ${idx === 0 ? 'rgba(249,115,22,0.34)' : 'rgba(255,255,255,0.08)'}`,
-                  boxShadow: '0 18px 50px rgba(0,0,0,0.28)',
+                  background: idx === 0 ? C.cardBgHighlight : C.cardBg,
+                  border: `1px solid ${idx === 0 ? C.borderStrong : C.border}`,
+                  boxShadow: C.shadow,
                   minHeight: 132,
                 }}
               >
@@ -376,7 +464,7 @@ export default function RaceLiveBoard() {
                     fontWeight: 800,
                     letterSpacing: 2,
                     textTransform: 'uppercase',
-                    color: idx === 0 ? '#fb923c' : '#94a3b8',
+                    color: idx === 0 ? C.orange : C.textMuted,
                   }}
                 >
                   {idx === 0 ? 'Latest' : idx === 1 ? 'Previous' : 'Earlier'}
@@ -402,7 +490,7 @@ export default function RaceLiveBoard() {
                   style={{
                     marginTop: 8,
                     fontSize: 15,
-                    color: '#cbd5e1',
+                    color: C.textSoft,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -425,7 +513,7 @@ export default function RaceLiveBoard() {
                       fontFamily: F,
                       fontSize: 17,
                       fontWeight: 800,
-                      color: lap.bib_number ? '#60a5fa' : '#94a3b8',
+                      color: lap.bib_number ? C.blue : C.textMuted,
                       textTransform: 'uppercase',
                     }}
                   >
@@ -452,9 +540,9 @@ export default function RaceLiveBoard() {
                   gridColumn: '1 / -1',
                   borderRadius: 22,
                   padding: '24px',
-                  background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  color: '#94a3b8',
+                  background: C.cardBg,
+                  border: `1px solid ${C.border}`,
+                  color: C.textMuted,
                   fontSize: 24,
                 }}
               >
@@ -466,11 +554,9 @@ export default function RaceLiveBoard() {
           <div
             style={{
               borderRadius: 30,
-              background: latest
-                ? 'linear-gradient(180deg, rgba(249,115,22,0.20), rgba(255,255,255,0.04))'
-                : 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
-              border: `1px solid ${latest ? 'rgba(249,115,22,0.34)' : 'rgba(255,255,255,0.08)'}`,
-              boxShadow: '0 24px 70px rgba(0,0,0,0.34)',
+              background: latest ? C.cardBgStrong : C.cardBg,
+              border: `1px solid ${latest ? C.borderStrong : C.border}`,
+              boxShadow: C.shadow,
               padding: '30px 32px',
               display: 'flex',
               flexDirection: 'column',
@@ -486,7 +572,7 @@ export default function RaceLiveBoard() {
                   fontWeight: 800,
                   letterSpacing: 3,
                   textTransform: 'uppercase',
-                  color: '#fb923c',
+                  color: C.orange,
                 }}
               >
                 Latest Crossing
@@ -521,8 +607,8 @@ export default function RaceLiveBoard() {
                       style={{
                         padding: '10px 14px',
                         borderRadius: 999,
-                        background: 'rgba(59,130,246,0.18)',
-                        border: '1px solid rgba(59,130,246,0.34)',
+                        background: mode === 'dark' ? 'rgba(59,130,246,0.18)' : 'rgba(37,99,235,0.12)',
+                        border: `1px solid ${C.blue}`,
                         fontFamily: F,
                         fontSize: 22,
                         fontWeight: 800,
@@ -537,8 +623,8 @@ export default function RaceLiveBoard() {
                       style={{
                         padding: '10px 14px',
                         borderRadius: 999,
-                        background: 'rgba(249,115,22,0.18)',
-                        border: '1px solid rgba(249,115,22,0.34)',
+                        background: mode === 'dark' ? 'rgba(249,115,22,0.18)' : 'rgba(234,88,12,0.12)',
+                        border: `1px solid ${C.orange}`,
                         fontFamily: F,
                         fontSize: 22,
                         fontWeight: 800,
@@ -555,7 +641,7 @@ export default function RaceLiveBoard() {
                       style={{
                         marginTop: 18,
                         fontSize: 28,
-                        color: '#cbd5e1',
+                        color: C.textSoft,
                         fontWeight: 600,
                       }}
                     >
@@ -572,8 +658,8 @@ export default function RaceLiveBoard() {
                       lineHeight: 1,
                       letterSpacing: -2.6,
                       fontVariantNumeric: 'tabular-nums',
-                      color: '#ffffff',
-                      textShadow: '0 14px 40px rgba(0,0,0,0.32)',
+                      color: C.text,
+                      textShadow: mode === 'dark' ? '0 14px 40px rgba(0,0,0,0.32)' : 'none',
                     }}
                   >
                     {fmt(latest.elapsed_ms, true)}
@@ -583,7 +669,7 @@ export default function RaceLiveBoard() {
                 <div
                   style={{
                     marginTop: 32,
-                    color: '#94a3b8',
+                    color: C.textMuted,
                     fontSize: 26,
                   }}
                 >
@@ -600,11 +686,15 @@ export default function RaceLiveBoard() {
                 gap: 10,
                 flexWrap: 'wrap',
                 fontSize: 18,
-                color: '#94a3b8',
+                color: C.textMuted,
               }}
             >
               <div>Total visible crossings: {visibleLaps.length}</div>
-              <div>{hidePending ? 'Pending identities hidden' : 'Pending identities visible'}</div>
+              <div>
+                {hidePending
+                  ? `Pending identities hidden (${pendingCount})`
+                  : `Pending identities visible (${pendingCount})`}
+              </div>
             </div>
           </div>
         </div>
@@ -612,9 +702,9 @@ export default function RaceLiveBoard() {
         <div
           style={{
             borderRadius: 30,
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 24px 70px rgba(0,0,0,0.34)',
+            background: C.cardBg,
+            border: `1px solid ${C.border}`,
+            boxShadow: C.shadow,
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
@@ -624,7 +714,7 @@ export default function RaceLiveBoard() {
           <div
             style={{
               padding: '20px 22px 16px',
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: `1px solid ${C.border}`,
               display: 'grid',
               gridTemplateColumns: '132px 1fr 120px',
               gap: 16,
@@ -632,20 +722,20 @@ export default function RaceLiveBoard() {
               flexShrink: 0,
             }}
           >
-            <div style={{ fontFamily: F, fontSize: 18, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: '#94a3b8' }}>
+            <div style={{ fontFamily: F, fontSize: 18, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: C.textMuted }}>
               Split
             </div>
-            <div style={{ fontFamily: F, fontSize: 18, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: '#94a3b8' }}>
+            <div style={{ fontFamily: F, fontSize: 18, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: C.textMuted }}>
               Athlete / Checkpoint
             </div>
-            <div style={{ fontFamily: F, fontSize: 18, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: '#94a3b8', textAlign: 'right' }}>
+            <div style={{ fontFamily: F, fontSize: 18, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: C.textMuted, textAlign: 'right' }}>
               Bib
             </div>
           </div>
 
           <div style={{ flex: 1, overflow: 'hidden', padding: '6px 0' }}>
             {recent.length === 0 ? (
-              <div style={{ padding: '40px 24px', color: '#94a3b8', fontSize: 22 }}>
+              <div style={{ padding: '40px 24px', color: C.textMuted, fontSize: 22 }}>
                 Waiting for live data…
               </div>
             ) : (
@@ -660,11 +750,11 @@ export default function RaceLiveBoard() {
                     padding: '16px 22px',
                     background:
                       lap.id === flashId
-                        ? 'linear-gradient(90deg, rgba(249,115,22,0.24), rgba(249,115,22,0.05))'
+                        ? C.rowFlash
                         : idx % 2 === 0
                           ? 'transparent'
-                          : 'rgba(255,255,255,0.025)',
-                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                          : C.rowAlt,
+                    borderBottom: `1px solid ${C.border}`,
                     transition: 'background 0.4s ease',
                   }}
                 >
@@ -675,7 +765,7 @@ export default function RaceLiveBoard() {
                       fontWeight: 900,
                       letterSpacing: -0.5,
                       fontVariantNumeric: 'tabular-nums',
-                      color: '#f8fafc',
+                      color: C.text,
                     }}
                   >
                     {fmt(lap.elapsed_ms, true)}
@@ -692,7 +782,7 @@ export default function RaceLiveBoard() {
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        color: '#ffffff',
+                        color: C.text,
                       }}
                     >
                       {lap.displayName}
@@ -706,11 +796,11 @@ export default function RaceLiveBoard() {
                         alignItems: 'center',
                         flexWrap: 'wrap',
                         fontSize: 16,
-                        color: '#cbd5e1',
+                        color: C.textSoft,
                       }}
                     >
                       <span>{lap.checkpointLabel}</span>
-                      {lap.team && <span style={{ color: '#94a3b8' }}>• {lap.team}</span>}
+                      {lap.team && <span style={{ color: C.textMuted }}>• {lap.team}</span>}
                     </div>
                   </div>
 
@@ -721,7 +811,7 @@ export default function RaceLiveBoard() {
                       fontSize: 30,
                       fontWeight: 800,
                       textTransform: 'uppercase',
-                      color: lap.bib_number ? '#60a5fa' : '#94a3b8',
+                      color: lap.bib_number ? C.blue : C.textMuted,
                     }}
                   >
                     {lap.bib_number ? `#${lap.bib_number}` : 'Pending'}

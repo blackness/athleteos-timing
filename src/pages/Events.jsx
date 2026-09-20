@@ -10,6 +10,7 @@ import {
   getRaceMonitorPath,
   getRaceSetupPath,
   getResultsPath,
+  getRaceDirectorPath,
 } from '../lib/routes'
 
 function formatDate(value) {
@@ -118,6 +119,10 @@ function ParentEventCard({ event, races }) {
                 </div>
 
                 <div style={buttonRowStyle}>
+                  <ActionLink to={getRaceDirectorPath(race.id)} primary>
+                    Director
+                  </ActionLink>
+
                   {canShowSetup(race.status) ? (
                     <ActionLink to={getRaceSetupPath(race.id)}>Race Home</ActionLink>
                   ) : null}
@@ -160,6 +165,21 @@ function StandaloneRaceCard({ race }) {
         </div>
 
         <div style={buttonRowStyle}>
+          <ActionLink to={getRaceDirectorPath(race.id)} primary>
+            Director
+          </ActionLink>
+
+          {canShowSetup(race.status) ? (
+            <ActionLink to={getRaceSetupPath(race.id)}>Race Home</ActionLink>
+          ) : null}
+
+          {canShowMonitor(race.status) ? (
+            <ActionLink to={getRaceMonitorPath(race.id)}>Monitor</ActionLink>
+          ) : null}
+
+          <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
+          <ActionLink to={getLiveBoardPath(race.id)}>Live Board</ActionLink>
+        </div><div style={buttonRowStyle}>
           {canShowSetup(race.status) ? (
             <ActionLink to={getRaceSetupPath(race.id)}>Race Home</ActionLink>
           ) : null}
