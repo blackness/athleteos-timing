@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
 import AdjustmentMarker from '../components/AdjustmentMarker'
@@ -522,6 +522,7 @@ export default function LiveResults() {
   const { mode, setMode } = useTheme()
 
   const [event, setEvent] = useState(null)
+  const [siblingRaces, setSiblingRaces] = useState([])
   const [entries, setEntries] = useState([])
   const [checkpoints, setCheckpoints] = useState([])
   const [waves, setWaves] = useState([])
@@ -529,8 +530,6 @@ export default function LiveResults() {
   const [finishes, setFinishes] = useState([])
   const [adjustments, setAdjustments] = useState([])
   const [effectiveCheckpointRows, setEffectiveCheckpointRows] = useState([])
-  const [resultsGenderFilter, setResultsGenderFilter] = useState('Overall')
-  const [resultsDivisionFilter, setResultsDivisionFilter] = useState('all')
   const [checkpointSortMode, setCheckpointSortMode] = useState('cumulative')
   const [lastUpdate, setLastUpdate] = useState(null)
   const [now, setNow] = useState(Date.now())
@@ -567,6 +566,14 @@ export default function LiveResults() {
 
     return links
   }, [event?.parent_event_id, eventId])
+
+  const orderedSiblingRaces = useMemo(() => {
+    return [...siblingRaces].sort((a, b) => {
+      const aTime = a?.event_date ? new Date(a.event_date).getTime() : 0
+      const bTime = b?.event_date ? new Date(b.event_date).getTime() : 0
+      return aTime - bTime
+    })
+  }, [siblingRaces])
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
@@ -638,8 +645,26 @@ export default function LiveResults() {
         warnings.push('Effective checkpoint results failed to load.')
       }
 
+      let siblingRaceData = []
+
+      if (eventData?.parent_event_id) {
+        const { data: siblingData, error: siblingError } = await supabase
+          .from('race_events')
+          .select('id, name, event_date, status')
+          .eq('parent_event_id', eventData.parent_event_id)
+          .order('event_date', { ascending: true })
+
+        if (siblingError) {
+          console.error('LiveResults sibling races load error:', siblingError)
+          warnings.push('Related event races failed to load.')
+        } else {
+          siblingRaceData = siblingData || []
+        }
+      }
+
       setLoadWarnings(warnings)
       setEvent(eventData || null)
+      setSiblingRaces(siblingRaceData)
       setEntries(entryData || [])
       setCheckpoints(checkpointData || [])
       setWaves(waveData || [])
@@ -899,31 +924,8 @@ export default function LiveResults() {
     return rows
   }, [entries, finishes, entriesByBib, finishMapFromTable, wavesById, adjustmentMap, effectiveCheckpointRows, effectiveRowsByBib])
 
-  const resultsGenderTabs = useMemo(() => {
-    const found = new Set()
-    baseResultsRows.forEach(r => found.add(r.normalizedGender))
-    const ordered = ['Men', 'Women', 'Non-Binary', 'Other', 'Unspecified'].filter(x => found.has(x))
-    return ['Overall', ...ordered]
-  }, [baseResultsRows])
-
-  useEffect(() => {
-    if (!resultsGenderTabs.includes(resultsGenderFilter)) {
-      setResultsGenderFilter('Overall')
-    }
-  }, [resultsGenderTabs, resultsGenderFilter])
-
   const filteredResultsRows = useMemo(() => {
     let rows = baseResultsRows
-
-    if (resultsGenderFilter !== 'Overall') {
-      rows = rows.filter(r => r.normalizedGender === resultsGenderFilter)
-    }
-
-    if (resultsDivisionFilter === 'unknown') {
-      rows = rows.filter(r => !r.division)
-    } else if (resultsDivisionFilter !== 'all') {
-      rows = rows.filter(r => r.division === resultsDivisionFilter)
-    }
 
     if (showFinishersOnly) {
       rows = rows.filter(r => r.is_finished)
@@ -976,7 +978,7 @@ export default function LiveResults() {
       if (isPlaced) finishPlace += 1
       return { ...r, place: isPlaced ? finishPlace : null }
     })
-  }, [baseResultsRows, resultsGenderFilter, resultsDivisionFilter, resultsSort, checkpointSortMode, showFinishersOnly])
+  }, [baseResultsRows, resultsSort, checkpointSortMode, showFinishersOnly])
 
   const teamStandings = useMemo(() => {
     const finished = filteredResultsRows.filter(r => r.is_finished && r.team)
@@ -1025,24 +1027,6 @@ export default function LiveResults() {
 
     return { complete, incomplete }
   }, [filteredResultsRows])
-
-  const hasUnknownResultsDivisionRows = useMemo(() => {
-    return baseResultsRows.some(r => !r.division)
-  }, [baseResultsRows])
-
-  const subTabBtn = active => ({
-    padding: isMobile ? '7px 12px' : '8px 14px',
-    border: 'none',
-    background: 'none',
-    cursor: 'pointer',
-    fontFamily: fontHead,
-    fontSize: isMobile ? 9 : 10,
-    fontWeight: 700,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    color: active ? C.blue : C.muted,
-    borderBottom: active ? `2px solid ${C.blue}` : '2px solid transparent',
-  })
 
   const handleResultsSort = (key, type = 'string') => {
     setResultsSort(prev => ({
@@ -1361,128 +1345,57 @@ export default function LiveResults() {
         </div>
       )}
 
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
-          {[
-            { label: 'Finishers', value: baseResultsRows.filter(r => r.is_finished).length, color: C.blue },
-            { label: 'Pending Finish IDs', value: pendingFinishCount, color: pendingFinishCount > 0 ? C.yellow : C.green },
-            { label: 'Teams Scoring', value: teamStandings.complete.length, color: C.orange },
-            { label: 'Divisions', value: divisions.length, color: C.text },
-          ].map((s, idx, arr) => (
-            <div
-              key={s.label}
-              style={{
-                padding: isMobile ? '8px 8px' : '10px 12px',
-                borderRight: idx < arr.length - 1 ? `1px solid ${C.border}` : 'none',
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, fontFamily: fontHead, color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: 8, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.3, marginTop: 2 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {orderedSiblingRaces.length > 1 && (
+        <div
+          style={{
+            background: C.surface,
+            borderBottom: `1px solid ${C.border}`,
+            overflowX: 'auto',
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 1200,
+              margin: '0 auto',
+              padding: isMobile ? '10px 14px' : '12px 20px',
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'nowrap',
+              minWidth: 'max-content',
+            }}
+          >
+            {orderedSiblingRaces.map(race => {
+              const active = race.id === eventId
 
-      {pendingFinishCount > 0 && (
-        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobile ? '10px 14px' : '12px 20px' }}>
-            <div
-              style={{
-                background: C.surface,
-                border: `1px solid ${C.border}`,
-                borderRadius: 10,
-                padding: isMobile ? '10px 12px' : '12px 14px',
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: fontHead,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: 1.4,
-                  textTransform: 'uppercase',
-                  color: C.muted,
-                  marginBottom: 8,
-                }}
-              >
-                Pending Finish Records
-              </div>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {pendingFinishLapEvents.slice(0, 12).map(l => (
-                  <div
-                    key={l.id}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 999,
-                      border: `1px solid ${C.border}`,
-                      background: C.surface2,
-                      color: C.text,
-                      fontSize: 12,
-                      fontFamily: fontMono,
-                    }}
-                  >
-                    {fmtTime(l.elapsed_ms)}
-                  </div>
-                ))}
-
-                {pendingFinishCount > 12 && (
-                  <div
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 999,
-                      border: `1px solid ${C.border}`,
-                      background: C.surface2,
-                      color: C.muted,
-                      fontSize: 12,
-                    }}
-                  >
-                    +{pendingFinishCount - 12} more
-                  </div>
-                )}
-              </div>
-            </div>
+              return (
+                <Link
+                  key={race.id}
+                  to={getResultsPath(race.id)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: isMobile ? '8px 12px' : '9px 14px',
+                    borderRadius: 999,
+                    textDecoration: 'none',
+                    border: `1px solid ${active ? C.blue : C.border}`,
+                    background: active ? C.surface2 : C.surface,
+                    color: active ? C.blue : C.text,
+                    fontFamily: fontHead,
+                    fontSize: isMobile ? 9 : 10,
+                    fontWeight: 700,
+                    letterSpacing: 1.1,
+                    textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {race.name}
+                </Link>
+              )
+            })}
           </div>
         </div>
       )}
-
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', minWidth: 'max-content' }}>
-          {resultsGenderTabs.map(g => (
-            <button key={g} style={subTabBtn(resultsGenderFilter === g)} onClick={() => setResultsGenderFilter(g)}>
-              {g}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ position: 'sticky', top: 40, zIndex: 19, background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: 'auto' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', minWidth: 'max-content' }}>
-          <button style={subTabBtn(resultsDivisionFilter === 'all')} onClick={() => setResultsDivisionFilter('all')}>
-            All Divisions
-          </button>
-
-          {divisions.map(div => (
-            <button
-              key={div}
-              style={subTabBtn(resultsDivisionFilter === div)}
-              onClick={() => setResultsDivisionFilter(div)}
-            >
-              {div}
-            </button>
-          ))}
-
-          {hasUnknownResultsDivisionRows && (
-            <button
-              style={subTabBtn(resultsDivisionFilter === 'unknown')}
-              onClick={() => setResultsDivisionFilter('unknown')}
-            >
-              Unknown
-            </button>
-          )}
-        </div>
-      </div>
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobile ? '12px 14px' : '16px 20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -1577,8 +1490,6 @@ export default function LiveResults() {
           </div>
         </div>
 
-        <TeamStandingsCard standings={teamStandings} C={C} isMobile={isMobile} />
-
         <ResultsTable
           rows={filteredResultsRows}
           displayCheckpoints={displayCheckpoints}
@@ -1588,6 +1499,107 @@ export default function LiveResults() {
           isMobile={isMobile}
           nameColWidth={nameColWidth}
         />
+
+        <div style={{ marginTop: 16 }}>
+          <TeamStandingsCard standings={teamStandings} C={C} isMobile={isMobile} />
+        </div>
+
+        {pendingFinishCount > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div
+              style={{
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: isMobile ? '10px 12px' : '12px 14px',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: fontHead,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: 1.4,
+                  textTransform: 'uppercase',
+                  color: C.muted,
+                  marginBottom: 8,
+                }}
+              >
+                Pending Finish Records
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {pendingFinishLapEvents.slice(0, 12).map(l => (
+                  <div
+                    key={l.id}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${C.border}`,
+                      background: C.surface2,
+                      color: C.text,
+                      fontSize: 12,
+                      fontFamily: fontMono,
+                    }}
+                  >
+                    {fmtTime(l.elapsed_ms)}
+                  </div>
+                ))}
+
+                {pendingFinishCount > 12 && (
+                  <div
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${C.border}`,
+                      background: C.surface2,
+                      color: C.muted,
+                      fontSize: 12,
+                    }}
+                  >
+                    +{pendingFinishCount - 12} more
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 16 }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
+              {[
+                { label: 'Finishers', value: baseResultsRows.filter(r => r.is_finished).length, color: C.blue },
+                { label: 'Pending Finish IDs', value: pendingFinishCount, color: pendingFinishCount > 0 ? C.yellow : C.green },
+                { label: 'Teams Scoring', value: teamStandings.complete.length, color: C.orange },
+                { label: 'Divisions', value: divisions.length, color: C.text },
+              ].map((s, idx, arr) => (
+                <div
+                  key={s.label}
+                  style={{
+                    padding: isMobile ? '8px 8px' : '10px 12px',
+                    borderRight:
+                      !isMobile && idx < arr.length - 1
+                        ? `1px solid ${C.border}`
+                        : 'none',
+                    borderBottom:
+                      isMobile && idx < arr.length - 2
+                        ? `1px solid ${C.border}`
+                        : 'none',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, fontFamily: fontHead, color: s.color }}>
+                    {s.value}
+                  </div>
+                  <div style={{ fontSize: 8, color: C.muted, textTransform: 'uppercase', letterSpacing: 1.3, marginTop: 2 }}>
+                    {s.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div style={{ textAlign: 'center', color: C.footer, fontSize: 11, padding: '24px 0', letterSpacing: 1, fontFamily: fontHead }}>

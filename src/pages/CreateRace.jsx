@@ -122,7 +122,7 @@ export default function CreateRace() {
     return distancePreset === 'Custom' ? customDistance.trim() : distancePreset
   }, [distancePreset, customDistance])
 
-  async function handleCreate(e) {
+async function handleCreate(e) {
     e.preventDefault()
     setError('')
 
@@ -148,10 +148,32 @@ export default function CreateRace() {
       .select()
       .single()
 
+    if (error || !data) {
+      setSaving(false)
+      setError(error?.message || 'Could not create race.')
+      return
+    }
+
+    const defaultCheckpoints = [
+      {
+        event_id: data.id,
+        name: 'Finish',
+        checkpoint_order: 1,
+        code: 'FINISH',
+        short_code: `FINISH-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        is_active: true,
+      },
+    ]
+
+    const { error: checkpointError } = await supabase
+      .from('race_checkpoints')
+      .insert(defaultCheckpoints)
+
     setSaving(false)
 
-    if (error || !data) {
-      setError(error?.message || 'Could not create race.')
+    if (checkpointError) {
+      setError(`Race created, but default finish checkpoint could not be created: ${checkpointError.message}`)
+      navigate(`/race/${data.id}/setup`)
       return
     }
 

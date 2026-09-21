@@ -374,7 +374,7 @@ export default function EventResultsPage() {
     cursor: 'pointer',
   })
 
-  return (
+return (
     <div style={styles.page}>
       <PublicNav
         theme={theme}
@@ -423,26 +423,41 @@ export default function EventResultsPage() {
         </div>
 
         {sortedRaces.length > 0 ? (
-          <div style={{ marginBottom: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              style={tabButtonStyle(activeTab === 'overview')}
-              onClick={() => setTab('overview')}
-            >
-              Overview
-            </button>
+          <section style={{ marginBottom: 20 }}>
+            <div style={styles.sectionHeader}>
+              <div>
+                <div style={styles.sectionTitle}>Races / Divisions</div>
+                <div style={{ fontSize: 13, color: theme.textMuted, marginTop: 2 }}>
+                  Select a race to view results and status.
+                </div>
+              </div>
 
-            {sortedRaces.map(race => (
+              <div style={{ fontSize: 13, color: theme.textMuted }}>
+                {sortedRaces.length} total
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
-                key={race.id}
                 type="button"
-                style={tabButtonStyle(activeTab === race.id)}
-                onClick={() => setTab(race.id)}
+                style={tabButtonStyle(activeTab === 'overview')}
+                onClick={() => setTab('overview')}
               >
-                {race.name}
+                Overview
               </button>
-            ))}
-          </div>
+
+              {sortedRaces.map(race => (
+                <button
+                  key={race.id}
+                  type="button"
+                  style={tabButtonStyle(activeTab === race.id)}
+                  onClick={() => setTab(race.id)}
+                >
+                  {race.name}
+                </button>
+              ))}
+            </div>
+          </section>
         ) : null}
 
         {session && activeRace ? (
@@ -493,21 +508,54 @@ export default function EventResultsPage() {
             ))
           )
         ) : activeRace ? (
-          <section>
-            <div style={styles.sectionHeader}>
-              <div style={styles.sectionTitle}>{activeRace.name}</div>
-              <div style={{ fontSize: 13, color: theme.textMuted }}>
-                Focused race view
+          <>
+            <section>
+              <div style={styles.sectionHeader}>
+                <div style={styles.sectionTitle}>{activeRace.name}</div>
+                <div style={{ fontSize: 13, color: theme.textMuted }}>
+                  Focused race view
+                </div>
               </div>
-            </div>
 
-            <RaceCard
-              race={activeRace}
-              eventId={event.id}
-              isAuthenticated={!!session}
-              theme={theme}
-            />
-          </section>
+              <RaceCard
+                race={activeRace}
+                eventId={event.id}
+                isAuthenticated={!!session}
+                theme={theme}
+              />
+            </section>
+
+            {sortedRaces.filter(race => race.id !== activeRace.id).length > 0 ? (
+              <section style={{ marginTop: 24 }}>
+                <div style={styles.sectionHeader}>
+                  <div>
+                    <div style={styles.sectionTitle}>Other Races</div>
+                    <div style={{ fontSize: 13, color: theme.textMuted, marginTop: 2 }}>
+                      Browse the rest of this event without returning to overview.
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 13, color: theme.textMuted }}>
+                    {sortedRaces.filter(race => race.id !== activeRace.id).length} more
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {sortedRaces
+                    .filter(race => race.id !== activeRace.id)
+                    .map(race => (
+                      <RaceCard
+                        key={race.id}
+                        race={race}
+                        eventId={event.id}
+                        isAuthenticated={!!session}
+                        theme={theme}
+                      />
+                    ))}
+                </div>
+              </section>
+            ) : null}
+          </>
         ) : (
           <div style={styles.card}>Race not found.</div>
         )}
