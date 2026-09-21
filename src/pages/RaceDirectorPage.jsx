@@ -10,6 +10,7 @@ import {
   getRaceCheckpointsPath,
   getRaceAssignPath,
   getRaceCorrectionsPath,
+  getRaceCheckpointQrPath,
   getEventHubPath,
 } from '../lib/routes'
 
@@ -32,6 +33,194 @@ function StatCard({ label, value, tone = '#f1f5f9' }) {
   )
 }
 
+function RoleCard({ title, text, onClick, tone = '#60a5fa' }) {
+  return (
+    <button type="button" onClick={onClick} style={S.roleCard}>
+      <div style={{ ...S.roleTitle, color: tone }}>{title}</div>
+      <div style={S.roleText}>{text}</div>
+    </button>
+  )
+}
+
+function ToolCard({ title, text, onClick }) {
+  return (
+    <button type="button" onClick={onClick} style={S.toolCard}>
+      <div style={S.toolTitle}>{title}</div>
+      <div style={S.toolText}>{text}</div>
+    </button>
+  )
+}
+
+function NextActionPanel({
+  race,
+  pendingCount,
+  onOpenSetup,
+  onStartRace,
+  onOpenMonitor,
+  onOpenAssign,
+  onOpenTimer,
+  onOpenCorrections,
+  onOpenResults,
+  onFinalizeRace,
+  onOpenLiveBoard,
+  onOpenEventHub,
+  startingRace,
+  finalizingRace,
+  canShowEventHub,
+}) {
+  const status = race?.status || 'draft'
+
+  if (status === 'active') {
+    return (
+      <div style={S.nextActionCard}>
+        <div style={S.nextActionEyebrow}>Next Action</div>
+        <div style={S.nextActionTitle}>The race is live</div>
+        <div style={S.nextActionText}>
+          Monitor race flow and resolve finish-line issues as they happen.
+          {pendingCount > 0
+            ? ` There ${pendingCount === 1 ? 'is' : 'are'} currently ${pendingCount} pending assignment${pendingCount === 1 ? '' : 's'}.`
+            : ' No pending finish assignments are currently waiting.'}
+        </div>
+
+        <div style={S.primaryActionRow}>
+          <button type="button" onClick={onOpenMonitor} style={S.primaryActionBtn}>
+            Open Monitor
+          </button>
+          <button type="button" onClick={onOpenAssign} style={S.secondaryActionBtn}>
+            Assign Bibs
+          </button>
+          <button type="button" onClick={onOpenTimer} style={S.secondaryActionBtn}>
+            Timer Devices
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'results_review') {
+    return (
+      <div style={S.nextActionCard}>
+        <div style={S.nextActionEyebrow}>Next Action</div>
+        <div style={S.nextActionTitle}>Review and finalize results</div>
+        <div style={S.nextActionText}>
+          The race has ended. Review pending items, fix any issues, then finalize results when everything looks correct.
+        </div>
+
+        <div style={S.primaryActionRow}>
+          <button type="button" onClick={onOpenCorrections} style={S.primaryActionBtn}>
+            Review & Fix Results
+          </button>
+          <button type="button" onClick={onOpenResults} style={S.secondaryActionBtn}>
+            Open Results
+          </button>
+          <button
+            type="button"
+            onClick={onFinalizeRace}
+            disabled={finalizingRace}
+            style={{
+              ...S.secondaryActionBtn,
+              opacity: finalizingRace ? 0.75 : 1,
+              cursor: finalizingRace ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {finalizingRace ? 'Finalizing…' : 'Finalize Results'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'finished') {
+    return (
+      <div style={S.nextActionCard}>
+        <div style={S.nextActionEyebrow}>Next Action</div>
+        <div style={S.nextActionTitle}>Results are final</div>
+        <div style={S.nextActionText}>
+          This race is complete. Review final standings, share public outputs, or move back to the event.
+        </div>
+
+        <div style={S.primaryActionRow}>
+          <button type="button" onClick={onOpenResults} style={S.primaryActionBtn}>
+            Open Results
+          </button>
+          <button type="button" onClick={onOpenLiveBoard} style={S.secondaryActionBtn}>
+            Live Board
+          </button>
+          {canShowEventHub ? (
+            <button type="button" onClick={onOpenEventHub} style={S.secondaryActionBtn}>
+              Event Hub
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'ready') {
+    return (
+      <div style={S.nextActionCard}>
+        <div style={S.nextActionEyebrow}>Next Action</div>
+        <div style={S.nextActionTitle}>Race is ready to start</div>
+        <div style={S.nextActionText}>
+          Staff should be in position. Confirm timer devices are ready, then start the race when athletes are set.
+        </div>
+
+        <div style={S.primaryActionRow}>
+          <button
+            type="button"
+            onClick={onStartRace}
+            disabled={startingRace}
+            style={{
+              ...S.primaryActionBtn,
+              opacity: startingRace ? 0.75 : 1,
+              cursor: startingRace ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {startingRace ? 'Starting…' : 'Start Race'}
+          </button>
+          <button type="button" onClick={onOpenMonitor} style={S.secondaryActionBtn}>
+            Open Monitor
+          </button>
+          <button type="button" onClick={onOpenTimer} style={S.secondaryActionBtn}>
+            Timer Devices
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={S.nextActionCard}>
+      <div style={S.nextActionEyebrow}>Next Action</div>
+      <div style={S.nextActionTitle}>Review setup before race day</div>
+      <div style={S.nextActionText}>
+        This race is not live yet. Confirm roster, checkpoints, waves, and public sharing before starting.
+      </div>
+
+      <div style={S.primaryActionRow}>
+        <button type="button" onClick={onOpenSetup} style={S.primaryActionBtn}>
+          Review Setup
+        </button>
+        <button
+          type="button"
+          onClick={onStartRace}
+          disabled={startingRace}
+          style={{
+            ...S.secondaryActionBtn,
+            opacity: startingRace ? 0.75 : 1,
+            cursor: startingRace ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {startingRace ? 'Starting…' : 'Start Race'}
+        </button>
+        <button type="button" onClick={onOpenTimer} style={S.secondaryActionBtn}>
+          Timer Devices
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function RaceDirectorPage() {
   const { id: raceId } = useParams()
   const navigate = useNavigate()
@@ -44,6 +233,9 @@ export default function RaceDirectorPage() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [startingRace, setStartingRace] = useState(false)
+  const [finalizingRace, setFinalizingRace] = useState(false)
+  const [resettingRaceData, setResettingRaceData] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deletingRace, setDeletingRace] = useState(false)
 
@@ -142,13 +334,187 @@ export default function RaceDirectorPage() {
         border: 'rgba(16,185,129,0.25)',
       }
     }
+    if (race?.status === 'ready') {
+      return {
+        text: 'READY',
+        color: '#22c55e',
+        bg: 'rgba(34,197,94,0.10)',
+        border: 'rgba(34,197,94,0.25)',
+      }
+    }
     return {
-      text: 'READY',
+      text: 'DRAFT',
       color: '#3b82f6',
       bg: 'rgba(59,130,246,0.10)',
       border: 'rgba(59,130,246,0.25)',
     }
   }, [race?.status])
+
+  const startRace = async () => {
+    if (!race?.id || startingRace) return
+
+    const ok = window.confirm(
+      'Start race now?\n\nThis will activate checkpoint timers and begin the public live clock.'
+    )
+    if (!ok) return
+
+    setStartingRace(true)
+    const startedAt = new Date().toISOString()
+
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({
+        race_started_at: startedAt,
+        race_finished_at: null,
+        status: 'active',
+      })
+      .eq('id', race.id)
+      .select()
+      .single()
+
+    setStartingRace(false)
+
+    if (error || !data) {
+      window.alert(`Could not start race: ${error?.message || 'Unknown error'}`)
+      return
+    }
+
+    setRace(data)
+    await loadData()
+  }
+
+  const finalizeRace = async () => {
+    if (!race?.id || finalizingRace || race?.status !== 'results_review') return
+
+    const ok = window.confirm(
+      'Finalize results now?\n\nThis marks the race as complete/final.'
+    )
+    if (!ok) return
+
+    setFinalizingRace(true)
+
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({ status: 'finished' })
+      .eq('id', race.id)
+      .select()
+      .single()
+
+    setFinalizingRace(false)
+
+    if (error || !data) {
+      window.alert(`Could not finalize race: ${error?.message || 'Unknown error'}`)
+      return
+    }
+
+    setRace(data)
+    await loadData()
+  }
+
+  const falseStartRace = async () => {
+    if (!race?.id || resettingRaceData || race?.status !== 'active') {
+      window.alert('False Start is only available while the race is active.')
+      return
+    }
+
+    const ok = window.confirm(
+      'Declare a false start?\n\nThis will delete captured splits/finishes, clear wave actual start times, and return the race to draft.'
+    )
+    if (!ok) return
+
+    try {
+      setResettingRaceData(true)
+
+      const { error: lapError } = await supabase
+        .from('lap_events')
+        .delete()
+        .eq('event_id', race.id)
+      if (lapError) throw lapError
+
+      const { error: finishError } = await supabase
+        .from('race_finishes')
+        .delete()
+        .eq('event_id', race.id)
+      if (finishError) throw finishError
+
+      const { error: waveError } = await supabase
+        .from('race_waves')
+        .update({ actual_start_time: null })
+        .eq('event_id', race.id)
+      if (waveError) throw waveError
+
+      const { data: updatedRace, error: raceError } = await supabase
+        .from('race_events')
+        .update({
+          race_started_at: null,
+          race_finished_at: null,
+          status: 'draft',
+        })
+        .eq('id', race.id)
+        .select()
+        .single()
+      if (raceError) throw raceError
+
+      setRace(updatedRace)
+      await loadData()
+      window.alert('False start recorded. Race has been reset to draft.')
+    } catch (err) {
+      window.alert(`False start failed: ${err.message || 'Unknown error'}`)
+    } finally {
+      setResettingRaceData(false)
+    }
+  }
+
+  const resetRaceData = async () => {
+    if (!race?.id || resettingRaceData) return
+
+    const ok = window.confirm(
+      'Reset all race timing data?\n\nThis will delete captured splits/finishes, clear wave actual start times, and reset the race to draft.'
+    )
+    if (!ok) return
+
+    try {
+      setResettingRaceData(true)
+
+      const { error: lapError } = await supabase
+        .from('lap_events')
+        .delete()
+        .eq('event_id', race.id)
+      if (lapError) throw lapError
+
+      const { error: finishError } = await supabase
+        .from('race_finishes')
+        .delete()
+        .eq('event_id', race.id)
+      if (finishError) throw finishError
+
+      const { error: waveError } = await supabase
+        .from('race_waves')
+        .update({ actual_start_time: null })
+        .eq('event_id', race.id)
+      if (waveError) throw waveError
+
+      const { data: updatedRace, error: raceError } = await supabase
+        .from('race_events')
+        .update({
+          race_started_at: null,
+          race_finished_at: null,
+          status: 'draft',
+        })
+        .eq('id', race.id)
+        .select()
+        .single()
+      if (raceError) throw raceError
+
+      setRace(updatedRace)
+      await loadData()
+      window.alert('Race timing data reset successfully.')
+    } catch (err) {
+      window.alert(`Reset failed: ${err.message || 'Unknown error'}`)
+    } finally {
+      setResettingRaceData(false)
+    }
+  }
 
   const deleteRace = async () => {
     if (!race?.id || deletingRace) return
@@ -212,12 +578,8 @@ export default function RaceDirectorPage() {
       />
 
       <div style={S.header}>
-        <button
-          type="button"
-          style={S.backBtn}
-          onClick={() => navigate(getRaceSetupPath(raceId))}
-        >
-          ← Race Home
+        <button type="button" style={S.backBtn} onClick={() => navigate('/')}>
+          ← Dashboard
         </button>
 
         <div style={{ flex: 1, minWidth: 220 }}>
@@ -228,32 +590,24 @@ export default function RaceDirectorPage() {
           ) : null}
         </div>
 
-        <div style={S.buttonRow}>
+        <div style={S.headerTools}>
+          <button
+            type="button"
+            style={S.headerToolBtn}
+            onClick={() => navigate(getRaceSetupPath(raceId))}
+          >
+            Setup
+          </button>
+
           {parentEvent?.id ? (
             <button
               type="button"
-              style={{ ...S.backBtn, color: '#34d399' }}
+              style={S.headerToolBtn}
               onClick={() => navigate(getEventHubPath(parentEvent.id))}
             >
-              Event Hub ↗
+              Event Hub
             </button>
           ) : null}
-
-          <button
-            type="button"
-            style={{ ...S.backBtn, color: '#60a5fa' }}
-            onClick={() => navigate(getResultsPath(raceId))}
-          >
-            Results ↗
-          </button>
-
-          <button
-            type="button"
-            style={{ ...S.backBtn, color: '#a78bfa' }}
-            onClick={() => navigate(getLiveBoardPath(raceId))}
-          >
-            Live Board ↗
-          </button>
         </div>
       </div>
 
@@ -285,7 +639,7 @@ export default function RaceDirectorPage() {
                 {race?.status === 'active'
                   ? 'Race Clock'
                   : race?.status === 'results_review'
-                    ? 'Review Clock'
+                    ? 'Results Review'
                     : race?.status === 'finished'
                       ? 'Final Time'
                       : 'Waiting'}
@@ -306,156 +660,163 @@ export default function RaceDirectorPage() {
           </div>
         </div>
 
+        <NextActionPanel
+          race={race}
+          pendingCount={pendingCount}
+          startingRace={startingRace}
+          finalizingRace={finalizingRace}
+          canShowEventHub={!!parentEvent?.id}
+          onOpenSetup={() => navigate(getRaceSetupPath(raceId))}
+          onStartRace={startRace}
+          onOpenMonitor={() => navigate(getRaceMonitorPath(raceId))}
+          onOpenAssign={() => navigate(getRaceAssignPath(raceId))}
+          onOpenTimer={() => navigate(getRaceCheckpointsPath(raceId))}
+          onOpenCorrections={() => navigate(getRaceCorrectionsPath(raceId))}
+          onOpenResults={() => navigate(getResultsPath(raceId))}
+          onFinalizeRace={finalizeRace}
+          onOpenLiveBoard={() => navigate(getLiveBoardPath(raceId))}
+          onOpenEventHub={() => parentEvent?.id && navigate(getEventHubPath(parentEvent.id))}
+        />
+
         <div style={S.section}>
-          <div style={S.sectionTitle}>Quick Actions</div>
+          <div style={S.sectionTitle}>Race-Day Roles</div>
+          <div style={S.sectionSub}>
+            Send staff to the right operational screen for their job.
+          </div>
 
-          <div style={S.quickGrid}>
-            <button
-              type="button"
-              onClick={() => navigate(getRaceSetupPath(raceId))}
-              style={S.quickCard}
-            >
-              <div style={S.quickTitle}>Race Home</div>
-              <div style={S.quickText}>
-                Pre-race setup, roster, checkpoints, and public sharing.
-              </div>
-            </button>
-
-            <button
-              type="button"
+          <div style={S.roleGrid}>
+            <RoleCard
+              title="Timer"
+              text="Open timing and checkpoint workflows for device operators."
               onClick={() => navigate(getRaceCheckpointsPath(raceId))}
-              style={S.quickCard}
-            >
-              <div style={S.quickTitle}>Timer Devices</div>
-              <div style={S.quickText}>
-                Open timing and checkpoint device workflows.
-              </div>
-            </button>
-
-            <button
-              type="button"
+              tone="#f97316"
+            />
+            <RoleCard
+              title="Assigner"
+              text="Resolve pending finish identities and assign bibs."
               onClick={() => navigate(getRaceAssignPath(raceId))}
-              style={S.quickCard}
-            >
-              <div style={S.quickTitle}>Assign Bibs</div>
-              <div style={S.quickText}>
-                Resolve pending finish identities.
-              </div>
-            </button>
-
-            <button
-              type="button"
+              tone="#22c55e"
+            />
+            <RoleCard
+              title="Monitor"
+              text="Watch race progress, counts, and live flow."
               onClick={() => navigate(getRaceMonitorPath(raceId))}
-              style={S.quickCard}
-            >
-              <div style={S.quickTitle}>Monitor</div>
-              <div style={S.quickText}>
-                Watch live race flow and counts.
-              </div>
-            </button>
+              tone="#60a5fa"
+            />
+          </div>
+        </div>
 
-            <button
-              type="button"
+        <div style={S.section}>
+          <div style={S.sectionTitle}>Supporting Tools</div>
+          <div style={S.toolGrid}>
+            <ToolCard
+              title="Race Home / Setup"
+              text="Roster, checkpoints, waves, public sharing, and configuration."
+              onClick={() => navigate(getRaceSetupPath(raceId))}
+            />
+            <ToolCard
+              title="Public Results"
+              text="Open public results for verification."
               onClick={() => navigate(getResultsPath(raceId))}
-              style={S.quickCard}
-            >
-              <div style={S.quickTitle}>Results</div>
-              <div style={S.quickText}>
-                Open public results for verification.
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate(getRaceCorrectionsPath(raceId))}
-              style={S.quickCard}
-            >
-              <div style={S.quickTitle}>Review & Fix</div>
-              <div style={S.quickText}>
-                Corrections and result cleanup.
-              </div>
-            </button>
+            />
+            <ToolCard
+              title="Live Board"
+              text="Open the public live board."
+              onClick={() => navigate(getLiveBoardPath(raceId))}
+            />
+            <ToolCard
+              title="Print Device QR Codes"
+              text="Open checkpoint/device QR tools."
+              onClick={() => navigate(getRaceCheckpointQrPath(raceId))}
+            />
+            {parentEvent?.id ? (
+              <ToolCard
+                title="Event Hub"
+                text="Open the public event overview page."
+                onClick={() => navigate(getEventHubPath(parentEvent.id))}
+              />
+            ) : null}
           </div>
         </div>
 
         <div style={S.section}>
           <div style={S.sectionTitle}>Danger Zone</div>
 
-          <div
-            style={{
-              background: 'rgba(127,29,29,0.10)',
-              border: '1px solid rgba(239,68,68,0.35)',
-              borderRadius: 16,
-              padding: 18,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: '#f87171',
-                textTransform: 'uppercase',
-                letterSpacing: 2,
-                marginBottom: 8,
-                fontFamily: F,
-                fontWeight: 800,
-              }}
-            >
-              Delete Race
-            </div>
-
-            <div
-              style={{
-                fontSize: 15,
-                color: '#fecaca',
-                marginBottom: 8,
-                fontWeight: 800,
-              }}
-            >
-              Permanently delete this race
-            </div>
-
-            <div
-              style={{
-                fontSize: 13,
-                color: '#fca5a5',
-                lineHeight: 1.6,
-                marginBottom: 14,
-              }}
-            >
-              This deletes the race record and related entries, waves, checkpoints,
-              lap events, finishes, and adjustments. This action cannot be undone.
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                flexWrap: 'wrap',
-                alignItems: 'end',
-              }}
-            >
-              <div style={{ minWidth: 220, flex: 1 }}>
-                <div style={S.dangerLabel}>Type DELETE to confirm</div>
-                <input
-                  value={deleteConfirmText}
-                  onChange={e => setDeleteConfirmText(e.target.value)}
-                  placeholder="DELETE"
-                  style={S.dangerInput}
-                />
+          <div style={S.dangerStack}>
+            <div style={S.dangerCard}>
+              <div style={S.dangerEyebrow}>Race Reset</div>
+              <div style={S.dangerTitle}>False Start</div>
+              <div style={S.dangerText}>
+                Use this only if the race was started in error and timing should be cleared.
               </div>
-
               <button
                 type="button"
-                onClick={deleteRace}
-                disabled={deletingRace}
+                onClick={falseStartRace}
+                disabled={resettingRaceData || race?.status !== 'active'}
                 style={{
-                  ...S.dangerButton,
-                  opacity: deletingRace ? 0.75 : 1,
-                  cursor: deletingRace ? 'not-allowed' : 'pointer',
+                  ...S.dangerSecondaryBtn,
+                  opacity: resettingRaceData || race?.status !== 'active' ? 0.65 : 1,
+                  cursor:
+                    resettingRaceData || race?.status !== 'active'
+                      ? 'not-allowed'
+                      : 'pointer',
                 }}
               >
-                {deletingRace ? 'Deleting…' : 'Delete Race'}
+                {resettingRaceData ? 'Resetting…' : 'False Start'}
               </button>
+            </div>
+
+            <div style={S.dangerCard}>
+              <div style={S.dangerEyebrow}>Timing Reset</div>
+              <div style={S.dangerTitle}>Reset Race Data</div>
+              <div style={S.dangerText}>
+                Delete captured timing records and reset the race back to draft while keeping core configuration.
+              </div>
+              <button
+                type="button"
+                onClick={resetRaceData}
+                disabled={resettingRaceData}
+                style={{
+                  ...S.dangerSecondaryBtn,
+                  opacity: resettingRaceData ? 0.65 : 1,
+                  cursor: resettingRaceData ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {resettingRaceData ? 'Resetting…' : 'Reset Race Data'}
+              </button>
+            </div>
+
+            <div style={S.dangerCard}>
+              <div style={S.dangerEyebrow}>Permanent Delete</div>
+              <div style={S.dangerTitle}>Delete Race</div>
+              <div style={S.dangerText}>
+                Permanently delete the race plus related entries, waves, checkpoints, laps, finishes, and adjustments.
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
+                <div style={{ minWidth: 220, flex: 1 }}>
+                  <div style={S.dangerLabel}>Type DELETE to confirm</div>
+                  <input
+                    value={deleteConfirmText}
+                    onChange={e => setDeleteConfirmText(e.target.value)}
+                    placeholder="DELETE"
+                    style={S.dangerInput}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={deleteRace}
+                  disabled={deletingRace}
+                  style={{
+                    ...S.dangerPrimaryBtn,
+                    opacity: deletingRace ? 0.7 : 1,
+                    cursor: deletingRace ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {deletingRace ? 'Deleting…' : 'Delete Race'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -492,6 +853,24 @@ const S = {
     color: '#4a5568',
     borderRadius: 8,
     padding: '8px 14px',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontFamily: F,
+    fontWeight: 700,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  headerTools: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  headerToolBtn: {
+    background: 'transparent',
+    border: '1px solid #1e2730',
+    color: '#94a3b8',
+    borderRadius: 8,
+    padding: '8px 12px',
     cursor: 'pointer',
     fontSize: 12,
     fontFamily: F,
@@ -579,6 +958,7 @@ const S = {
     fontWeight: 900,
     lineHeight: 1,
     fontFamily: F,
+    textTransform: 'uppercase',
   },
   statLbl: {
     fontSize: 10,
@@ -588,6 +968,62 @@ const S = {
     marginTop: 6,
     fontFamily: F,
     fontWeight: 700,
+  },
+  nextActionCard: {
+    background: 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(59,130,246,0.10))',
+    border: '1px solid rgba(249,115,22,0.25)',
+    borderRadius: 18,
+    padding: 22,
+    marginBottom: 28,
+  },
+  nextActionEyebrow: {
+    fontSize: 11,
+    color: '#f97316',
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: 8,
+    fontFamily: F,
+    fontWeight: 800,
+  },
+  nextActionTitle: {
+    fontSize: 28,
+    color: '#f8fafc',
+    fontFamily: F,
+    fontWeight: 900,
+    marginBottom: 10,
+    lineHeight: 1,
+  },
+  nextActionText: {
+    fontSize: 14,
+    color: '#cbd5e1',
+    lineHeight: 1.7,
+    maxWidth: 860,
+    marginBottom: 16,
+  },
+  primaryActionRow: {
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  primaryActionBtn: {
+    border: 'none',
+    borderRadius: 12,
+    padding: '14px 18px',
+    background: '#f97316',
+    color: '#fff',
+    fontWeight: 800,
+    cursor: 'pointer',
+    fontFamily: FB,
+  },
+  secondaryActionBtn: {
+    border: '1px solid #1e2730',
+    borderRadius: 12,
+    padding: '14px 18px',
+    background: '#0b1220',
+    color: '#cbd5e1',
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: FB,
   },
   section: {
     marginBottom: 28,
@@ -599,12 +1035,18 @@ const S = {
     fontFamily: F,
     color: '#f1f5f9',
   },
-  quickGrid: {
+  sectionSub: {
+    color: '#94a3b8',
+    fontSize: 13,
+    lineHeight: 1.6,
+    marginBottom: 14,
+  },
+  roleGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 12,
   },
-  quickCard: {
+  roleCard: {
     textAlign: 'left',
     background: '#0e1318',
     border: '1px solid #1a2030',
@@ -613,22 +1055,74 @@ const S = {
     cursor: 'pointer',
     color: '#e2e8f0',
   },
-  quickTitle: {
+  roleTitle: {
     fontSize: 16,
+    fontWeight: 900,
+    marginBottom: 8,
+    fontFamily: F,
+  },
+  roleText: {
+    fontSize: 13,
+    color: '#94a3b8',
+    lineHeight: 1.5,
+  },
+  toolGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 12,
+  },
+  toolCard: {
+    textAlign: 'left',
+    background: '#0e1318',
+    border: '1px solid #1a2030',
+    borderRadius: 14,
+    padding: 16,
+    cursor: 'pointer',
+    color: '#e2e8f0',
+  },
+  toolTitle: {
+    fontSize: 15,
     fontWeight: 800,
     marginBottom: 8,
     fontFamily: F,
     color: '#f8fafc',
   },
-  quickText: {
+  toolText: {
     fontSize: 13,
     color: '#94a3b8',
     lineHeight: 1.5,
   },
-  buttonRow: {
-    display: 'flex',
-    gap: 10,
-    flexWrap: 'wrap',
+  dangerStack: {
+    display: 'grid',
+    gap: 14,
+  },
+  dangerCard: {
+    background: 'rgba(127,29,29,0.10)',
+    border: '1px solid rgba(239,68,68,0.35)',
+    borderRadius: 16,
+    padding: 18,
+  },
+  dangerEyebrow: {
+    fontSize: 11,
+    color: '#f87171',
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: 8,
+    fontFamily: F,
+    fontWeight: 800,
+  },
+  dangerTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: '#fecaca',
+    marginBottom: 8,
+    fontFamily: F,
+  },
+  dangerText: {
+    fontSize: 13,
+    color: '#fca5a5',
+    lineHeight: 1.6,
+    marginBottom: 14,
   },
   dangerLabel: {
     fontSize: 10,
@@ -649,13 +1143,23 @@ const S = {
     color: '#fff',
     outline: 'none',
   },
-  dangerButton: {
+  dangerPrimaryBtn: {
     border: 'none',
     borderRadius: 10,
     padding: '12px 16px',
     background: '#dc2626',
     color: '#fff',
     fontWeight: 800,
+    cursor: 'pointer',
+  },
+  dangerSecondaryBtn: {
+    border: '1px solid rgba(248,113,113,0.35)',
+    borderRadius: 10,
+    padding: '12px 16px',
+    background: 'transparent',
+    color: '#fca5a5',
+    fontWeight: 800,
+    cursor: 'pointer',
   },
   centerCard: {
     maxWidth: 720,

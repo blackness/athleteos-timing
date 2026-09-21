@@ -11,6 +11,8 @@ import {
   getRaceSetupPath,
   getResultsPath,
   getRaceDirectorPath,
+  getRaceAssignPath,
+  getRaceCorrectionsPath,
 } from '../lib/routes'
 
 function formatDate(value) {
@@ -56,19 +58,139 @@ function sortRacesByDate(a, b) {
   return aTime - bTime
 }
 
-function canShowSetup(status) {
-  return ['draft', 'ready', 'active', 'results_review', 'finished'].includes(status || 'draft')
+function getRaceStatusTone(status) {
+  if (status === 'active') {
+    return {
+      label: 'LIVE',
+      color: '#ef4444',
+      bg: 'rgba(239,68,68,0.10)',
+      border: 'rgba(239,68,68,0.25)',
+    }
+  }
+
+  if (status === 'results_review') {
+    return {
+      label: 'REVIEW',
+      color: '#eab308',
+      bg: 'rgba(234,179,8,0.10)',
+      border: 'rgba(234,179,8,0.25)',
+    }
+  }
+
+  if (status === 'finished') {
+    return {
+      label: 'FINAL',
+      color: '#10b981',
+      bg: 'rgba(16,185,129,0.10)',
+      border: 'rgba(16,185,129,0.25)',
+    }
+  }
+
+  if (status === 'ready') {
+    return {
+      label: 'READY',
+      color: '#22c55e',
+      bg: 'rgba(34,197,94,0.10)',
+      border: 'rgba(34,197,94,0.25)',
+    }
+  }
+
+  return {
+    label: 'DRAFT',
+    color: '#60a5fa',
+    bg: 'rgba(96,165,250,0.10)',
+    border: 'rgba(96,165,250,0.25)',
+  }
 }
 
-function canShowMonitor(status) {
-  return ['ready', 'active', 'results_review'].includes(status)
-}
+function ActionLink({ to, children, primary = false, danger = false }) {
+  let style = secondaryButtonStyle
+  if (primary) style = primaryButtonStyle
+  if (danger) style = dangerButtonStyle
 
-function ActionLink({ to, children, primary = false }) {
   return (
-    <Link to={to} style={primary ? primaryButtonStyle : secondaryButtonStyle}>
+    <Link to={to} style={style}>
       {children}
     </Link>
+  )
+}
+
+function StatusBadge({ status }) {
+  const tone = getRaceStatusTone(status)
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '5px 10px',
+        borderRadius: 999,
+        border: `1px solid ${tone.border}`,
+        background: tone.bg,
+        color: tone.color,
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: 1.3,
+      }}
+    >
+      {tone.label}
+    </span>
+  )
+}
+
+function RaceDashboardCard({ race, parentEventName }) {
+  const status = race?.status || 'draft'
+
+  return (
+    <div style={dashboardRaceCardStyle}>
+      <div style={dashboardCardTopStyle}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={raceTitleStyle}>{race.name}</div>
+
+          <div style={metaStyle}>
+            {parentEventName ? <span>{parentEventName}</span> : null}
+            {race.event_date ? <span> • {formatDate(race.event_date)}</span> : null}
+            {race.location ? <span> • {race.location}</span> : null}
+            {race.sport ? <span> • {race.sport}</span> : null}
+            {race.distance ? <span> • {race.distance}</span> : null}
+          </div>
+        </div>
+
+        <StatusBadge status={status} />
+      </div>
+
+      <div style={buttonRowStyle}>
+        <ActionLink to={getRaceDirectorPath(race.id)} primary>
+          Director
+        </ActionLink>
+
+        {status === 'active' ? (
+          <>
+            <ActionLink to={getRaceMonitorPath(race.id)}>Monitor</ActionLink>
+            <ActionLink to={getRaceAssignPath(race.id)}>Assign Bibs</ActionLink>
+          </>
+        ) : null}
+
+        {status === 'results_review' ? (
+          <>
+            <ActionLink to={getRaceCorrectionsPath(race.id)}>Review & Fix</ActionLink>
+            <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
+          </>
+        ) : null}
+
+        {['draft', 'ready'].includes(status) ? (
+          <ActionLink to={getRaceSetupPath(race.id)}>Setup</ActionLink>
+        ) : null}
+
+        {status === 'finished' ? (
+          <>
+            <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
+            <ActionLink to={getLiveBoardPath(race.id)}>Live Board</ActionLink>
+          </>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -95,7 +217,7 @@ function ParentEventCard({ event, races }) {
         </div>
 
         <div style={buttonRowStyle}>
-          <ActionLink to={getEventHubPath(event.id)}>Open Event Hub</ActionLink>
+          <ActionLink to={getEventHubPath(event.id)}>Event Hub</ActionLink>
           <ActionLink to={getCreateRacePath({ parentEventId: event.id })}>Add Race</ActionLink>
         </div>
       </div>
@@ -122,23 +244,7 @@ function ParentEventCard({ event, races }) {
                   <ActionLink to={getRaceDirectorPath(race.id)} primary>
                     Director
                   </ActionLink>
-
-                  {canShowSetup(race.status) ? (
-                    <ActionLink to={getRaceSetupPath(race.id)}>Race Home</ActionLink>
-                  ) : null}
-
-                  {canShowMonitor(race.status) ? (
-                    <ActionLink to={getRaceMonitorPath(race.id)}>Monitor</ActionLink>
-                  ) : null}
-
-                  <ActionLink
-                    to={getCreateRacePath({ parentEventId: event.id, copyRaceId: race.id })}
-                  >
-                    Add Similar Race
-                  </ActionLink>
-
-                  <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
-                  <ActionLink to={getLiveBoardPath(race.id)}>Live Board</ActionLink>
+                  <ActionLink to={getRaceSetupPath(race.id)}>Setup</ActionLink>
                 </div>
               </div>
             </div>
@@ -168,31 +274,33 @@ function StandaloneRaceCard({ race }) {
           <ActionLink to={getRaceDirectorPath(race.id)} primary>
             Director
           </ActionLink>
-
-          {canShowSetup(race.status) ? (
-            <ActionLink to={getRaceSetupPath(race.id)}>Race Home</ActionLink>
-          ) : null}
-
-          {canShowMonitor(race.status) ? (
-            <ActionLink to={getRaceMonitorPath(race.id)}>Monitor</ActionLink>
-          ) : null}
-
-          <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
-          <ActionLink to={getLiveBoardPath(race.id)}>Live Board</ActionLink>
-        </div><div style={buttonRowStyle}>
-          {canShowSetup(race.status) ? (
-            <ActionLink to={getRaceSetupPath(race.id)}>Race Home</ActionLink>
-          ) : null}
-
-          {canShowMonitor(race.status) ? (
-            <ActionLink to={getRaceMonitorPath(race.id)}>Monitor</ActionLink>
-          ) : null}
-
-          <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
-          <ActionLink to={getLiveBoardPath(race.id)}>Live Board</ActionLink>
+          <ActionLink to={getRaceSetupPath(race.id)}>Setup</ActionLink>
         </div>
       </div>
     </div>
+  )
+}
+
+function DashboardSection({ title, subtitle, races, eventNameById }) {
+  if (!races.length) return null
+
+  return (
+    <section style={{ marginBottom: 32 }}>
+      <div style={sectionHeaderBlockStyle}>
+        <div style={sectionTitleStyle}>{title}</div>
+        {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
+      </div>
+
+      <div style={{ display: 'grid', gap: 14 }}>
+        {races.map(race => (
+          <RaceDashboardCard
+            key={race.id}
+            race={race}
+            parentEventName={race.parent_event_id ? eventNameById[race.parent_event_id] || null : null}
+          />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -238,7 +346,7 @@ export default function Events() {
       if (!mounted) return
 
       if (eventsError || racesError) {
-        setError(eventsError?.message || racesError?.message || 'Failed to load events.')
+        setError(eventsError?.message || racesError?.message || 'Failed to load dashboard.')
         setLoading(false)
         return
       }
@@ -261,7 +369,15 @@ export default function Events() {
     }
   }, [user?.id])
 
-  const { parentEventCards, standaloneRaces } = useMemo(() => {
+  const {
+    parentEventCards,
+    standaloneRaces,
+    liveRaces,
+    reviewRaces,
+    upcomingRaces,
+    finishedRaces,
+    eventNameById,
+  } = useMemo(() => {
     const eventMap = new Map((events || []).map(event => [event.id, event]))
     const grouped = new Map()
     const standalone = []
@@ -284,21 +400,33 @@ export default function Events() {
 
     standalone.sort(sortRacesByDate)
 
+    const sortedRaces = (races || []).slice().sort(sortRacesByDate)
+
+    const live = sortedRaces.filter(r => r.status === 'active')
+    const review = sortedRaces.filter(r => r.status === 'results_review')
+    const upcoming = sortedRaces.filter(r => ['draft', 'ready'].includes(r.status || 'draft'))
+    const finished = sortedRaces.filter(r => r.status === 'finished')
+
     return {
       parentEventCards: parentCards,
       standaloneRaces: standalone,
+      liveRaces: live,
+      reviewRaces: review,
+      upcomingRaces: upcoming,
+      finishedRaces: finished,
+      eventNameById: Object.fromEntries((events || []).map(event => [event.id, event.name])),
     }
   }, [events, races])
 
   return (
     <div style={pageStyle}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={heroCardStyle}>
           <div style={heroHeaderStyle}>
             <div>
-              <div style={titleStyle}>Events</div>
+              <div style={titleStyle}>Organizer Dashboard</div>
               <div style={subtitleStyle}>
-                Manage parent events and standalone races.
+                Open the next race that needs attention.
               </div>
             </div>
 
@@ -324,7 +452,7 @@ export default function Events() {
 
         {!user?.id ? (
           <div style={cardStyle}>
-            Please sign in to view your events and races.
+            Please sign in to view your organizer dashboard.
           </div>
         ) : loading ? (
           <div style={cardStyle}>Loading…</div>
@@ -332,11 +460,39 @@ export default function Events() {
           <div style={errorStyle}>{error}</div>
         ) : (
           <>
+            <DashboardSection
+              title="Live Now"
+              subtitle="Races currently in progress."
+              races={liveRaces}
+              eventNameById={eventNameById}
+            />
+
+            <DashboardSection
+              title="Needs Review"
+              subtitle="Races waiting for results review or cleanup."
+              races={reviewRaces}
+              eventNameById={eventNameById}
+            />
+
+            <DashboardSection
+              title="Up Next"
+              subtitle="Upcoming races that are draft or ready to begin."
+              races={upcomingRaces}
+              eventNameById={eventNameById}
+            />
+
+            <DashboardSection
+              title="Finished"
+              subtitle="Completed races and final outputs."
+              races={finishedRaces}
+              eventNameById={eventNameById}
+            />
+
             <section style={{ marginBottom: 32 }}>
               <div style={sectionHeaderBlockStyle}>
                 <div style={sectionTitleStyle}>Parent Events</div>
                 <div style={subtitleStyle}>
-                  Grouped event hubs with their races.
+                  Event groups and their child races.
                 </div>
               </div>
 
@@ -405,6 +561,13 @@ const innerCardStyle = {
   padding: 16,
 }
 
+const dashboardRaceCardStyle = {
+  background: '#0e1318',
+  border: '1px solid #1a2030',
+  borderRadius: 16,
+  padding: 18,
+}
+
 const heroHeaderStyle = {
   display: 'flex',
   justifyContent: 'space-between',
@@ -418,6 +581,15 @@ const cardHeaderStyle = {
   justifyContent: 'space-between',
   alignItems: 'flex-start',
   gap: 16,
+  flexWrap: 'wrap',
+}
+
+const dashboardCardTopStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 16,
+  marginBottom: 14,
   flexWrap: 'wrap',
 }
 
@@ -486,6 +658,17 @@ const secondaryButtonStyle = {
   fontWeight: 700,
   background: '#0b1220',
   color: '#60a5fa',
+}
+
+const dangerButtonStyle = {
+  display: 'inline-block',
+  textDecoration: 'none',
+  border: '1px solid rgba(239,68,68,0.25)',
+  borderRadius: 10,
+  padding: '12px 16px',
+  fontWeight: 700,
+  background: 'transparent',
+  color: '#f87171',
 }
 
 const primaryButtonButtonStyle = {

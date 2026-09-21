@@ -8,7 +8,7 @@ import {
   getEventHubPath,
   getLiveBoardPath,
   getPublicHomePath,
-  getRaceMonitorPath,
+  getRaceDirectorPath,
   getRaceSetupPath,
   getResultsPath,
 } from '../lib/routes'
@@ -85,26 +85,42 @@ function groupRacesByDate(races) {
 function getStatusColor(status, theme) {
   switch (status) {
     case 'draft':
-      return { background: theme.cardAltBg, color: theme.textMuted, border: `1px solid ${theme.borderSoft}` }
+      return {
+        background: theme.cardAltBg,
+        color: theme.textMuted,
+        border: `1px solid ${theme.borderSoft}`,
+      }
     case 'ready':
-      return { background: theme.secondaryBg, color: theme.secondaryText, border: `1px solid ${theme.secondaryText}` }
+      return {
+        background: theme.secondaryBg,
+        color: theme.secondaryText,
+        border: `1px solid ${theme.secondaryText}`,
+      }
     case 'active':
-      return { background: '#052e16', color: '#4ade80', border: '1px solid #166534' }
+      return {
+        background: '#052e16',
+        color: '#4ade80',
+        border: '1px solid #166534',
+      }
     case 'results_review':
-      return { background: '#3b2f0b', color: '#fbbf24', border: '1px solid #92400e' }
+      return {
+        background: '#3b2f0b',
+        color: '#fbbf24',
+        border: '1px solid #92400e',
+      }
     case 'finished':
-      return { background: '#2e1065', color: '#c084fc', border: '1px solid #6b21a8' }
+      return {
+        background: '#2e1065',
+        color: '#c084fc',
+        border: '1px solid #6b21a8',
+      }
     default:
-      return { background: theme.cardAltBg, color: theme.textMuted, border: `1px solid ${theme.borderSoft}` }
+      return {
+        background: theme.cardAltBg,
+        color: theme.textMuted,
+        border: `1px solid ${theme.borderSoft}`,
+      }
   }
-}
-
-function canShowSetup(status) {
-  return ['draft', 'ready', 'active', 'results_review', 'finished'].includes(status || 'draft')
-}
-
-function canShowMonitor(status) {
-  return ['ready', 'active', 'results_review'].includes(status)
 }
 
 function ThemeToggle({ mode, setMode, theme }) {
@@ -178,25 +194,19 @@ function RaceCard({ race, eventId, isAuthenticated, theme }) {
         </div>
 
         <div style={styles.buttonRow}>
-          {isAuthenticated && canShowSetup(race.status) ? (
-            <ActionLink to={getRaceSetupPath(race.id)} theme={theme}>Race Home</ActionLink>
-          ) : null}
+          <ActionLink to={getResultsPath(race.id)} theme={theme}>
+            Results
+          </ActionLink>
 
-          {isAuthenticated && canShowMonitor(race.status) ? (
-            <ActionLink to={getRaceMonitorPath(race.id)} theme={theme}>Monitor</ActionLink>
-          ) : null}
+          <ActionLink to={getLiveBoardPath(race.id)} theme={theme}>
+            Live Board
+          </ActionLink>
 
           {isAuthenticated ? (
-            <ActionLink
-              to={getCreateRacePath({ parentEventId: eventId, copyRaceId: race.id })}
-              theme={theme}
-            >
-              Add Similar Race
+            <ActionLink to={getRaceDirectorPath(race.id)} primary theme={theme}>
+              Director
             </ActionLink>
           ) : null}
-
-          <ActionLink to={getResultsPath(race.id)} theme={theme}>Results</ActionLink>
-          <ActionLink to={getLiveBoardPath(race.id)} theme={theme}>Live Board</ActionLink>
         </div>
       </div>
     </div>
@@ -218,16 +228,14 @@ export default function EventResultsPage() {
   useEffect(() => {
     let mounted = true
 
-    async function load() {
+    async function loadPublicData() {
       setLoading(true)
       setError('')
 
       const [
-        { data: sessionData },
         { data: eventData, error: eventError },
         { data: raceData, error: raceError },
       ] = await Promise.all([
-        supabase.auth.getSession(),
         supabase.from('events').select('*').eq('id', id).single(),
         supabase
           .from('race_events')
@@ -250,18 +258,33 @@ export default function EventResultsPage() {
         return
       }
 
-      setSession(sessionData?.session || null)
       setEvent(eventData || null)
       setRaces(raceData || [])
       setLoading(false)
     }
 
-    load()
+    loadPublicData()
 
     return () => {
       mounted = false
     }
   }, [id])
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadAuth() {
+      const { data } = await supabase.auth.getSession()
+      if (!mounted) return
+      setSession(data?.session || null)
+    }
+
+    loadAuth()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const eventStartDate = normalizeLegacyEventDate(event)
   const eventEndDate = event?.end_date || null
@@ -303,9 +326,7 @@ export default function EventResultsPage() {
       <div style={styles.page}>
         <PublicNav
           theme={theme}
-          extraLinks={[
-            { to: getPublicHomePath(), label: 'Public Home' },
-          ]}
+          extraLinks={[{ to: getPublicHomePath(), label: 'Public Home' }]}
         />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.card}>Loading event…</div>
@@ -319,9 +340,7 @@ export default function EventResultsPage() {
       <div style={styles.page}>
         <PublicNav
           theme={theme}
-          extraLinks={[
-            { to: getPublicHomePath(), label: 'Public Home' },
-          ]}
+          extraLinks={[{ to: getPublicHomePath(), label: 'Public Home' }]}
         />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.error}>{error}</div>
@@ -335,9 +354,7 @@ export default function EventResultsPage() {
       <div style={styles.page}>
         <PublicNav
           theme={theme}
-          extraLinks={[
-            { to: getPublicHomePath(), label: 'Public Home' },
-          ]}
+          extraLinks={[{ to: getPublicHomePath(), label: 'Public Home' }]}
         />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.card}>Event not found.</div>
@@ -425,6 +442,24 @@ export default function EventResultsPage() {
                 {race.name}
               </button>
             ))}
+          </div>
+        ) : null}
+
+        {session && activeRace ? (
+          <div style={styles.organizerStrip}>
+            <div style={styles.organizerStripText}>
+              Organizer tools for <strong>{activeRace.name}</strong>
+            </div>
+
+            <div style={styles.organizerStripActions}>
+              <Link to={getRaceDirectorPath(activeRace.id)} style={styles.organizerPrimaryLink}>
+                Director
+              </Link>
+
+              <Link to={getRaceSetupPath(activeRace.id)} style={styles.organizerSecondaryLink}>
+                Setup
+              </Link>
+            </div>
           </div>
         ) : null}
 
@@ -583,6 +618,47 @@ function getStyles(theme) {
       color: theme.dangerText,
       borderRadius: 12,
       padding: 16,
+    },
+    organizerStrip: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 12,
+      flexWrap: 'wrap',
+      marginTop: 16,
+      marginBottom: 16,
+      padding: '12px 14px',
+      borderRadius: 12,
+      border: '1px solid #1e2730',
+      background: 'rgba(15,23,42,0.55)',
+    },
+    organizerStripText: {
+      fontSize: 13,
+      color: '#cbd5e1',
+    },
+    organizerStripActions: {
+      display: 'flex',
+      gap: 10,
+      flexWrap: 'wrap',
+    },
+    organizerPrimaryLink: {
+      display: 'inline-block',
+      textDecoration: 'none',
+      borderRadius: 10,
+      padding: '10px 14px',
+      background: '#f97316',
+      color: '#fff',
+      fontWeight: 800,
+    },
+    organizerSecondaryLink: {
+      display: 'inline-block',
+      textDecoration: 'none',
+      borderRadius: 10,
+      padding: '10px 14px',
+      border: '1px solid #1e2730',
+      background: '#0b1220',
+      color: '#60a5fa',
+      fontWeight: 700,
     },
   }
 }

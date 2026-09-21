@@ -17,6 +17,7 @@ import {
   getRaceCorrectionsPath,
   getResultsPath,
   getEventHubPath,
+  getRaceCheckpointQrPath,
 } from '../lib/routes'
 
 function parseDelimitedLine(line, sep) {
@@ -461,16 +462,45 @@ function RaceControlPanel({
     !!loadRaceEventLocal(eventId)
 
   const status = isActive
-    ? { label: isOfflinePendingStart ? 'LIVE (OFFLINE)' : 'LIVE', color: '#ef4444', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.25)' }
+    ? {
+        label: isOfflinePendingStart ? 'LIVE (OFFLINE)' : 'LIVE',
+        color: '#ef4444',
+        bg: 'rgba(239,68,68,0.10)',
+        border: 'rgba(239,68,68,0.25)',
+      }
     : isReview
-      ? { label: 'RESULTS REVIEW', color: '#eab308', bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.25)' }
+      ? {
+          label: 'RESULTS REVIEW',
+          color: '#eab308',
+          bg: 'rgba(234,179,8,0.10)',
+          border: 'rgba(234,179,8,0.25)',
+        }
       : isFinished
-        ? { label: 'FINAL', color: '#10b981', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.25)' }
-        : { label: 'READY', color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' }
+        ? {
+            label: 'FINAL',
+            color: '#10b981',
+            bg: 'rgba(16,185,129,0.10)',
+            border: 'rgba(16,185,129,0.25)',
+          }
+        : {
+            label: 'READY',
+            color: '#3b82f6',
+            bg: 'rgba(59,130,246,0.10)',
+            border: 'rgba(59,130,246,0.25)',
+          }
 
   return (
     <div style={{ ...S.card, padding: 18, marginBottom: 28 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+          marginBottom: 16,
+        }}
+      >
         <div>
           <div style={{ ...S.sLabel, marginBottom: 6 }}>Race Control</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -491,7 +521,15 @@ function RaceControlPanel({
                 textTransform: 'uppercase',
               }}
             >
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: status.color, display: 'inline-block' }} />
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: status.color,
+                  display: 'inline-block',
+                }}
+              />
               {status.label}
             </span>
 
@@ -510,16 +548,49 @@ function RaceControlPanel({
         </div>
 
         <div style={{ textAlign: 'right', minWidth: 140 }}>
-          <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1.5, fontFamily: F, fontWeight: 700, marginBottom: 4 }}>
-            {isActive ? 'Race Clock' : isReview ? 'Results Review' : isFinished ? 'Final Time' : 'Waiting'}
+          <div
+            style={{
+              fontSize: 10,
+              color: '#4a5568',
+              textTransform: 'uppercase',
+              letterSpacing: 1.5,
+              fontFamily: F,
+              fontWeight: 700,
+              marginBottom: 4,
+            }}
+          >
+            {isActive
+              ? 'Race Clock'
+              : isReview
+                ? 'Results Review'
+                : isFinished
+                  ? 'Final Time'
+                  : 'Waiting'}
           </div>
-          <div style={{ fontSize: 36, fontWeight: 900, color: isActive ? '#f0f4f8' : '#374151', fontFamily: F, letterSpacing: -1.5, lineHeight: 1 }}>
+          <div
+            style={{
+              fontSize: 36,
+              fontWeight: 900,
+              color: isActive ? '#f0f4f8' : '#374151',
+              fontFamily: F,
+              letterSpacing: -1.5,
+              lineHeight: 1,
+            }}
+          >
             {formatRaceClock(elapsedMs)}
           </div>
         </div>
       </div>
 
-      <div style={{ background: '#080b0f', border: '1px solid #1e2730', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+      <div
+        style={{
+          background: '#080b0f',
+          border: '1px solid #1e2730',
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 14,
+        }}
+      >
         <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 4 }}>
           {isActive
             ? isOfflinePendingStart
@@ -538,7 +609,13 @@ function RaceControlPanel({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', gap: 10 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 1fr 1fr 1fr',
+          gap: 10,
+        }}
+      >
         <button
           type="button"
           onClick={onStartRace}
@@ -547,7 +624,10 @@ function RaceControlPanel({
             height: 50,
             borderRadius: 10,
             border: 'none',
-            background: startingRace || raceAlreadyStarted ? '#1e2730' : 'linear-gradient(135deg, #16a34a, #15803d)',
+            background:
+              startingRace || raceAlreadyStarted
+                ? '#1e2730'
+                : 'linear-gradient(135deg, #16a34a, #15803d)',
             color: '#fff',
             cursor: startingRace || raceAlreadyStarted ? 'not-allowed' : 'pointer',
             fontFamily: F,
@@ -570,6 +650,7 @@ function RaceControlPanel({
                     ? 'Starting…'
                     : 'Start Race'}
         </button>
+
         <button
           type="button"
           onClick={onFinishRace}
@@ -633,7 +714,14 @@ function RaceControlPanel({
         </button>
       </div>
 
-<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginTop: 10 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr 1fr',
+          gap: 10,
+          marginTop: 10,
+        }}
+      >
         <button
           type="button"
           onClick={onFinalizeRace}
@@ -677,6 +765,7 @@ function RaceControlPanel({
         >
           {resettingRaceData ? 'Resetting…' : 'False Start'}
         </button>
+
         <button
           type="button"
           onClick={() => navigate(getRaceCorrectionsPath(eventId))}
@@ -696,9 +785,10 @@ function RaceControlPanel({
         >
           Review & Fix Results
         </button>
+
         <button
           type="button"
-          onClick={() => navigate(`/race/${eventId}/checkpoint-qr`)}
+          onClick={() => navigate(getRaceCheckpointQrPath(eventId))}
           style={{
             height: 44,
             borderRadius: 10,
@@ -1178,6 +1268,8 @@ export default function PreRaceSetup() {
   const [resetPin, setResetPin] = useState('')
   const [resetConfirmText, setResetConfirmText] = useState('')
   const [resettingRaceData, setResettingRaceData] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deletingRace, setDeletingRace] = useState(false)
 
   const RESET_PIN = '2468'
 
@@ -1753,7 +1845,80 @@ export default function PreRaceSetup() {
       setResettingRaceData(false)
     }
   }
-const falseStartRace = async () => {
+
+  const deleteRace = async () => {
+    if (!event?.id || deletingRace) return
+
+    if (deleteConfirmText !== 'DELETE') {
+      window.alert('Type DELETE to confirm.')
+      return
+    }
+
+    const ok = window.confirm(
+      `Delete race "${event.name}"?\n\nThis will permanently delete the race, entries, waves, checkpoints, lap events, finishes, and adjustments. This cannot be undone.`
+    )
+    if (!ok) return
+
+    setDeletingRace(true)
+
+    try {
+      const { error: lapError } = await supabase
+        .from('lap_events')
+        .delete()
+        .eq('event_id', event.id)
+      if (lapError) throw lapError
+
+      const { error: finishError } = await supabase
+        .from('race_finishes')
+        .delete()
+        .eq('event_id', event.id)
+      if (finishError) throw finishError
+
+      const { error: checkpointAdjustmentError } = await supabase
+        .from('checkpoint_time_adjustments')
+        .delete()
+        .eq('event_id', event.id)
+      if (checkpointAdjustmentError) throw checkpointAdjustmentError
+
+      const { error: resultAdjustmentError } = await supabase
+        .from('race_result_adjustments')
+        .delete()
+        .eq('event_id', event.id)
+      if (resultAdjustmentError) throw resultAdjustmentError
+
+      const { error: entriesError } = await supabase
+        .from('event_entries')
+        .delete()
+        .eq('event_id', event.id)
+      if (entriesError) throw entriesError
+
+      const { error: wavesError } = await supabase
+        .from('race_waves')
+        .delete()
+        .eq('event_id', event.id)
+      if (wavesError) throw wavesError
+
+      const { error: checkpointsError } = await supabase
+        .from('race_checkpoints')
+        .delete()
+        .eq('event_id', event.id)
+      if (checkpointsError) throw checkpointsError
+
+      const { error: raceError } = await supabase
+        .from('race_events')
+        .delete()
+        .eq('id', event.id)
+      if (raceError) throw raceError
+
+      clearRaceEventLocal(event.id)
+      navigate('/', { replace: true })
+    } catch (err) {
+      console.error('Delete race failed:', err)
+      window.alert(`Could not delete race: ${err.message || 'Unknown error'}`)
+      setDeletingRace(false)
+    }
+  }
+    const falseStartRace = async () => {
     if (event?.status !== 'active') {
       window.alert('False Start is only available while the race is active.')
       return
@@ -3041,11 +3206,111 @@ return (
               >
                 Danger Zone
               </div>
-
+              <div style={S.section}>
+                <div style={{ ...S.card, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.10)' }}>
+                  <div style={{ padding: 18 }}>
+                    ...
+                  </div>
+                </div>
+              </div>
               <div style={{ fontSize: 16, fontWeight: 800, color: '#fecaca', marginBottom: 8, fontFamily: F }}>
                 Reset All Race Timing Data
               </div>
+<div
+            style={{
+              ...S.card,
+              border: '1px solid rgba(220,38,38,0.45)',
+              background: 'rgba(69,10,10,0.35)',
+              marginTop: 16,
+            }}
+          >
+            <div style={{ padding: 18 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: '#f87171',
+                  textTransform: 'uppercase',
+                  letterSpacing: 2,
+                  marginBottom: 8,
+                  fontFamily: F,
+                  fontWeight: 800,
+                }}
+              >
+                Permanent Delete
+              </div>
 
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 800,
+                  color: '#fecaca',
+                  marginBottom: 8,
+                  fontFamily: F,
+                }}
+              >
+                Delete Race
+              </div>
+
+              <div
+                style={{
+                  fontSize: 13,
+                  color: '#fca5a5',
+                  marginBottom: 14,
+                  lineHeight: 1.5,
+                }}
+              >
+                This permanently deletes the race itself plus related entries,
+                waves, checkpoints, captured laps, finishes, and adjustments.
+                This cannot be undone.
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto',
+                  gap: 10,
+                  alignItems: 'end',
+                }}
+              >
+                <div>
+                  <label style={adhocLabelStyle}>Type DELETE to confirm</label>
+                  <input
+                    value={deleteConfirmText}
+                    onChange={e => setDeleteConfirmText(e.target.value)}
+                    placeholder="DELETE"
+                    style={{
+                      ...S.input,
+                      border: '1px solid rgba(248,113,113,0.35)',
+                      background: '#120b0b',
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={deleteRace}
+                  disabled={deletingRace}
+                  style={{
+                    height: 44,
+                    padding: '0 16px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: deletingRace ? '#7f1d1d' : '#dc2626',
+                    color: '#fff',
+                    cursor: deletingRace ? 'not-allowed' : 'pointer',
+                    fontFamily: F,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    letterSpacing: 1.5,
+                    textTransform: 'uppercase',
+                    opacity: deletingRace ? 0.75 : 1,
+                  }}
+                >
+                  {deletingRace ? 'Deleting…' : 'Delete Race'}
+                </button>
+              </div>
+            </div>
+          </div>
               <div style={{ fontSize: 13, color: '#fca5a5', marginBottom: 14, lineHeight: 1.5 }}>
                 This permanently deletes all captured splits and finishes for this race,
                 clears wave actual start times, and resets the race back to draft.
