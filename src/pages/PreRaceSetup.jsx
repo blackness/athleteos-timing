@@ -3273,11 +3273,12 @@ return (
                 }}
               >
                 <div>
-                  <label style={adhocLabelStyle}>Type DELETE to confirm</label>
+                  <label style={adhocLabelStyle}>Enter Race PIN</label>
                   <input
-                    value={deleteConfirmText}
-                    onChange={e => setDeleteConfirmText(e.target.value)}
-                    placeholder="DELETE"
+                    type="password"
+                    value={resetPin}
+                    onChange={e => setResetPin(e.target.value)}
+                    placeholder="Enter PIN"
                     style={{
                       ...S.input,
                       border: '1px solid rgba(248,113,113,0.35)',
@@ -3317,28 +3318,14 @@ return (
                 Entries, checkpoints, and waves will remain.
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
                 <div>
-                  <label style={adhocLabelStyle}>PIN</label>
+                  <label style={adhocLabelStyle}>Enter Race PIN</label>
                   <input
                     type="password"
                     value={resetPin}
                     onChange={e => setResetPin(e.target.value)}
                     placeholder="Enter PIN"
-                    style={{
-                      ...S.input,
-                      border: '1px solid rgba(248,113,113,0.35)',
-                      background: '#120b0b',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={adhocLabelStyle}>Type RESET to confirm</label>
-                  <input
-                    value={resetConfirmText}
-                    onChange={e => setResetConfirmText(e.target.value)}
-                    placeholder="RESET"
                     style={{
                       ...S.input,
                       border: '1px solid rgba(248,113,113,0.35)',

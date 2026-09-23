@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
+import PublicLiveRaceCard from '../components/PublicLiveRaceCard'
 import {
   getEventHubPath,
   getLiveBoardPath,
@@ -217,11 +218,19 @@ export default function PublicHome() {
     }
   }, [])
 
+  const liveRaces = useMemo(() => {
+    return (races || []).filter(race => race.status === 'active').sort(sortRacesByDate)
+  }, [races])
+
+  const nonLiveRaces = useMemo(() => {
+    return (races || []).filter(race => race.status !== 'active')
+  }, [races])
+
   const { eventCards, standaloneRaces } = useMemo(() => {
     const grouped = new Map()
     const standalone = []
 
-    for (const race of races || []) {
+    for (const race of nonLiveRaces || []) {
       if (race.parent_event_id) {
         if (!grouped.has(race.parent_event_id)) {
           grouped.set(race.parent_event_id, [])
@@ -243,7 +252,7 @@ export default function PublicHome() {
       eventCards: cards,
       standaloneRaces: standalone,
     }
-  }, [events, races])
+  }, [events, nonLiveRaces])
 
   return (
     <div style={styles.page}>
@@ -268,6 +277,28 @@ export default function PublicHome() {
           <div style={styles.error}>{error}</div>
         ) : (
           <>
+            {liveRaces.length > 0 ? (
+              <section style={{ marginBottom: 32 }}>
+                <div style={styles.sectionHeaderBlock}>
+                  <div style={styles.sectionTitle}>Live Now</div>
+                  <div style={styles.subtitle}>
+                    Follow races currently in progress.
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {liveRaces.map(race => (
+                    <PublicLiveRaceCard
+                      key={race.id}
+                      race={race}
+                      theme={theme}
+                      showEventHub
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
             <section style={{ marginBottom: 32 }}>
               <div style={styles.sectionHeaderBlock}>
                 <div style={styles.sectionTitle}>Events</div>

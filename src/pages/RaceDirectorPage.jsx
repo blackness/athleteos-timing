@@ -236,7 +236,6 @@ export default function RaceDirectorPage() {
   const [startingRace, setStartingRace] = useState(false)
   const [finalizingRace, setFinalizingRace] = useState(false)
   const [resettingRaceData, setResettingRaceData] = useState(false)
-  const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deletingRace, setDeletingRace] = useState(false)
 
   const [now, setNow] = useState(Date.now())
@@ -772,6 +771,17 @@ export default function RaceDirectorPage() {
               <div style={S.dangerText}>
                 Delete captured timing records and reset the race back to draft while keeping core configuration.
               </div>
+              <div style={{ minWidth: 220, maxWidth: 320, marginBottom: 12 }}>
+                <div style={S.dangerLabel}>Enter Race PIN</div>
+                <input
+                  type="password"
+                  value={destructivePin}
+                  onChange={e => setDestructivePin(e.target.value)}
+                  placeholder="Enter PIN"
+                  style={S.dangerInput}
+                />
+              </div>
+
               <button
                 type="button"
                 onClick={resetRaceData}
@@ -795,11 +805,12 @@ export default function RaceDirectorPage() {
 
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
                 <div style={{ minWidth: 220, flex: 1 }}>
-                  <div style={S.dangerLabel}>Type DELETE to confirm</div>
+                  <div style={S.dangerLabel}>Enter Race PIN</div>
                   <input
-                    value={deleteConfirmText}
-                    onChange={e => setDeleteConfirmText(e.target.value)}
-                    placeholder="DELETE"
+                    type="password"
+                    value={destructivePin}
+                    onChange={e => setDestructivePin(e.target.value)}
+                    placeholder="Enter PIN"
                     style={S.dangerInput}
                   />
                 </div>

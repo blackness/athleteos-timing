@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
 import PublicNav from '../components/PublicNav'
+import PublicLiveRaceCard from '../components/PublicLiveRaceCard'
 import {
   getCreateRacePath,
   getEventHubPath,
@@ -154,7 +155,7 @@ function ActionLink({ to, children, primary = false, theme }) {
   )
 }
 
-function RaceCard({ race, eventId, isAuthenticated, theme }) {
+function RaceCard({ race, isAuthenticated, theme }) {
   const styles = getStyles(theme)
   const statusStyle = getStatusColor(race.status, theme)
 
@@ -297,7 +298,15 @@ export default function EventResultsPage() {
     })
   }, [races])
 
-  const groupedRaces = useMemo(() => groupRacesByDate(races), [races])
+  const liveRaces = useMemo(() => {
+    return sortedRaces.filter(race => race.status === 'active')
+  }, [sortedRaces])
+
+  const nonLiveRaces = useMemo(() => {
+    return sortedRaces.filter(race => race.status !== 'active')
+  }, [sortedRaces])
+
+  const groupedRaces = useMemo(() => groupRacesByDate(nonLiveRaces), [nonLiveRaces])
 
   const activeTab = searchParams.get('race') || 'overview'
 
@@ -374,7 +383,7 @@ export default function EventResultsPage() {
     cursor: 'pointer',
   })
 
-return (
+  return (
     <div style={styles.page}>
       <PublicNav
         theme={theme}
@@ -421,6 +430,34 @@ return (
             </div>
           </div>
         </div>
+
+        {liveRaces.length > 0 ? (
+          <section style={{ marginBottom: 24 }}>
+            <div style={styles.sectionHeader}>
+              <div>
+                <div style={styles.sectionTitle}>Live Now</div>
+                <div style={{ fontSize: 13, color: theme.textMuted, marginTop: 2 }}>
+                  Results are updating in real time.
+                </div>
+              </div>
+
+              <div style={{ fontSize: 13, color: theme.textMuted }}>
+                {liveRaces.length} live
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              {liveRaces.map(race => (
+                <PublicLiveRaceCard
+                  key={race.id}
+                  race={race}
+                  theme={theme}
+                  showDirector={!!session}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {sortedRaces.length > 0 ? (
           <section style={{ marginBottom: 20 }}>
@@ -498,7 +535,6 @@ return (
                     <RaceCard
                       key={race.id}
                       race={race}
-                      eventId={event.id}
                       isAuthenticated={!!session}
                       theme={theme}
                     />
@@ -517,12 +553,19 @@ return (
                 </div>
               </div>
 
-              <RaceCard
-                race={activeRace}
-                eventId={event.id}
-                isAuthenticated={!!session}
-                theme={theme}
-              />
+              {activeRace.status === 'active' ? (
+                <PublicLiveRaceCard
+                  race={activeRace}
+                  theme={theme}
+                  showDirector={!!session}
+                />
+              ) : (
+                <RaceCard
+                  race={activeRace}
+                  isAuthenticated={!!session}
+                  theme={theme}
+                />
+              )}
             </section>
 
             {sortedRaces.filter(race => race.id !== activeRace.id).length > 0 ? (
@@ -544,13 +587,21 @@ return (
                   {sortedRaces
                     .filter(race => race.id !== activeRace.id)
                     .map(race => (
-                      <RaceCard
-                        key={race.id}
-                        race={race}
-                        eventId={event.id}
-                        isAuthenticated={!!session}
-                        theme={theme}
-                      />
+                      race.status === 'active' ? (
+                        <PublicLiveRaceCard
+                          key={race.id}
+                          race={race}
+                          theme={theme}
+                          showDirector={!!session}
+                        />
+                      ) : (
+                        <RaceCard
+                          key={race.id}
+                          race={race}
+                          isAuthenticated={!!session}
+                          theme={theme}
+                        />
+                      )
                     ))}
                 </div>
               </section>
