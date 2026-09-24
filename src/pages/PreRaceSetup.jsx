@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { exportRawLapEvents, exportLapSummary } from '../lib/exportLapResults'
 import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock'
+import { useTheme } from '../contexts/ThemeContext'
 import {
   loadRaceEventLocal,
   saveRaceEventLocal,
   clearRaceEventLocal,
   mergeEventWithLocal,
 } from '../lib/raceEventLocalState'
-
 import {
   getRaceDirectorPath,
   getRaceMonitorPath,
@@ -19,6 +19,9 @@ import {
   getEventHubPath,
   getRaceCheckpointQrPath,
 } from '../lib/routes'
+
+const F = "'Barlow Condensed', sans-serif"
+const FB = "'Barlow', sans-serif"
 
 function parseDelimitedLine(line, sep) {
   const cells = []
@@ -161,122 +164,7 @@ function toLocalInputValue(value) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-const F = "'Barlow Condensed', sans-serif"
-const FB = "'Barlow', sans-serif"
-
-const S = {
-  page: { minHeight: '100dvh', background: '#080b0f', color: '#e2e8f0', fontFamily: FB },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '14px 20px',
-    borderBottom: '1px solid #1a2030',
-    background: '#0c1018',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  backBtn: {
-    background: 'none',
-    border: '1px solid #1e2730',
-    color: '#4a5568',
-    borderRadius: 6,
-    padding: '6px 14px',
-    cursor: 'pointer',
-    fontSize: 12,
-    fontFamily: F,
-    fontWeight: 700,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  body: { maxWidth: 1100, margin: '0 auto', padding: '24px 20px 60px' },
-  section: { marginBottom: 28 },
-  sLabel: {
-    fontSize: 10,
-    color: '#4a5568',
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    marginBottom: 10,
-    fontFamily: F,
-    fontWeight: 700,
-  },
-  card: { background: '#0e1318', border: '1px solid #1a2030', borderRadius: 12, overflow: 'hidden' },
-  statRow: { display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' },
-  stat: {
-    flex: 1,
-    minWidth: 140,
-    background: '#0e1318',
-    border: '1px solid #1a2030',
-    borderRadius: 10,
-    padding: '14px 16px',
-  },
-  statVal: { fontSize: 28, fontWeight: 900, color: '#f1f5f9', lineHeight: 1, fontFamily: F },
-  statLbl: { fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 4 },
-  input: {
-    width: '100%',
-    padding: '10px 14px',
-    background: '#080b0f',
-    border: '1px solid #1e2730',
-    borderRadius: 8,
-    color: '#e2e8f0',
-    fontSize: 14,
-    fontFamily: FB,
-    outline: 'none',
-    boxSizing: 'border-box',
-  },
-  select: {
-    width: '100%',
-    padding: '8px 10px',
-    background: '#080b0f',
-    border: '1px solid #1e2730',
-    borderRadius: 6,
-    color: '#e2e8f0',
-    fontSize: 13,
-    fontFamily: FB,
-    outline: 'none',
-  },
-  addBtn: {
-    background: '#1d4ed8',
-    border: 'none',
-    borderRadius: 8,
-    color: '#fff',
-    padding: '10px 20px',
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: 'pointer',
-    fontFamily: FB,
-  },
-  removeBtn: {
-    background: 'none',
-    border: 'none',
-    color: '#374151',
-    cursor: 'pointer',
-    fontSize: 18,
-    lineHeight: 1,
-    padding: '0 4px',
-  },
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '8px 14px',
-    borderBottom: '1px solid #0d1117',
-    fontSize: 13,
-  },
-}
-
-const adhocLabelStyle = {
-  fontSize: 10,
-  color: '#4a5568',
-  display: 'block',
-  marginBottom: 4,
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  fontFamily: F,
-  fontWeight: 700,
-}
-
-function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
+function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra, styles, theme }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(checkpoint.name)
 
@@ -292,8 +180,8 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
   }
 
   return (
-    <div style={{ ...S.row, background: zebra ? '#0a0f16' : 'transparent' }}>
-      <span style={{ width: 60, color: '#f97316', fontWeight: 700, fontFamily: F }}>
+    <div style={{ ...styles.row, background: zebra ? theme.cardAltBg : 'transparent' }}>
+      <span style={{ width: 60, color: theme.secondaryText, fontWeight: 700, fontFamily: F }}>
         CP {checkpoint.checkpoint_order}
       </span>
       <div style={{ flex: 1 }}>
@@ -310,7 +198,7 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
               }
             }}
             autoFocus
-            style={{ ...S.input, height: 34, padding: '6px 10px' }}
+            style={{ ...styles.input, height: 34, padding: '6px 10px' }}
           />
         ) : (
           <button
@@ -319,7 +207,7 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#e2e8f0',
+              color: theme.text,
               fontSize: 13,
               cursor: 'pointer',
               padding: 0,
@@ -331,17 +219,17 @@ function CheckpointSetupRow({ checkpoint, onSave, onDelete, zebra }) {
           </button>
         )}
       </div>
-      <span style={{ width: 90, color: '#4a5568', fontSize: 12 }}>
+      <span style={{ width: 90, color: theme.textMuted, fontSize: 12 }}>
         {checkpoint.short_code ?? checkpoint.code ?? '—'}
       </span>
-      <button type="button" style={S.removeBtn} onClick={() => onDelete(checkpoint.id)}>
+      <button type="button" style={styles.removeBtn} onClick={() => onDelete(checkpoint.id)}>
         ×
       </button>
     </div>
   )
 }
 
-function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
+function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime, styles, theme }) {
   const [editing, setEditing] = useState(false)
   const [draftActual, setDraftActual] = useState(toLocalInputValue(wave.actual_start_time))
 
@@ -353,16 +241,16 @@ function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
     setEditing(false)
     await onSaveActualTime(wave.id, draftActual)
   }
-  
+
   return (
-    <div style={{ ...S.row, background: zebra ? '#0a0f16' : 'transparent', alignItems: 'center' }}>
+    <div style={{ ...styles.row, background: zebra ? theme.cardAltBg : 'transparent', alignItems: 'center' }}>
       <span style={{ width: 70, color: '#60a5fa', fontWeight: 800, fontFamily: F }}>
         {wave.wave_code}
       </span>
-      <span style={{ flex: 1, color: '#e2e8f0' }}>
+      <span style={{ flex: 1, color: theme.text }}>
         {wave.wave_name || wave.wave_code}
       </span>
-      <span style={{ width: 190, color: '#94a3b8', fontSize: 12 }}>
+      <span style={{ width: 190, color: theme.textMuted, fontSize: 12 }}>
         {formatDateTimeLocal(wave.planned_start_time)}
       </span>
       <div style={{ width: 220 }}>
@@ -380,7 +268,7 @@ function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
               }
             }}
             autoFocus
-            style={{ ...S.input, height: 34, padding: '6px 10px' }}
+            style={{ ...styles.input, height: 34, padding: '6px 10px' }}
           />
         ) : (
           <button
@@ -388,8 +276,8 @@ function WaveSetupRow({ wave, zebra, onStartNow, onSaveActualTime }) {
             onClick={() => setEditing(true)}
             style={{
               background: 'transparent',
-              border: '1px solid #1e2730',
-              color: wave.actual_start_time ? '#10b981' : '#4a5568',
+              border: `1px solid ${theme.borderSoft}`,
+              color: wave.actual_start_time ? '#10b981' : theme.textMuted,
               borderRadius: 6,
               padding: '6px 10px',
               width: '100%',
@@ -440,6 +328,8 @@ function RaceControlPanel({
   onFalseStartRace,
   navigate,
   hasStartedWave = false,
+  styles,
+  theme,
 }) {
   const [now, setNow] = useState(Date.now())
 
@@ -490,7 +380,7 @@ function RaceControlPanel({
           }
 
   return (
-    <div style={{ ...S.card, padding: 18, marginBottom: 28 }}>
+    <div style={{ ...styles.card, padding: 18, marginBottom: 28 }}>
       <div
         style={{
           display: 'flex',
@@ -502,7 +392,7 @@ function RaceControlPanel({
         }}
       >
         <div>
-          <div style={{ ...S.sLabel, marginBottom: 6 }}>Race Control</div>
+          <div style={{ ...styles.sLabel, marginBottom: 6 }}>Race Control</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span
               style={{
@@ -534,7 +424,7 @@ function RaceControlPanel({
             </span>
 
             {hasStarted && (
-              <span style={{ color: '#4a5568', fontSize: 12 }}>
+              <span style={{ color: theme.textMuted, fontSize: 12 }}>
                 Started {new Date(event.race_started_at).toLocaleTimeString()}
               </span>
             )}
@@ -551,7 +441,7 @@ function RaceControlPanel({
           <div
             style={{
               fontSize: 10,
-              color: '#4a5568',
+              color: theme.textMuted,
               textTransform: 'uppercase',
               letterSpacing: 1.5,
               fontFamily: F,
@@ -571,7 +461,7 @@ function RaceControlPanel({
             style={{
               fontSize: 36,
               fontWeight: 900,
-              color: isActive ? '#f0f4f8' : '#374151',
+              color: isActive ? theme.text : theme.textMuted,
               fontFamily: F,
               letterSpacing: -1.5,
               lineHeight: 1,
@@ -584,14 +474,14 @@ function RaceControlPanel({
 
       <div
         style={{
-          background: '#080b0f',
-          border: '1px solid #1e2730',
+          background: theme.pageBg,
+          border: `1px solid ${theme.borderSoft}`,
           borderRadius: 12,
           padding: 14,
           marginBottom: 14,
         }}
       >
-        <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 4 }}>
+        <div style={{ fontSize: 13, color: theme.text, marginBottom: 4 }}>
           {isActive
             ? isOfflinePendingStart
               ? 'This race was started offline. Timer devices can run now, and the start will sync when internet returns.'
@@ -604,7 +494,7 @@ function RaceControlPanel({
                   ? 'A wave has already started. This race becomes active from the first started wave.'
                   : 'This race is ready to begin. When athletes are ready, click Start Race.'}
         </div>
-        <div style={{ fontSize: 12, color: '#4a5568' }}>
+        <div style={{ fontSize: 12, color: theme.textMuted }}>
           These controls affect timer devices and the public results page for this race.
         </div>
       </div>
@@ -626,7 +516,7 @@ function RaceControlPanel({
             border: 'none',
             background:
               startingRace || raceAlreadyStarted
-                ? '#1e2730'
+                ? theme.borderSoft
                 : 'linear-gradient(135deg, #16a34a, #15803d)',
             color: '#fff',
             cursor: startingRace || raceAlreadyStarted ? 'not-allowed' : 'pointer',
@@ -660,7 +550,7 @@ function RaceControlPanel({
             borderRadius: 10,
             border: '1px solid rgba(239,68,68,0.35)',
             background: 'transparent',
-            color: !isActive ? '#4b5563' : '#f87171',
+            color: !isActive ? theme.textMuted : '#f87171',
             cursor: !isActive || finishingRace ? 'not-allowed' : 'pointer',
             fontFamily: F,
             fontWeight: 800,
@@ -679,7 +569,7 @@ function RaceControlPanel({
           style={{
             height: 50,
             borderRadius: 10,
-            border: '1px solid #1e2730',
+            border: `1px solid ${theme.borderSoft}`,
             background: 'rgba(59,130,246,0.06)',
             color: '#60a5fa',
             cursor: 'pointer',
@@ -690,7 +580,7 @@ function RaceControlPanel({
             textTransform: 'uppercase',
           }}
         >
-          Live Race View
+          Monitor
         </button>
 
         <button
@@ -699,9 +589,9 @@ function RaceControlPanel({
           style={{
             height: 50,
             borderRadius: 10,
-            border: '1px solid #1e2730',
+            border: `1px solid ${theme.borderSoft}`,
             background: 'rgba(249,115,22,0.06)',
-            color: '#f97316',
+            color: theme.secondaryText,
             cursor: 'pointer',
             fontFamily: F,
             fontWeight: 800,
@@ -729,9 +619,9 @@ function RaceControlPanel({
           style={{
             height: 44,
             borderRadius: 10,
-            border: '1px solid #1e2730',
+            border: `1px solid ${theme.borderSoft}`,
             background: isReview ? 'rgba(16,185,129,0.10)' : 'transparent',
-            color: isReview ? '#10b981' : '#4b5563',
+            color: isReview ? '#10b981' : theme.textMuted,
             cursor: isReview && !finalizingRace ? 'pointer' : 'not-allowed',
             fontFamily: F,
             fontWeight: 700,
@@ -753,7 +643,7 @@ function RaceControlPanel({
             borderRadius: 10,
             border: '1px solid rgba(239,68,68,0.35)',
             background: isActive ? 'rgba(239,68,68,0.10)' : 'transparent',
-            color: isActive ? '#ef4444' : '#4b5563',
+            color: isActive ? '#ef4444' : theme.textMuted,
             cursor: isActive && !resettingRaceData ? 'pointer' : 'not-allowed',
             fontFamily: F,
             fontWeight: 700,
@@ -772,7 +662,7 @@ function RaceControlPanel({
           style={{
             height: 44,
             borderRadius: 10,
-            border: '1px solid #1e2730',
+            border: `1px solid ${theme.borderSoft}`,
             background: 'transparent',
             color: '#a78bfa',
             cursor: 'pointer',
@@ -792,9 +682,9 @@ function RaceControlPanel({
           style={{
             height: 44,
             borderRadius: 10,
-            border: '1px solid #1e2730',
+            border: `1px solid ${theme.borderSoft}`,
             background: 'transparent',
-            color: '#f97316',
+            color: theme.secondaryText,
             cursor: 'pointer',
             fontFamily: F,
             fontWeight: 700,
@@ -820,6 +710,8 @@ function EditableCellInput({
   width = '100%',
   lockedStyle = false,
   title,
+  styles,
+  theme,
 }) {
   const [draft, setDraft] = useState(value ?? '')
 
@@ -855,10 +747,10 @@ function EditableCellInput({
       style={{
         width,
         padding: '6px 8px',
-        background: lockedStyle ? 'rgba(234,179,8,0.08)' : '#080b0f',
-        border: lockedStyle ? '1px solid rgba(234,179,8,0.35)' : '1px solid #1e2730',
+        background: lockedStyle ? 'rgba(234,179,8,0.08)' : theme.pageBg,
+        border: lockedStyle ? '1px solid rgba(234,179,8,0.35)' : `1px solid ${theme.borderSoft}`,
         borderRadius: 6,
-        color: '#e2e8f0',
+        color: theme.text,
         fontSize: 12,
         fontFamily: FB,
         outline: 'none',
@@ -875,6 +767,8 @@ function EditableSuggestInput({
   placeholder,
   width = '100%',
   title,
+  styles,
+  theme,
 }) {
   const [draft, setDraft] = useState(value ?? '')
   const [open, setOpen] = useState(false)
@@ -928,10 +822,10 @@ function EditableSuggestInput({
         style={{
           width: '100%',
           padding: '6px 8px',
-          background: '#080b0f',
-          border: '1px solid #1e2730',
+          background: theme.pageBg,
+          border: `1px solid ${theme.borderSoft}`,
           borderRadius: 6,
-          color: '#e2e8f0',
+          color: theme.text,
           fontSize: 12,
           fontFamily: FB,
           outline: 'none',
@@ -946,10 +840,10 @@ function EditableSuggestInput({
             top: 'calc(100% + 4px)',
             left: 0,
             right: 0,
-            background: '#0e1318',
-            border: '1px solid #1e2730',
+            background: theme.cardBg,
+            border: `1px solid ${theme.borderSoft}`,
             borderRadius: 8,
-            boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
+            boxShadow: '0 10px 24px rgba(0,0,0,0.18)',
             zIndex: 20,
             maxHeight: 180,
             overflowY: 'auto',
@@ -970,8 +864,8 @@ function EditableSuggestInput({
                 padding: '8px 10px',
                 background: 'transparent',
                 border: 'none',
-                borderBottom: '1px solid #141920',
-                color: '#e2e8f0',
+                borderBottom: `1px solid ${theme.border}`,
+                color: theme.text,
                 cursor: 'pointer',
                 fontSize: 12,
                 fontFamily: FB,
@@ -1037,6 +931,8 @@ function EditableEntryRow({
   saveState,
   isRaceLocked,
   waveLabel,
+  styles,
+  theme,
 }) {
   const displayLabel = getDisplayName(entry)
   const showTeamBadge = isTeamOnlyEntry(entry)
@@ -1076,7 +972,7 @@ function EditableEntryRow({
   }
 
   return (
-    <div style={{ ...S.row, background: zebra ? '#0a0f16' : 'transparent', alignItems: 'center' }}>
+    <div style={{ ...styles.row, background: zebra ? theme.cardAltBg : 'transparent', alignItems: 'center' }}>
       <div style={{ width: 54 }}>
         <EditableCellInput
           value={entry.bib_number ?? ''}
@@ -1088,6 +984,8 @@ function EditableEntryRow({
               ? 'Race is active, in review, or finished. Changing bibs now can affect live splits and results.'
               : 'Bib number'
           }
+          styles={styles}
+          theme={theme}
         />
       </div>
 
@@ -1096,6 +994,8 @@ function EditableEntryRow({
           value={entry.first_name ?? ''}
           onSave={val => onSaveField(entry.id, 'first_name', val.trim() || null)}
           placeholder="First"
+          styles={styles}
+          theme={theme}
         />
       </div>
 
@@ -1104,6 +1004,8 @@ function EditableEntryRow({
           value={entry.last_name ?? ''}
           onSave={val => onSaveField(entry.id, 'last_name', val.trim() || null)}
           placeholder="Last"
+          styles={styles}
+          theme={theme}
         />
       </div>
 
@@ -1114,6 +1016,8 @@ function EditableEntryRow({
           onSave={val => onSaveField(entry.id, 'team', val)}
           placeholder="Team"
           title="Select an existing team or type a new one"
+          styles={styles}
+          theme={theme}
         />
       </div>
 
@@ -1124,6 +1028,8 @@ function EditableEntryRow({
           onSave={val => onSaveField(entry.id, 'division', val)}
           placeholder="Division"
           title="Select an existing division or type a new one"
+          styles={styles}
+          theme={theme}
         />
       </div>
 
@@ -1133,6 +1039,8 @@ function EditableEntryRow({
           type="number"
           onSave={val => onSaveField(entry.id, 'age', val === '' ? null : parseInt(val, 10) || null)}
           placeholder="Age"
+          styles={styles}
+          theme={theme}
         />
       </div>
 
@@ -1143,6 +1051,8 @@ function EditableEntryRow({
           onSave={val => onSaveField(entry.id, 'gender', val)}
           placeholder="Gender"
           title="Select an existing gender value or type a new one"
+          styles={styles}
+          theme={theme}
         />
       </div>
 
@@ -1153,6 +1063,8 @@ function EditableEntryRow({
           onSave={saveWaveCode}
           placeholder="Wave"
           title="Select an existing wave or type a new wave code"
+          styles={styles}
+          theme={theme}
         />
       </div>
 
@@ -1162,7 +1074,7 @@ function EditableEntryRow({
             <span
               style={{
                 fontSize: 9,
-                background: '#0f1f3a',
+                background: 'rgba(59,130,246,0.10)',
                 color: '#60a5fa',
                 padding: '1px 5px',
                 borderRadius: 3,
@@ -1198,7 +1110,7 @@ function EditableEntryRow({
               style={{
                 fontSize: 9,
                 background: 'rgba(249,115,22,0.10)',
-                color: '#f97316',
+                color: theme.secondaryText,
                 padding: '1px 6px',
                 borderRadius: 999,
                 letterSpacing: 1,
@@ -1219,7 +1131,7 @@ function EditableEntryRow({
 
       <button
         type="button"
-        style={S.removeBtn}
+        style={styles.removeBtn}
         onClick={() => onDelete(entry.id)}
       >
         ×
@@ -1231,6 +1143,8 @@ function EditableEntryRow({
 export default function PreRaceSetup() {
   const { id: eventId } = useParams()
   const navigate = useNavigate()
+  const { theme } = useTheme()
+  const S = useMemo(() => getStyles(theme), [theme])
 
   const [event, setEvent] = useState(null)
   const [entries, setEntries] = useState([])
@@ -1266,14 +1180,24 @@ export default function PreRaceSetup() {
   const [formError, setFormError] = useState('')
 
   const [resetPin, setResetPin] = useState('')
-  const [resetConfirmText, setResetConfirmText] = useState('')
   const [resettingRaceData, setResettingRaceData] = useState(false)
-  const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deletingRace, setDeletingRace] = useState(false)
+
+  const [publishing, setPublishing] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(null)
 
   const RESET_PIN = '2468'
 
-  
+  const adhocLabelStyle = useMemo(() => ({
+    fontSize: 10,
+    color: theme.textMuted,
+    display: 'block',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    fontFamily: F,
+    fontWeight: 700,
+  }), [theme])
 
   const loadSetupData = useCallback(async () => {
     if (!eventId) return
@@ -1291,7 +1215,7 @@ export default function PreRaceSetup() {
       supabase.from('race_checkpoints').select('*').eq('event_id', eventId).order('checkpoint_order'),
       supabase.from('race_waves').select('*').eq('event_id', eventId).order('display_order', { ascending: true }),
     ])
-    
+
     const localPending = loadRaceEventLocal(eventId)
     const mergedEvent = mergeEventWithLocal(ev, localPending)
 
@@ -1654,7 +1578,7 @@ export default function PreRaceSetup() {
       clearRaceEventLocal(eventId)
       setEvent(data)
       await loadSetupData()
-      navigate(`/race/${eventId}/monitor`)
+      navigate(getRaceMonitorPath(eventId))
       return
     }
 
@@ -1686,7 +1610,7 @@ export default function PreRaceSetup() {
       )
 
       window.alert('Race started offline. Timer devices can now run, and the race start will sync when connection returns.')
-      navigate(`/race/${eventId}/monitor`)
+      navigate(getRaceMonitorPath(eventId))
       return
     }
 
@@ -1782,11 +1706,6 @@ export default function PreRaceSetup() {
       return
     }
 
-    if (resetConfirmText !== 'RESET') {
-      window.alert('Type RESET to confirm.')
-      return
-    }
-
     const ok = window.confirm(
       'Reset all race timing data for this event?\n\nThis will permanently delete captured splits and finishes, clear wave actual start times, and reset the race to draft.'
     )
@@ -1835,7 +1754,6 @@ export default function PreRaceSetup() {
 
       setEvent(updatedEvent)
       setResetPin('')
-      setResetConfirmText('')
 
       window.alert('Race timing data reset successfully.')
     } catch (err) {
@@ -1849,8 +1767,8 @@ export default function PreRaceSetup() {
   const deleteRace = async () => {
     if (!event?.id || deletingRace) return
 
-    if (deleteConfirmText !== 'DELETE') {
-      window.alert('Type DELETE to confirm.')
+    if (resetPin !== RESET_PIN) {
+      window.alert('Incorrect PIN.')
       return
     }
 
@@ -1918,7 +1836,8 @@ export default function PreRaceSetup() {
       setDeletingRace(false)
     }
   }
-    const falseStartRace = async () => {
+
+  const falseStartRace = async () => {
     if (event?.status !== 'active') {
       window.alert('False Start is only available while the race is active.')
       return
@@ -1978,6 +1897,7 @@ export default function PreRaceSetup() {
       setResettingRaceData(false)
     }
   }
+
   const handleFile = e => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -2250,160 +2170,158 @@ export default function PreRaceSetup() {
     })
     setShowAdHoc(false)
   }
-const saveEntryField = async (entryId, field, value) => {
-  const existing = entries.find(e => e.id === entryId)
-  if (!existing) return
 
-  const currentValue = existing[field] ?? null
-  const nextValue = value ?? null
-  if (currentValue === nextValue) return
+  const saveEntryField = async (entryId, field, value) => {
+    const existing = entries.find(e => e.id === entryId)
+    if (!existing) return
 
-  if (field === 'bib_number' && event?.status !== 'draft') {
-    const ok = window.confirm(
-      `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started, in review, or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
+    const currentValue = existing[field] ?? null
+    const nextValue = value ?? null
+    if (currentValue === nextValue) return
+
+    if (field === 'bib_number' && event?.status !== 'draft') {
+      const ok = window.confirm(
+        `Change bib from "${currentValue ?? ''}" to "${nextValue ?? ''}"?\n\nThis race is already started, in review, or finished. Changing bibs after timing begins can make live splits and results inconsistent.`
+      )
+      if (!ok) return
+    }
+
+    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saving' }))
+
+    const { data, error } = await supabase
+      .from('event_entries')
+      .update({ [field]: nextValue })
+      .eq('id', entryId)
+      .select()
+      .single()
+
+    if (error || !data) {
+      setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'error' }))
+      setTimeout(() => {
+        setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
+      }, 2000)
+      return
+    }
+
+    setEntries(prev =>
+      prev
+        .map(e => (e.id === entryId ? data : e))
+        .sort((a, b) => Number(a.bib_number) - Number(b.bib_number))
     )
-    if (!ok) return
-  }
 
-  setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saving' }))
-
-  const { data, error } = await supabase
-    .from('event_entries')
-    .update({ [field]: nextValue })
-    .eq('id', entryId)
-    .select()
-    .single()
-
-  if (error || !data) {
-    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'error' }))
+    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saved' }))
     setTimeout(() => {
       setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
-    }, 2000)
-    return
+    }, 1200)
   }
 
-  setEntries(prev =>
-    prev
-      .map(e => (e.id === entryId ? data : e))
-      .sort((a, b) => Number(a.bib_number) - Number(b.bib_number))
-  )
+  const removeEntry = async id => {
+    await supabase.from('event_entries').delete().eq('id', id)
+    setEntries(prev => prev.filter(e => e.id !== id))
+  }
 
-  setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'saved' }))
-  setTimeout(() => {
-    setSaveStateByEntryId(prev => ({ ...prev, [entryId]: 'idle' }))
-  }, 1200)
-}
+  const preloaded = entries.filter(e => !e.is_adhoc)
+  const adhoc = entries.filter(e => e.is_adhoc)
 
-const removeEntry = async id => {
-  await supabase.from('event_entries').delete().eq('id', id)
-  setEntries(prev => prev.filter(e => e.id !== id))
-}
+  const nextStep = useMemo(() => {
+    if (event?.status === 'active') {
+      return {
+        title: 'Next Step',
+        text: 'Timer devices are now live. Open Timer Devices for operators, or use Monitor and Results to watch the race.',
+        tone: '#22c55e',
+        bg: 'rgba(34,197,94,0.08)',
+        border: 'rgba(34,197,94,0.25)',
+      }
+    }
 
-const preloaded = entries.filter(e => !e.is_adhoc)
-const adhoc = entries.filter(e => e.is_adhoc)
+    if (event?.status === 'results_review') {
+      return {
+        title: 'Next Step',
+        text: 'Review results, fix any issues, then click Finalize Results when everything looks correct.',
+        tone: '#eab308',
+        bg: 'rgba(234,179,8,0.08)',
+        border: 'rgba(234,179,8,0.25)',
+      }
+    }
 
-const nextStep = useMemo(() => {
-  if (event?.status === 'active') {
+    if (event?.status === 'finished') {
+      return {
+        title: 'Next Step',
+        text: 'This race is complete. View or share the final results, or export data if needed.',
+        tone: '#10b981',
+        bg: 'rgba(16,185,129,0.08)',
+        border: 'rgba(16,185,129,0.25)',
+      }
+    }
+
     return {
       title: 'Next Step',
-      text: 'Timer devices are now live. Open Timer Devices for operators, or use Live Race View and Public Results to watch the race.',
-      tone: '#22c55e',
-      bg: 'rgba(34,197,94,0.08)',
-      border: 'rgba(34,197,94,0.25)',
+      text: 'Review your roster and timer devices, then click Start Race when athletes are ready.',
+      tone: '#3b82f6',
+      bg: 'rgba(59,130,246,0.08)',
+      border: 'rgba(59,130,246,0.25)',
+    }
+  }, [event?.status])
+
+  const publicResultsUrl = useMemo(() => {
+    if (!eventId) return ''
+    return `${window.location.origin}/results/${eventId}`
+  }, [eventId])
+
+  const publicLiveBoardUrl = useMemo(() => {
+    if (!eventId) return ''
+    return `${window.location.origin}/public/race/${eventId}/live-board`
+  }, [eventId])
+
+  const setRacePublicState = async nextIsPublic => {
+    if (!event?.id || publishing) return
+
+    const actionWord = nextIsPublic ? 'publish' : 'make private'
+    const ok = window.confirm(
+      nextIsPublic
+        ? 'Make this race public?\n\nSpectators will be able to open the public results and live board links without logging in.'
+        : 'Make this race private?\n\nPublic results and live board links will stop working for spectators.'
+    )
+    if (!ok) return
+
+    setPublishing(true)
+
+    const { data, error } = await supabase
+      .from('race_events')
+      .update({ is_public: nextIsPublic })
+      .eq('id', event.id)
+      .select()
+      .single()
+
+    setPublishing(false)
+
+    if (error || !data) {
+      window.alert(`Could not ${actionWord} race: ${error?.message || 'Unknown error'}`)
+      return
+    }
+
+    setEvent(prev => ({ ...(prev || {}), ...data }))
+  }
+
+  const copyShareLink = async (text, key) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedLink(key)
+      setTimeout(() => setCopiedLink(null), 1500)
+    } catch {
+      window.alert('Could not copy link.')
     }
   }
 
-  if (event?.status === 'results_review') {
-    return {
-      title: 'Next Step',
-      text: 'Review results, fix any issues, then click Finalize Results when everything looks correct.',
-      tone: '#eab308',
-      bg: 'rgba(234,179,8,0.08)',
-      border: 'rgba(234,179,8,0.25)',
-    }
+  if (loading) {
+    return (
+      <div style={{ ...S.page, alignItems: 'center', justifyContent: 'center', display: 'flex', color: theme.textMuted }}>
+        Loading…
+      </div>
+    )
   }
 
-  if (event?.status === 'finished') {
-    return {
-      title: 'Next Step',
-      text: 'This race is complete. View or share the final results, or export data if needed.',
-      tone: '#10b981',
-      bg: 'rgba(16,185,129,0.08)',
-      border: 'rgba(16,185,129,0.25)',
-    }
-  }
-
-  return {
-    title: 'Next Step',
-    text: 'Review your roster and timer devices, then click Start Race when athletes are ready.',
-    tone: '#3b82f6',
-    bg: 'rgba(59,130,246,0.08)',
-    border: 'rgba(59,130,246,0.25)',
-  }
-}, [event?.status])
-
-const [publishing, setPublishing] = useState(false)
-const [copiedLink, setCopiedLink] = useState(null)
-
-const publicResultsUrl = useMemo(() => {
-  if (!eventId) return ''
-  return `${window.location.origin}/results/${eventId}`
-}, [eventId])
-
-const publicLiveBoardUrl = useMemo(() => {
-  if (!eventId) return ''
-  return `${window.location.origin}/public/race/${eventId}/live-board`
-}, [eventId])
-
-const setRacePublicState = async nextIsPublic => {
-  if (!event?.id || publishing) return
-
-  const actionWord = nextIsPublic ? 'publish' : 'make private'
-  const ok = window.confirm(
-    nextIsPublic
-      ? 'Make this race public?\n\nSpectators will be able to open the public results and live board links without logging in.'
-      : 'Make this race private?\n\nPublic results and live board links will stop working for spectators.'
-  )
-  if (!ok) return
-
-  setPublishing(true)
-
-  const { data, error } = await supabase
-    .from('race_events')
-    .update({ is_public: nextIsPublic })
-    .eq('id', event.id)
-    .select()
-    .single()
-
-  setPublishing(false)
-
-  if (error || !data) {
-    window.alert(`Could not ${actionWord} race: ${error?.message || 'Unknown error'}`)
-    return
-  }
-
-  setEvent(prev => ({ ...(prev || {}), ...data }))
-}
-
-const copyShareLink = async (text, key) => {
-  try {
-    await navigator.clipboard.writeText(text)
-    setCopiedLink(key)
-    setTimeout(() => setCopiedLink(null), 1500)
-  } catch {
-    window.alert('Could not copy link.')
-  }
-}
-
-if (loading) {
   return (
-    <div style={{ ...S.page, alignItems: 'center', justifyContent: 'center', display: 'flex', color: '#4a5568' }}>
-      Loading…
-    </div>
-  )
-}
-
-return (
     <div style={S.page}>
       <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
 
@@ -2411,15 +2329,15 @@ return (
         <button style={S.backBtn} onClick={() => navigate('/')}>← Events</button>
 
         <div style={{ flex: 1, padding: '0 16px', minWidth: 220 }}>
-          <div style={{ fontSize: 11, color: '#f97316', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
-            RACE HOME
+          <div style={{ fontSize: 11, color: theme.secondaryText, letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
+            SETUP
           </div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', fontFamily: F }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: theme.text, fontFamily: F }}>
             {event?.name}
           </div>
 
           {parentEvent?.name && (
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+            <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
               Part of {parentEvent.name}
             </div>
           )}
@@ -2431,8 +2349,8 @@ return (
             style={{
               ...S.backBtn,
               color: '#fff',
-              background: '#f97316',
-              border: '1px solid #f97316',
+              background: theme.secondaryText,
+              border: `1px solid ${theme.secondaryText}`,
             }}
             onClick={() => navigate(getRaceDirectorPath(eventId))}
           >
@@ -2445,7 +2363,7 @@ return (
               style={{ ...S.backBtn, color: '#34d399' }}
               onClick={() => navigate(getEventHubPath(parentEvent.id))}
             >
-              Event Page ↗
+              Event Hub ↗
             </button>
           )}
 
@@ -2454,7 +2372,7 @@ return (
             style={{ ...S.backBtn, color: '#60a5fa' }}
             onClick={() => navigate(getResultsPath(eventId))}
           >
-            Public Results ↗
+            Results ↗
           </button>
 
           <button
@@ -2467,7 +2385,7 @@ return (
 
           <button
             type="button"
-            style={{ ...S.backBtn, color: '#f97316' }}
+            style={{ ...S.backBtn, color: theme.secondaryText }}
             onClick={() => navigate(getRaceCheckpointsPath(eventId))}
           >
             Timer Devices
@@ -2478,7 +2396,7 @@ return (
             style={{ ...S.backBtn, color: '#3b82f6' }}
             onClick={() => navigate(getRaceMonitorPath(eventId))}
           >
-            Live Race View
+            Monitor
           </button>
         </div>
       </div>
@@ -2511,239 +2429,243 @@ return (
           onFalseStartRace={falseStartRace}
           navigate={navigate}
           hasStartedWave={hasStartedWave}
+          styles={S}
+          theme={theme}
         />
-<div style={{ ...S.card, padding: 18, marginBottom: 28, border: `1px solid ${nextStep.border}`, background: nextStep.bg }}>
-  <div
-    style={{
-      fontSize: 10,
-      color: nextStep.tone,
-      textTransform: 'uppercase',
-      letterSpacing: 2,
-      marginBottom: 8,
-      fontFamily: F,
-      fontWeight: 800,
-    }}
-  >
-    {nextStep.title}
-  </div>
 
-  <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.5 }}>
-    {nextStep.text}
-  </div>
-</div>
-
-<div style={S.section}>
-  <div style={S.sLabel}>Public Sharing</div>
-
-  <div
-    style={{
-      ...S.card,
-      padding: 18,
-      border: `1px solid ${event?.is_public ? 'rgba(16,185,129,0.35)' : '#1a2030'}`,
-      background: event?.is_public ? 'rgba(16,185,129,0.08)' : '#0e1318',
-    }}
-  >
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        gap: 16,
-        alignItems: 'flex-start',
-        flexWrap: 'wrap',
-        marginBottom: 14,
-      }}
-    >
-      <div>
-        <div
-          style={{
-            fontSize: 11,
-            color: event?.is_public ? '#10b981' : '#94a3b8',
-            textTransform: 'uppercase',
-            letterSpacing: 2,
-            marginBottom: 6,
-            fontFamily: F,
-            fontWeight: 800,
-          }}
-        >
-          {event?.is_public ? 'Public Access Enabled' : 'Private Race'}
-        </div>
-
-        <div style={{ fontSize: 14, color: '#e2e8f0', lineHeight: 1.5, maxWidth: 700 }}>
-          {event?.is_public
-            ? 'Spectators can open the public results and live board links for this race without signing in.'
-            : 'This race is currently private. Public results and live board links will not work for spectators until you publish it.'}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => setRacePublicState(!event?.is_public)}
-        disabled={publishing}
-        style={{
-          height: 42,
-          padding: '0 14px',
-          borderRadius: 10,
-          border: 'none',
-          background: event?.is_public ? '#dc2626' : '#16a34a',
-          color: '#fff',
-          cursor: publishing ? 'not-allowed' : 'pointer',
-          fontFamily: F,
-          fontWeight: 800,
-          fontSize: 12,
-          letterSpacing: 1.4,
-          textTransform: 'uppercase',
-          opacity: publishing ? 0.7 : 1,
-        }}
-      >
-        {publishing
-          ? 'Saving…'
-          : event?.is_public
-            ? 'Make Private'
-            : 'Publish Race'}
-      </button>
-    </div>
-
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr',
-        gap: 12,
-      }}
-    >
-      <div
-        style={{
-          border: '1px solid #1e2730',
-          borderRadius: 10,
-          padding: 12,
-          background: '#080b0f',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 10,
-            color: '#60a5fa',
-            textTransform: 'uppercase',
-            letterSpacing: 1.5,
-            marginBottom: 8,
-            fontFamily: F,
-            fontWeight: 800,
-          }}
-        >
-          Public Results Link
-        </div>
-
-        <div
-          style={{
-            fontSize: 12,
-            color: event?.is_public ? '#cbd5e1' : '#4a5568',
-            wordBreak: 'break-all',
-            marginBottom: 10,
-          }}
-        >
-          {publicResultsUrl}
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => copyShareLink(publicResultsUrl, 'results')}
-            disabled={!event?.is_public}
+        <div style={{ ...S.card, padding: 18, marginBottom: 28, border: `1px solid ${nextStep.border}`, background: nextStep.bg }}>
+          <div
             style={{
-              ...S.backBtn,
-              color: event?.is_public ? '#60a5fa' : '#4b5563',
-              cursor: event?.is_public ? 'pointer' : 'not-allowed',
-              opacity: event?.is_public ? 1 : 0.6,
+              fontSize: 10,
+              color: nextStep.tone,
+              textTransform: 'uppercase',
+              letterSpacing: 2,
+              marginBottom: 8,
+              fontFamily: F,
+              fontWeight: 800,
             }}
           >
-            {copiedLink === 'results' ? 'Copied!' : 'Copy Results Link'}
-          </button>
+            {nextStep.title}
+          </div>
 
-          <button
-            type="button"
-            onClick={() => window.open(publicResultsUrl, '_blank', 'noopener,noreferrer')}
-            disabled={!event?.is_public}
+          <div style={{ fontSize: 14, color: theme.text, lineHeight: 1.5 }}>
+            {nextStep.text}
+          </div>
+        </div>
+
+        <div style={S.section}>
+          <div style={S.sLabel}>Public Sharing</div>
+
+          <div
             style={{
-              ...S.backBtn,
-              color: event?.is_public ? '#60a5fa' : '#4b5563',
-              cursor: event?.is_public ? 'pointer' : 'not-allowed',
-              opacity: event?.is_public ? 1 : 0.6,
+              ...S.card,
+              padding: 18,
+              border: `1px solid ${event?.is_public ? 'rgba(16,185,129,0.35)' : theme.border}`,
+              background: event?.is_public ? 'rgba(16,185,129,0.08)' : theme.cardBg,
             }}
           >
-            Open Results ↗
-          </button>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 16,
+                alignItems: 'flex-start',
+                flexWrap: 'wrap',
+                marginBottom: 14,
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: event?.is_public ? '#10b981' : theme.textMuted,
+                    textTransform: 'uppercase',
+                    letterSpacing: 2,
+                    marginBottom: 6,
+                    fontFamily: F,
+                    fontWeight: 800,
+                  }}
+                >
+                  {event?.is_public ? 'Public Access Enabled' : 'Private Race'}
+                </div>
+
+                <div style={{ fontSize: 14, color: theme.text, lineHeight: 1.5, maxWidth: 700 }}>
+                  {event?.is_public
+                    ? 'Spectators can open the public results and live board links for this race without signing in.'
+                    : 'This race is currently private. Public results and live board links will not work for spectators until you publish it.'}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setRacePublicState(!event?.is_public)}
+                disabled={publishing}
+                style={{
+                  height: 42,
+                  padding: '0 14px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: event?.is_public ? '#dc2626' : '#16a34a',
+                  color: '#fff',
+                  cursor: publishing ? 'not-allowed' : 'pointer',
+                  fontFamily: F,
+                  fontWeight: 800,
+                  fontSize: 12,
+                  letterSpacing: 1.4,
+                  textTransform: 'uppercase',
+                  opacity: publishing ? 0.7 : 1,
+                }}
+              >
+                {publishing
+                  ? 'Saving…'
+                  : event?.is_public
+                    ? 'Make Private'
+                    : 'Publish Race'}
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  border: `1px solid ${theme.borderSoft}`,
+                  borderRadius: 10,
+                  padding: 12,
+                  background: theme.pageBg,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: '#60a5fa',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1.5,
+                    marginBottom: 8,
+                    fontFamily: F,
+                    fontWeight: 800,
+                  }}
+                >
+                  Public Results Link
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: event?.is_public ? theme.text : theme.textMuted,
+                    wordBreak: 'break-all',
+                    marginBottom: 10,
+                  }}
+                >
+                  {publicResultsUrl}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => copyShareLink(publicResultsUrl, 'results')}
+                    disabled={!event?.is_public}
+                    style={{
+                      ...S.backBtn,
+                      color: event?.is_public ? '#60a5fa' : theme.textMuted,
+                      cursor: event?.is_public ? 'pointer' : 'not-allowed',
+                      opacity: event?.is_public ? 1 : 0.6,
+                    }}
+                  >
+                    {copiedLink === 'results' ? 'Copied!' : 'Copy Results Link'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => window.open(publicResultsUrl, '_blank', 'noopener,noreferrer')}
+                    disabled={!event?.is_public}
+                    style={{
+                      ...S.backBtn,
+                      color: event?.is_public ? '#60a5fa' : theme.textMuted,
+                      cursor: event?.is_public ? 'pointer' : 'not-allowed',
+                      opacity: event?.is_public ? 1 : 0.6,
+                    }}
+                  >
+                    Open Results ↗
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border: `1px solid ${theme.borderSoft}`,
+                  borderRadius: 10,
+                  padding: 12,
+                  background: theme.pageBg,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: '#a78bfa',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1.5,
+                    marginBottom: 8,
+                    fontFamily: F,
+                    fontWeight: 800,
+                  }}
+                >
+                  Public Live Board Link
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: event?.is_public ? theme.text : theme.textMuted,
+                    wordBreak: 'break-all',
+                    marginBottom: 10,
+                  }}
+                >
+                  {publicLiveBoardUrl}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => copyShareLink(publicLiveBoardUrl, 'liveboard')}
+                    disabled={!event?.is_public}
+                    style={{
+                      ...S.backBtn,
+                      color: event?.is_public ? '#a78bfa' : theme.textMuted,
+                      cursor: event?.is_public ? 'pointer' : 'not-allowed',
+                      opacity: event?.is_public ? 1 : 0.6,
+                    }}
+                  >
+                    {copiedLink === 'liveboard' ? 'Copied!' : 'Copy Live Board Link'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => window.open(publicLiveBoardUrl, '_blank', 'noopener,noreferrer')}
+                    disabled={!event?.is_public}
+                    style={{
+                      ...S.backBtn,
+                      color: event?.is_public ? '#a78bfa' : theme.textMuted,
+                      cursor: event?.is_public ? 'pointer' : 'not-allowed',
+                      opacity: event?.is_public ? 1 : 0.6,
+                    }}
+                  >
+                    Open Live Board ↗
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 12, lineHeight: 1.5 }}>
+              Spectator links are public only when this race is published. Device QR codes remain staff-only and should not be shared publicly.
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div
-        style={{
-          border: '1px solid #1e2730',
-          borderRadius: 10,
-          padding: 12,
-          background: '#080b0f',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 10,
-            color: '#a78bfa',
-            textTransform: 'uppercase',
-            letterSpacing: 1.5,
-            marginBottom: 8,
-            fontFamily: F,
-            fontWeight: 800,
-          }}
-        >
-          Public Live Board Link
-        </div>
-
-        <div
-          style={{
-            fontSize: 12,
-            color: event?.is_public ? '#cbd5e1' : '#4a5568',
-            wordBreak: 'break-all',
-            marginBottom: 10,
-          }}
-        >
-          {publicLiveBoardUrl}
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => copyShareLink(publicLiveBoardUrl, 'liveboard')}
-            disabled={!event?.is_public}
-            style={{
-              ...S.backBtn,
-              color: event?.is_public ? '#a78bfa' : '#4b5563',
-              cursor: event?.is_public ? 'pointer' : 'not-allowed',
-              opacity: event?.is_public ? 1 : 0.6,
-            }}
-          >
-            {copiedLink === 'liveboard' ? 'Copied!' : 'Copy Live Board Link'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => window.open(publicLiveBoardUrl, '_blank', 'noopener,noreferrer')}
-            disabled={!event?.is_public}
-            style={{
-              ...S.backBtn,
-              color: event?.is_public ? '#a78bfa' : '#4b5563',
-              cursor: event?.is_public ? 'pointer' : 'not-allowed',
-              opacity: event?.is_public ? 1 : 0.6,
-            }}
-          >
-            Open Live Board ↗
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div style={{ color: '#4a5568', fontSize: 12, marginTop: 12, lineHeight: 1.5 }}>
-      Spectator links are public only when this race is published. Device QR codes remain staff-only and should not be shared publicly.
-    </div>
-  </div>
-</div>
         <div style={S.section}>
           <div style={S.sLabel}>Roster Import</div>
 
@@ -2763,7 +2685,7 @@ return (
                 }}
                 onClick={() => fileRef.current?.click()}
                 style={{
-                  border: '2px dashed #1e2730',
+                  border: `2px dashed ${theme.borderSoft}`,
                   borderRadius: 10,
                   padding: '32px 20px',
                   textAlign: 'center',
@@ -2771,13 +2693,13 @@ return (
                 }}
               >
                 <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-                <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                <div style={{ color: theme.text, fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
                   Drop CSV file, click to browse, or paste data
                 </div>
-                <div style={{ color: '#4a5568', fontSize: 12 }}>
+                <div style={{ color: theme.textMuted, fontSize: 12 }}>
                   Supports CSV, TSV, or paste from Excel/Google Sheets
                 </div>
-                <div style={{ color: '#4a5568', fontSize: 11, marginTop: 6 }}>
+                <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 6 }}>
                   For relay imports, Bib + Team is enough. Athlete names are optional.
                 </div>
                 <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" style={{ display: 'none' }} onChange={handleFile} />
@@ -2789,14 +2711,14 @@ return (
 
           {csvStep === 'mapping' && csvData && (
             <div style={{ ...S.card, padding: 20 }}>
-              <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 16 }}>
-                Found <strong style={{ color: '#f1f5f9' }}>{csvData.rows.length} rows</strong> with <strong style={{ color: '#f1f5f9' }}>{csvData.headers.length} columns</strong>. Map each column to a field:
+              <div style={{ fontSize: 13, color: theme.textMuted, marginBottom: 16 }}>
+                Found <strong style={{ color: theme.text }}>{csvData.rows.length} rows</strong> with <strong style={{ color: theme.text }}>{csvData.headers.length} columns</strong>. Map each column to a field:
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
                 {Object.keys(FIELD_LABELS).filter(f => f !== 'skip').map(field => (
                   <div key={field}>
-                    <label style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 4, fontFamily: F, fontWeight: 700 }}>
+                    <label style={{ fontSize: 10, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 4, fontFamily: F, fontWeight: 700 }}>
                       {FIELD_LABELS[field]}{field === 'bib_number' ? ' *' : ''}
                     </label>
                     <select
@@ -2811,11 +2733,11 @@ return (
                 ))}
               </div>
 
-              <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, fontFamily: F, fontWeight: 700 }}>
+              <div style={{ fontSize: 10, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, fontFamily: F, fontWeight: 700 }}>
                 Preview (first 3 rows)
               </div>
 
-              <div style={{ background: '#080b0f', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+              <div style={{ background: theme.pageBg, borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
                 {csvData.rows.slice(0, 3).map((row, i) => {
                   const get = field => {
                     const col = mapping[field]
@@ -2831,13 +2753,13 @@ return (
                   const name = personName || get('team') || '—'
 
                   return (
-                    <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 12px', borderBottom: '1px solid #0d1117', fontSize: 12, alignItems: 'center' }}>
-                      <span style={{ color: '#f97316', fontWeight: 700, width: 36, fontFamily: F }}>{get('bib_number')}</span>
-                      <span style={{ color: '#e2e8f0', flex: 1 }}>{name}</span>
-                      <span style={{ color: '#4a5568' }}>{get('team')}</span>
-                      <span style={{ color: '#4a5568' }}>{get('division')}</span>
-                      <span style={{ color: '#4a5568', width: 40 }}>{get('wave_code')}</span>
-                      <span style={{ color: '#4a5568', width: 120 }}>{get('planned_start_time')}</span>
+                    <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 12px', borderBottom: `1px solid ${theme.border}`, fontSize: 12, alignItems: 'center' }}>
+                      <span style={{ color: theme.secondaryText, fontWeight: 700, width: 36, fontFamily: F }}>{get('bib_number')}</span>
+                      <span style={{ color: theme.text, flex: 1 }}>{name}</span>
+                      <span style={{ color: theme.textMuted }}>{get('team')}</span>
+                      <span style={{ color: theme.textMuted }}>{get('division')}</span>
+                      <span style={{ color: theme.textMuted, width: 40 }}>{get('wave_code')}</span>
+                      <span style={{ color: theme.textMuted, width: 120 }}>{get('planned_start_time')}</span>
                     </div>
                   )
                 })}
@@ -2867,9 +2789,9 @@ return (
                   display: 'flex',
                   gap: 10,
                   padding: '6px 14px',
-                  borderBottom: '1px solid #1a2030',
+                  borderBottom: `1px solid ${theme.border}`,
                   fontSize: 10,
-                  color: '#374151',
+                  color: theme.textMuted,
                   textTransform: 'uppercase',
                   letterSpacing: 1,
                   fontFamily: F,
@@ -2891,12 +2813,14 @@ return (
                   zebra={i % 2 === 1}
                   onStartNow={startWaveNow}
                   onSaveActualTime={saveWaveActualTime}
+                  styles={S}
+                  theme={theme}
                 />
               ))}
             </div>
 
-            <div style={{ color: '#4a5568', fontSize: 12, marginTop: 10 }}>
-              Use <strong style={{ color: '#94a3b8' }}>Start Now</strong> when the wave gun goes off, or click the actual time field to correct it manually.
+            <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 10 }}>
+              Use <strong style={{ color: theme.textSoft || theme.text }}>Start Now</strong> when the wave gun goes off, or click the actual time field to correct it manually.
             </div>
           </div>
         )}
@@ -2929,12 +2853,12 @@ return (
             </div>
 
             {checkpoints.length === 0 ? (
-              <div style={{ color: '#4a5568', fontSize: 13 }}>
+              <div style={{ color: theme.textMuted, fontSize: 13 }}>
                 No checkpoints yet. Add them manually or use “Seed 8”.
               </div>
             ) : (
-              <div style={{ background: '#080b0f', borderRadius: 8, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', gap: 10, padding: '6px 14px', borderBottom: '1px solid #1a2030', fontSize: 10, color: '#374151', textTransform: 'uppercase', letterSpacing: 1, fontFamily: F, fontWeight: 700 }}>
+              <div style={{ background: theme.pageBg, borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', gap: 10, padding: '6px 14px', borderBottom: `1px solid ${theme.border}`, fontSize: 10, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: 1, fontFamily: F, fontWeight: 700 }}>
                   <span style={{ width: 60 }}>Order</span>
                   <span style={{ flex: 1 }}>Name</span>
                   <span style={{ width: 90 }}>Quick Code</span>
@@ -2948,13 +2872,15 @@ return (
                     onSave={updateCheckpointName}
                     onDelete={deleteCheckpoint}
                     zebra={i % 2 === 1}
+                    styles={S}
+                    theme={theme}
                   />
                 ))}
               </div>
             )}
 
-            <div style={{ color: '#4a5568', fontSize: 12, marginTop: 10 }}>
-              Start and Finish timer devices are created automatically for every race. Add only intermediate split points here.
+            <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 10 }}>
+              A Finish timer device is created automatically for every race. Add only intermediate split points here.
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
@@ -2996,9 +2922,9 @@ return (
                       display: 'flex',
                       gap: 10,
                       padding: '6px 14px',
-                      borderBottom: '1px solid #1a2030',
+                      borderBottom: `1px solid ${theme.border}`,
                       fontSize: 10,
-                      color: '#374151',
+                      color: theme.textMuted,
                       textTransform: 'uppercase',
                       letterSpacing: 1,
                       fontFamily: F,
@@ -3007,11 +2933,11 @@ return (
                       position: 'sticky',
                       top: 0,
                       zIndex: 2,
-                      background: '#0e1318',
-                      boxShadow: '0 2px 0 rgba(0,0,0,0.2)',
+                      background: theme.cardBg,
+                      boxShadow: '0 2px 0 rgba(0,0,0,0.08)',
                     }}
                   >
-                    <span style={{ width: 54, color: event?.status !== 'draft' ? '#eab308' : '#374151' }}>Bib</span>
+                    <span style={{ width: 54, color: event?.status !== 'draft' ? '#eab308' : theme.textMuted }}>Bib</span>
                     <span style={{ width: 120 }}>First</span>
                     <span style={{ width: 120 }}>Last</span>
                     <span style={{ width: 140 }}>Team</span>
@@ -3041,6 +2967,8 @@ return (
                         saveState={saveStateByEntryId[entry.id] || 'idle'}
                         isRaceLocked={event?.status !== 'draft'}
                         waveLabel={entry.wave_id ? (wavesById[entry.wave_id]?.wave_code || null) : null}
+                        styles={S}
+                        theme={theme}
                       />
                     ))}
                   </div>
@@ -3176,8 +3104,8 @@ return (
             style={{
               width: '100%',
               padding: 14,
-              background: '#0e1318',
-              border: '1px dashed #1e2730',
+              background: theme.cardBg,
+              border: `1px dashed ${theme.borderSoft}`,
               borderRadius: 10,
               color: '#60a5fa',
               fontSize: 13,
@@ -3191,12 +3119,18 @@ return (
         )}
 
         <div style={S.section}>
-          <div style={{ ...S.card, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.10)' }}>
+          <div
+            style={{
+              ...S.card,
+              border: `1px solid ${theme.dangerBorder}`,
+              background: theme.dangerBg,
+            }}
+          >
             <div style={{ padding: 18 }}>
               <div
                 style={{
                   fontSize: 11,
-                  color: '#f87171',
+                  color: theme.dangerText,
                   textTransform: 'uppercase',
                   letterSpacing: 2,
                   marginBottom: 8,
@@ -3206,29 +3140,91 @@ return (
               >
                 Danger Zone
               </div>
-              <div style={S.section}>
-                <div style={{ ...S.card, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(127,29,29,0.10)' }}>
-                  <div style={{ padding: 18 }}>
-                    ...
-                  </div>
-                </div>
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#fecaca', marginBottom: 8, fontFamily: F }}>
+
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 800,
+                  color: theme.dangerText,
+                  marginBottom: 8,
+                  fontFamily: F,
+                }}
+              >
                 Reset All Race Timing Data
               </div>
-<div
-            style={{
-              ...S.card,
-              border: '1px solid rgba(220,38,38,0.45)',
-              background: 'rgba(69,10,10,0.35)',
-              marginTop: 16,
-            }}
-          >
-            <div style={{ padding: 18 }}>
+
+              <div
+                style={{
+                  fontSize: 13,
+                  color: theme.dangerText,
+                  marginBottom: 14,
+                  lineHeight: 1.5,
+                }}
+              >
+                This permanently deletes all captured splits and finishes for this race,
+                clears wave actual start times, and resets the race back to draft.
+                Entries, checkpoints, and waves will remain.
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto',
+                  gap: 10,
+                  alignItems: 'end',
+                  marginBottom: 18,
+                }}
+              >
+                <div>
+                  <label style={adhocLabelStyle}>Enter Race PIN</label>
+                  <input
+                    type="password"
+                    value={resetPin}
+                    onChange={e => setResetPin(e.target.value)}
+                    placeholder="Enter PIN"
+                    style={{
+                      ...S.input,
+                      border: `1px solid ${theme.dangerBorder}`,
+                      background: theme.cardBg,
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={resetRaceData}
+                  disabled={resettingRaceData}
+                  style={{
+                    height: 44,
+                    padding: '0 16px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: resettingRaceData ? '#7f1d1d' : '#dc2626',
+                    color: '#fff',
+                    cursor: resettingRaceData ? 'not-allowed' : 'pointer',
+                    fontFamily: F,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    letterSpacing: 1.5,
+                    textTransform: 'uppercase',
+                    opacity: resettingRaceData ? 0.75 : 1,
+                  }}
+                >
+                  {resettingRaceData ? 'Resetting…' : 'Reset Race Data'}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  height: 1,
+                  background: theme.dangerBorder,
+                  margin: '18px 0',
+                }}
+              />
+
               <div
                 style={{
                   fontSize: 11,
-                  color: '#f87171',
+                  color: theme.dangerText,
                   textTransform: 'uppercase',
                   letterSpacing: 2,
                   marginBottom: 8,
@@ -3243,7 +3239,7 @@ return (
                 style={{
                   fontSize: 16,
                   fontWeight: 800,
-                  color: '#fecaca',
+                  color: theme.dangerText,
                   marginBottom: 8,
                   fontFamily: F,
                 }}
@@ -3254,7 +3250,7 @@ return (
               <div
                 style={{
                   fontSize: 13,
-                  color: '#fca5a5',
+                  color: theme.dangerText,
                   marginBottom: 14,
                   lineHeight: 1.5,
                 }}
@@ -3281,8 +3277,8 @@ return (
                     placeholder="Enter PIN"
                     style={{
                       ...S.input,
-                      border: '1px solid rgba(248,113,113,0.35)',
-                      background: '#120b0b',
+                      border: `1px solid ${theme.dangerBorder}`,
+                      background: theme.cardBg,
                     }}
                   />
                 </div>
@@ -3312,65 +3308,155 @@ return (
               </div>
             </div>
           </div>
-              <div style={{ fontSize: 13, color: '#fca5a5', marginBottom: 14, lineHeight: 1.5 }}>
-                This permanently deletes all captured splits and finishes for this race,
-                clears wave actual start times, and resets the race back to draft.
-                Entries, checkpoints, and waves will remain.
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
-                <div>
-                  <label style={adhocLabelStyle}>Enter Race PIN</label>
-                  <input
-                    type="password"
-                    value={resetPin}
-                    onChange={e => setResetPin(e.target.value)}
-                    placeholder="Enter PIN"
-                    style={{
-                      ...S.input,
-                      border: '1px solid rgba(248,113,113,0.35)',
-                      background: '#120b0b',
-                    }}
-                  />
-                </div>
-
-                <button
-                  onClick={resetRaceData}
-                  disabled={resettingRaceData}
-                  style={{
-                    height: 44,
-                    padding: '0 16px',
-                    borderRadius: 8,
-                    border: 'none',
-                    background: resettingRaceData ? '#7f1d1d' : '#dc2626',
-                    color: '#fff',
-                    cursor: resettingRaceData ? 'not-allowed' : 'pointer',
-                    fontFamily: F,
-                    fontWeight: 800,
-                    fontSize: 12,
-                    letterSpacing: 1.5,
-                    textTransform: 'uppercase',
-                    opacity: resettingRaceData ? 0.75 : 1,
-                  }}
-                >
-                  {resettingRaceData ? 'Resetting…' : 'Reset Race Data'}
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
 
         {entries.length === 0 && (
-          <p style={{ textAlign: 'center', color: '#374151', fontSize: 12, marginTop: 10 }}>
+          <p style={{ textAlign: 'center', color: theme.textMuted, fontSize: 12, marginTop: 10 }}>
             No roster loaded — you can still capture laps and assign bibs manually
           </p>
         )}
       </div>
 
       <style>{`
-        input:focus, select:focus, textarea:focus { border-color: #f97316 !important; outline: none; }
-        input::placeholder { color: #2d3748; }
+        input:focus, select:focus, textarea:focus { border-color: ${theme.secondaryText} !important; outline: none; }
+        input::placeholder { color: ${theme.textMuted}; }
       `}</style>
     </div>
   )
+}
+
+function getStyles(theme) {
+  return {
+    page: {
+      minHeight: '100dvh',
+      background: theme.pageBg,
+      color: theme.text,
+      fontFamily: FB,
+    },
+    header: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '14px 20px',
+      borderBottom: `1px solid ${theme.border}`,
+      background: theme.cardBg,
+      gap: 12,
+      flexWrap: 'wrap',
+    },
+    backBtn: {
+      background: 'none',
+      border: `1px solid ${theme.borderSoft}`,
+      color: theme.textMuted,
+      borderRadius: 6,
+      padding: '6px 14px',
+      cursor: 'pointer',
+      fontSize: 12,
+      fontFamily: F,
+      fontWeight: 700,
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    body: {
+      maxWidth: 1100,
+      margin: '0 auto',
+      padding: '24px 20px 60px',
+    },
+    section: {
+      marginBottom: 28,
+    },
+    sLabel: {
+      fontSize: 10,
+      color: theme.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 2,
+      marginBottom: 10,
+      fontFamily: F,
+      fontWeight: 700,
+    },
+    card: {
+      background: theme.cardBg,
+      border: `1px solid ${theme.border}`,
+      borderRadius: 12,
+      overflow: 'hidden',
+    },
+    statRow: {
+      display: 'flex',
+      gap: 12,
+      marginBottom: 24,
+      flexWrap: 'wrap',
+    },
+    stat: {
+      flex: 1,
+      minWidth: 140,
+      background: theme.cardBg,
+      border: `1px solid ${theme.border}`,
+      borderRadius: 10,
+      padding: '14px 16px',
+    },
+    statVal: {
+      fontSize: 28,
+      fontWeight: 900,
+      color: theme.text,
+      lineHeight: 1,
+      fontFamily: F,
+    },
+    statLbl: {
+      fontSize: 10,
+      color: theme.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 1.5,
+      marginTop: 4,
+    },
+    input: {
+      width: '100%',
+      padding: '10px 14px',
+      background: theme.pageBg,
+      border: `1px solid ${theme.borderSoft}`,
+      borderRadius: 8,
+      color: theme.text,
+      fontSize: 14,
+      fontFamily: FB,
+      outline: 'none',
+      boxSizing: 'border-box',
+    },
+    select: {
+      width: '100%',
+      padding: '8px 10px',
+      background: theme.pageBg,
+      border: `1px solid ${theme.borderSoft}`,
+      borderRadius: 6,
+      color: theme.text,
+      fontSize: 13,
+      fontFamily: FB,
+      outline: 'none',
+    },
+    addBtn: {
+      background: theme.primary,
+      border: 'none',
+      borderRadius: 8,
+      color: theme.primaryText,
+      padding: '10px 20px',
+      fontSize: 13,
+      fontWeight: 700,
+      cursor: 'pointer',
+      fontFamily: FB,
+    },
+    removeBtn: {
+      background: 'none',
+      border: 'none',
+      color: theme.textMuted,
+      cursor: 'pointer',
+      fontSize: 18,
+      lineHeight: 1,
+      padding: '0 4px',
+    },
+    row: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      padding: '8px 14px',
+      borderBottom: `1px solid ${theme.border}`,
+      fontSize: 13,
+    },
+  }
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import { useTheme } from '../contexts/ThemeContext'
 import {
   getCreateEventPath,
   getCreateRacePath,
@@ -58,55 +59,55 @@ function sortRacesByDate(a, b) {
   return aTime - bTime
 }
 
-function getRaceStatusTone(status) {
+function getRaceStatusTone(status, theme) {
   if (status === 'active') {
     return {
       label: 'LIVE',
-      color: '#ef4444',
-      bg: 'rgba(239,68,68,0.10)',
-      border: 'rgba(239,68,68,0.25)',
+      color: theme.dangerTextStrong || '#dc2626',
+      bg: theme.dangerSurface || 'rgba(239,68,68,0.10)',
+      border: theme.dangerBorderSoft || 'rgba(239,68,68,0.25)',
     }
   }
 
   if (status === 'results_review') {
     return {
       label: 'REVIEW',
-      color: '#eab308',
-      bg: 'rgba(234,179,8,0.10)',
-      border: 'rgba(234,179,8,0.25)',
+      color: theme.warningText || '#b45309',
+      bg: theme.warningSurface || 'rgba(234,179,8,0.10)',
+      border: theme.warningBorder || 'rgba(234,179,8,0.25)',
     }
   }
 
   if (status === 'finished') {
     return {
       label: 'FINAL',
-      color: '#10b981',
-      bg: 'rgba(16,185,129,0.10)',
-      border: 'rgba(16,185,129,0.25)',
+      color: theme.successText || '#059669',
+      bg: theme.successSurface || 'rgba(16,185,129,0.10)',
+      border: theme.successBorder || 'rgba(16,185,129,0.25)',
     }
   }
 
   if (status === 'ready') {
     return {
       label: 'READY',
-      color: '#22c55e',
-      bg: 'rgba(34,197,94,0.10)',
-      border: 'rgba(34,197,94,0.25)',
+      color: theme.successText || '#16a34a',
+      bg: theme.successSurface || 'rgba(34,197,94,0.10)',
+      border: theme.successBorder || 'rgba(34,197,94,0.25)',
     }
   }
 
   return {
     label: 'DRAFT',
-    color: '#60a5fa',
-    bg: 'rgba(96,165,250,0.10)',
-    border: 'rgba(96,165,250,0.25)',
+    color: theme.infoText || theme.accent || '#2563eb',
+    bg: theme.infoSurface || 'rgba(96,165,250,0.10)',
+    border: theme.infoBorder || 'rgba(96,165,250,0.25)',
   }
 }
 
-function ActionLink({ to, children, primary = false, danger = false }) {
-  let style = secondaryButtonStyle
-  if (primary) style = primaryButtonStyle
-  if (danger) style = dangerButtonStyle
+function ActionLink({ to, children, primary = false, danger = false, styles }) {
+  let style = styles.secondaryButton
+  if (primary) style = styles.primaryButton
+  if (danger) style = styles.dangerButton
 
   return (
     <Link to={to} style={style}>
@@ -115,8 +116,8 @@ function ActionLink({ to, children, primary = false, danger = false }) {
   )
 }
 
-function StatusBadge({ status }) {
-  const tone = getRaceStatusTone(status)
+function StatusBadge({ status, theme }) {
+  const tone = getRaceStatusTone(status, theme)
 
   return (
     <span
@@ -139,16 +140,16 @@ function StatusBadge({ status }) {
   )
 }
 
-function RaceDashboardCard({ race, parentEventName }) {
+function RaceDashboardCard({ race, parentEventName, styles, theme }) {
   const status = race?.status || 'draft'
 
   return (
-    <div style={dashboardRaceCardStyle}>
-      <div style={dashboardCardTopStyle}>
+    <div style={styles.dashboardRaceCard}>
+      <div style={styles.dashboardCardTop}>
         <div style={{ flex: 1, minWidth: 240 }}>
-          <div style={raceTitleStyle}>{race.name}</div>
+          <div style={styles.raceTitle}>{race.name}</div>
 
-          <div style={metaStyle}>
+          <div style={styles.meta}>
             {parentEventName ? <span>{parentEventName}</span> : null}
             {race.event_date ? <span> • {formatDate(race.event_date)}</span> : null}
             {race.location ? <span> • {race.location}</span> : null}
@@ -157,36 +158,50 @@ function RaceDashboardCard({ race, parentEventName }) {
           </div>
         </div>
 
-        <StatusBadge status={status} />
+        <StatusBadge status={status} theme={theme} />
       </div>
 
-      <div style={buttonRowStyle}>
-        <ActionLink to={getRaceDirectorPath(race.id)} primary>
+      <div style={styles.buttonRow}>
+        <ActionLink to={getRaceDirectorPath(race.id)} primary styles={styles}>
           Director
         </ActionLink>
 
         {status === 'active' ? (
           <>
-            <ActionLink to={getRaceMonitorPath(race.id)}>Monitor</ActionLink>
-            <ActionLink to={getRaceAssignPath(race.id)}>Assign Bibs</ActionLink>
+            <ActionLink to={getRaceMonitorPath(race.id)} styles={styles}>
+              Monitor
+            </ActionLink>
+            <ActionLink to={getRaceAssignPath(race.id)} styles={styles}>
+              Assign Bibs
+            </ActionLink>
           </>
         ) : null}
 
         {status === 'results_review' ? (
           <>
-            <ActionLink to={getRaceCorrectionsPath(race.id)}>Review & Fix</ActionLink>
-            <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
+            <ActionLink to={getRaceCorrectionsPath(race.id)} styles={styles}>
+              Review & Fix
+            </ActionLink>
+            <ActionLink to={getResultsPath(race.id)} styles={styles}>
+              Results
+            </ActionLink>
           </>
         ) : null}
 
         {['draft', 'ready'].includes(status) ? (
-          <ActionLink to={getRaceSetupPath(race.id)}>Setup</ActionLink>
+          <ActionLink to={getRaceSetupPath(race.id)} styles={styles}>
+            Setup
+          </ActionLink>
         ) : null}
 
         {status === 'finished' ? (
           <>
-            <ActionLink to={getResultsPath(race.id)}>Results</ActionLink>
-            <ActionLink to={getLiveBoardPath(race.id)}>Live Board</ActionLink>
+            <ActionLink to={getResultsPath(race.id)} styles={styles}>
+              Results
+            </ActionLink>
+            <ActionLink to={getLiveBoardPath(race.id)} styles={styles}>
+              Live Board
+            </ActionLink>
           </>
         ) : null}
       </div>
@@ -194,44 +209,48 @@ function RaceDashboardCard({ race, parentEventName }) {
   )
 }
 
-function ParentEventCard({ event, races }) {
+function ParentEventCard({ event, races, styles }) {
   const dateLabel = formatEventDateRange(event)
 
   return (
-    <div style={cardStyle}>
-      <div style={cardHeaderStyle}>
+    <div style={styles.card}>
+      <div style={styles.cardHeader}>
         <div style={{ flex: 1, minWidth: 260 }}>
-          <div style={sectionCardTitleStyle}>{event.name}</div>
+          <div style={styles.sectionCardTitle}>{event.name}</div>
 
-          <div style={metaStyle}>
+          <div style={styles.meta}>
             {dateLabel ? <span>{dateLabel}</span> : null}
             {event.location ? <span> • {event.location}</span> : null}
             {event.sport ? <span> • {event.sport}</span> : null}
           </div>
 
           {event.notes ? (
-            <div style={{ marginTop: 12, fontSize: 13, color: '#cbd5e1' }}>
+            <div style={styles.notes}>
               {event.notes}
             </div>
           ) : null}
         </div>
 
-        <div style={buttonRowStyle}>
-          <ActionLink to={getEventHubPath(event.id)}>Event Hub</ActionLink>
-          <ActionLink to={getCreateRacePath({ parentEventId: event.id })}>Add Race</ActionLink>
+        <div style={styles.buttonRow}>
+          <ActionLink to={getEventHubPath(event.id)} styles={styles}>
+            Event Hub
+          </ActionLink>
+          <ActionLink to={getCreateRacePath({ parentEventId: event.id })} styles={styles}>
+            Add Race
+          </ActionLink>
         </div>
       </div>
 
       <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
         {races.length === 0 ? (
-          <div style={emptyTextStyle}>No races in this event yet.</div>
+          <div style={styles.emptyText}>No races in this event yet.</div>
         ) : (
           races.map(race => (
-            <div key={race.id} style={innerCardStyle}>
-              <div style={cardHeaderStyle}>
+            <div key={race.id} style={styles.innerCard}>
+              <div style={styles.cardHeader}>
                 <div style={{ flex: 1, minWidth: 240 }}>
-                  <div style={raceTitleStyle}>{race.name}</div>
-                  <div style={metaStyle}>
+                  <div style={styles.raceTitle}>{race.name}</div>
+                  <div style={styles.meta}>
                     {race.event_date ? <span>{formatDate(race.event_date)}</span> : null}
                     {race.location ? <span> • {race.location}</span> : null}
                     {race.sport ? <span> • {race.sport}</span> : null}
@@ -240,11 +259,13 @@ function ParentEventCard({ event, races }) {
                   </div>
                 </div>
 
-                <div style={buttonRowStyle}>
-                  <ActionLink to={getRaceDirectorPath(race.id)} primary>
+                <div style={styles.buttonRow}>
+                  <ActionLink to={getRaceDirectorPath(race.id)} primary styles={styles}>
                     Director
                   </ActionLink>
-                  <ActionLink to={getRaceSetupPath(race.id)}>Setup</ActionLink>
+                  <ActionLink to={getRaceSetupPath(race.id)} styles={styles}>
+                    Setup
+                  </ActionLink>
                 </div>
               </div>
             </div>
@@ -255,13 +276,13 @@ function ParentEventCard({ event, races }) {
   )
 }
 
-function StandaloneRaceCard({ race }) {
+function StandaloneRaceCard({ race, styles }) {
   return (
-    <div style={cardStyle}>
-      <div style={cardHeaderStyle}>
+    <div style={styles.card}>
+      <div style={styles.cardHeader}>
         <div style={{ flex: 1, minWidth: 240 }}>
-          <div style={raceTitleStyle}>{race.name}</div>
-          <div style={metaStyle}>
+          <div style={styles.raceTitle}>{race.name}</div>
+          <div style={styles.meta}>
             {race.event_date ? <span>{formatDate(race.event_date)}</span> : null}
             {race.location ? <span> • {race.location}</span> : null}
             {race.sport ? <span> • {race.sport}</span> : null}
@@ -270,25 +291,27 @@ function StandaloneRaceCard({ race }) {
           </div>
         </div>
 
-        <div style={buttonRowStyle}>
-          <ActionLink to={getRaceDirectorPath(race.id)} primary>
+        <div style={styles.buttonRow}>
+          <ActionLink to={getRaceDirectorPath(race.id)} primary styles={styles}>
             Director
           </ActionLink>
-          <ActionLink to={getRaceSetupPath(race.id)}>Setup</ActionLink>
+          <ActionLink to={getRaceSetupPath(race.id)} styles={styles}>
+            Setup
+          </ActionLink>
         </div>
       </div>
     </div>
   )
 }
 
-function DashboardSection({ title, subtitle, races, eventNameById }) {
+function DashboardSection({ title, subtitle, races, eventNameById, styles, theme }) {
   if (!races.length) return null
 
   return (
     <section style={{ marginBottom: 32 }}>
-      <div style={sectionHeaderBlockStyle}>
-        <div style={sectionTitleStyle}>{title}</div>
-        {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
+      <div style={styles.sectionHeaderBlock}>
+        <div style={styles.sectionTitle}>{title}</div>
+        {subtitle ? <div style={styles.subtitle}>{subtitle}</div> : null}
       </div>
 
       <div style={{ display: 'grid', gap: 14 }}>
@@ -297,6 +320,8 @@ function DashboardSection({ title, subtitle, races, eventNameById }) {
             key={race.id}
             race={race}
             parentEventName={race.parent_event_id ? eventNameById[race.parent_event_id] || null : null}
+            styles={styles}
+            theme={theme}
           />
         ))}
       </div>
@@ -307,6 +332,8 @@ function DashboardSection({ title, subtitle, races, eventNameById }) {
 export default function Events() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { theme } = useTheme()
+  const styles = useMemo(() => getStyles(theme), [theme])
 
   const [loading, setLoading] = useState(true)
   const [events, setEvents] = useState([])
@@ -419,22 +446,22 @@ export default function Events() {
   }, [events, races])
 
   return (
-    <div style={pageStyle}>
+    <div style={styles.page}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <div style={heroCardStyle}>
-          <div style={heroHeaderStyle}>
+        <div style={styles.heroCard}>
+          <div style={styles.heroHeader}>
             <div>
-              <div style={titleStyle}>Organizer Dashboard</div>
-              <div style={subtitleStyle}>
+              <div style={styles.title}>Organizer Dashboard</div>
+              <div style={styles.subtitle}>
                 Open the next race that needs attention.
               </div>
             </div>
 
-            <div style={buttonRowStyle}>
+            <div style={styles.buttonRow}>
               <button
                 type="button"
                 onClick={() => navigate(getCreateEventPath())}
-                style={primaryButtonButtonStyle}
+                style={styles.primaryButtonButton}
               >
                 Create Event
               </button>
@@ -442,7 +469,7 @@ export default function Events() {
               <button
                 type="button"
                 onClick={() => navigate(getCreateRacePath())}
-                style={secondaryButtonButtonStyle}
+                style={styles.secondaryButtonButton}
               >
                 Create Standalone Race
               </button>
@@ -451,13 +478,13 @@ export default function Events() {
         </div>
 
         {!user?.id ? (
-          <div style={cardStyle}>
+          <div style={styles.card}>
             Please sign in to view your organizer dashboard.
           </div>
         ) : loading ? (
-          <div style={cardStyle}>Loading…</div>
+          <div style={styles.card}>Loading…</div>
         ) : error ? (
-          <div style={errorStyle}>{error}</div>
+          <div style={styles.error}>{error}</div>
         ) : (
           <>
             <DashboardSection
@@ -465,6 +492,8 @@ export default function Events() {
               subtitle="Races currently in progress."
               races={liveRaces}
               eventNameById={eventNameById}
+              styles={styles}
+              theme={theme}
             />
 
             <DashboardSection
@@ -472,6 +501,8 @@ export default function Events() {
               subtitle="Races waiting for results review or cleanup."
               races={reviewRaces}
               eventNameById={eventNameById}
+              styles={styles}
+              theme={theme}
             />
 
             <DashboardSection
@@ -479,6 +510,8 @@ export default function Events() {
               subtitle="Upcoming races that are draft or ready to begin."
               races={upcomingRaces}
               eventNameById={eventNameById}
+              styles={styles}
+              theme={theme}
             />
 
             <DashboardSection
@@ -486,41 +519,43 @@ export default function Events() {
               subtitle="Completed races and final outputs."
               races={finishedRaces}
               eventNameById={eventNameById}
+              styles={styles}
+              theme={theme}
             />
 
             <section style={{ marginBottom: 32 }}>
-              <div style={sectionHeaderBlockStyle}>
-                <div style={sectionTitleStyle}>Parent Events</div>
-                <div style={subtitleStyle}>
+              <div style={styles.sectionHeaderBlock}>
+                <div style={styles.sectionTitle}>Parent Events</div>
+                <div style={styles.subtitle}>
                   Event groups and their child races.
                 </div>
               </div>
 
               {parentEventCards.length === 0 ? (
-                <div style={cardStyle}>No parent events yet.</div>
+                <div style={styles.card}>No parent events yet.</div>
               ) : (
                 <div style={{ display: 'grid', gap: 16 }}>
                   {parentEventCards.map(({ event, races }) => (
-                    <ParentEventCard key={event.id} event={event} races={races} />
+                    <ParentEventCard key={event.id} event={event} races={races} styles={styles} />
                   ))}
                 </div>
               )}
             </section>
 
             <section>
-              <div style={sectionHeaderBlockStyle}>
-                <div style={sectionTitleStyle}>Standalone Races</div>
-                <div style={subtitleStyle}>
+              <div style={styles.sectionHeaderBlock}>
+                <div style={styles.sectionTitle}>Standalone Races</div>
+                <div style={styles.subtitle}>
                   Races not attached to a parent event.
                 </div>
               </div>
 
               {standaloneRaces.length === 0 ? (
-                <div style={cardStyle}>No standalone races.</div>
+                <div style={styles.card}>No standalone races.</div>
               ) : (
                 <div style={{ display: 'grid', gap: 12 }}>
                   {standaloneRaces.map(race => (
-                    <StandaloneRaceCard key={race.id} race={race} />
+                    <StandaloneRaceCard key={race.id} race={race} styles={styles} />
                   ))}
                 </div>
               )}
@@ -532,174 +567,191 @@ export default function Events() {
   )
 }
 
-const pageStyle = {
-  minHeight: '100dvh',
-  background: '#080b0f',
-  color: '#e2e8f0',
-  padding: 24,
-}
+function getStyles(theme) {
+  return {
+    page: {
+      minHeight: '100dvh',
+      background: theme.pageBg,
+      color: theme.text,
+      padding: 24,
+    },
 
-const heroCardStyle = {
-  background: '#0e1318',
-  border: '1px solid #1a2030',
-  borderRadius: 16,
-  padding: 24,
-  marginBottom: 24,
-}
+    heroCard: {
+      background: theme.cardBg,
+      border: `1px solid ${theme.border}`,
+      borderRadius: 16,
+      padding: 24,
+      marginBottom: 24,
+      boxShadow: theme.shadowSm,
+    },
 
-const cardStyle = {
-  background: '#0e1318',
-  border: '1px solid #1a2030',
-  borderRadius: 16,
-  padding: 18,
-}
+    card: {
+      background: theme.cardBg,
+      border: `1px solid ${theme.border}`,
+      borderRadius: 16,
+      padding: 18,
+      boxShadow: theme.shadowSm,
+    },
 
-const innerCardStyle = {
-  background: '#080b0f',
-  border: '1px solid #1e2730',
-  borderRadius: 12,
-  padding: 16,
-}
+    innerCard: {
+      background: theme.cardAltBg || theme.secondaryBg,
+      border: `1px solid ${theme.borderSoft || theme.border}`,
+      borderRadius: 12,
+      padding: 16,
+    },
 
-const dashboardRaceCardStyle = {
-  background: '#0e1318',
-  border: '1px solid #1a2030',
-  borderRadius: 16,
-  padding: 18,
-}
+    dashboardRaceCard: {
+      background: theme.cardBg,
+      border: `1px solid ${theme.border}`,
+      borderRadius: 16,
+      padding: 18,
+      boxShadow: theme.shadowSm,
+    },
 
-const heroHeaderStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 16,
-  flexWrap: 'wrap',
-}
+    heroHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: 16,
+      flexWrap: 'wrap',
+    },
 
-const cardHeaderStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 16,
-  flexWrap: 'wrap',
-}
+    cardHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: 16,
+      flexWrap: 'wrap',
+    },
 
-const dashboardCardTopStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 16,
-  marginBottom: 14,
-  flexWrap: 'wrap',
-}
+    dashboardCardTop: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: 16,
+      marginBottom: 14,
+      flexWrap: 'wrap',
+    },
 
-const sectionHeaderBlockStyle = {
-  marginBottom: 14,
-}
+    sectionHeaderBlock: {
+      marginBottom: 14,
+    },
 
-const titleStyle = {
-  fontSize: 32,
-  fontWeight: 800,
-  marginBottom: 8,
-}
+    title: {
+      fontSize: 32,
+      fontWeight: 800,
+      marginBottom: 8,
+      color: theme.text,
+    },
 
-const subtitleStyle = {
-  fontSize: 14,
-  color: '#94a3b8',
-}
+    subtitle: {
+      fontSize: 14,
+      color: theme.textMuted,
+    },
 
-const sectionTitleStyle = {
-  fontSize: 22,
-  fontWeight: 800,
-  marginBottom: 6,
-}
+    sectionTitle: {
+      fontSize: 22,
+      fontWeight: 800,
+      marginBottom: 6,
+      color: theme.text,
+    },
 
-const sectionCardTitleStyle = {
-  fontSize: 24,
-  fontWeight: 800,
-  marginBottom: 6,
-}
+    sectionCardTitle: {
+      fontSize: 24,
+      fontWeight: 800,
+      marginBottom: 6,
+      color: theme.text,
+    },
 
-const raceTitleStyle = {
-  fontSize: 18,
-  fontWeight: 700,
-  marginBottom: 6,
-}
+    raceTitle: {
+      fontSize: 18,
+      fontWeight: 700,
+      marginBottom: 6,
+      color: theme.text,
+    },
 
-const metaStyle = {
-  fontSize: 13,
-  color: '#94a3b8',
-  lineHeight: 1.5,
-}
+    meta: {
+      fontSize: 13,
+      color: theme.textMuted,
+      lineHeight: 1.5,
+    },
 
-const buttonRowStyle = {
-  display: 'flex',
-  gap: 10,
-  flexWrap: 'wrap',
-}
+    notes: {
+      marginTop: 12,
+      fontSize: 13,
+      color: theme.textMuted,
+    },
 
-const primaryButtonStyle = {
-  display: 'inline-block',
-  textDecoration: 'none',
-  border: 'none',
-  borderRadius: 10,
-  padding: '12px 16px',
-  fontWeight: 800,
-  background: '#f97316',
-  color: '#fff',
-}
+    buttonRow: {
+      display: 'flex',
+      gap: 10,
+      flexWrap: 'wrap',
+    },
 
-const secondaryButtonStyle = {
-  display: 'inline-block',
-  textDecoration: 'none',
-  border: '1px solid #1e2730',
-  borderRadius: 10,
-  padding: '12px 16px',
-  fontWeight: 700,
-  background: '#0b1220',
-  color: '#60a5fa',
-}
+    primaryButton: {
+      display: 'inline-block',
+      textDecoration: 'none',
+      border: 'none',
+      borderRadius: 10,
+      padding: '12px 16px',
+      fontWeight: 800,
+      background: theme.accent,
+      color: theme.accentText || '#fff',
+    },
 
-const dangerButtonStyle = {
-  display: 'inline-block',
-  textDecoration: 'none',
-  border: '1px solid rgba(239,68,68,0.25)',
-  borderRadius: 10,
-  padding: '12px 16px',
-  fontWeight: 700,
-  background: 'transparent',
-  color: '#f87171',
-}
+    secondaryButton: {
+      display: 'inline-block',
+      textDecoration: 'none',
+      border: `1px solid ${theme.borderSoft || theme.border}`,
+      borderRadius: 10,
+      padding: '12px 16px',
+      fontWeight: 700,
+      background: theme.cardAltBg || theme.secondaryBg,
+      color: theme.text,
+    },
 
-const primaryButtonButtonStyle = {
-  border: 'none',
-  borderRadius: 10,
-  padding: '12px 16px',
-  fontWeight: 800,
-  cursor: 'pointer',
-  background: '#f97316',
-  color: '#fff',
-}
+    dangerButton: {
+      display: 'inline-block',
+      textDecoration: 'none',
+      border: `1px solid ${theme.dangerBorder || '#ef4444'}`,
+      borderRadius: 10,
+      padding: '12px 16px',
+      fontWeight: 700,
+      background: theme.dangerSurface || 'transparent',
+      color: theme.dangerText || '#dc2626',
+    },
 
-const secondaryButtonButtonStyle = {
-  border: '1px solid #1e2730',
-  borderRadius: 10,
-  padding: '12px 16px',
-  fontWeight: 700,
-  cursor: 'pointer',
-  background: '#0b1220',
-  color: '#60a5fa',
-}
+    primaryButtonButton: {
+      border: 'none',
+      borderRadius: 10,
+      padding: '12px 16px',
+      fontWeight: 800,
+      cursor: 'pointer',
+      background: theme.accent,
+      color: theme.accentText || '#fff',
+    },
 
-const errorStyle = {
-  background: '#2a0f13',
-  border: '1px solid #7f1d1d',
-  color: '#fca5a5',
-  borderRadius: 12,
-  padding: 16,
-}
+    secondaryButtonButton: {
+      border: `1px solid ${theme.borderSoft || theme.border}`,
+      borderRadius: 10,
+      padding: '12px 16px',
+      fontWeight: 700,
+      cursor: 'pointer',
+      background: theme.cardAltBg || theme.secondaryBg,
+      color: theme.text,
+    },
 
-const emptyTextStyle = {
-  fontSize: 13,
-  color: '#94a3b8',
+    error: {
+      background: theme.dangerSurface || 'rgba(220, 38, 38, 0.10)',
+      border: `1px solid ${theme.dangerBorder || '#ef4444'}`,
+      color: theme.dangerText || theme.text,
+      borderRadius: 12,
+      padding: 16,
+    },
+
+    emptyText: {
+      fontSize: 13,
+      color: theme.textMuted,
+    },
+  }
 }
