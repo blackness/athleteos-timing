@@ -326,6 +326,8 @@ function RaceControlPanel({
   onFinishRace,
   onFinalizeRace,
   onFalseStartRace,
+  falseStartAvailable,
+  falseStartSecondsRemaining,
   navigate,
   hasStartedWave = false,
   styles,
@@ -634,27 +636,52 @@ function RaceControlPanel({
           {finalizingRace ? 'Finalizing…' : 'Finalize Results'}
         </button>
 
-        <button
-          type="button"
-          onClick={onFalseStartRace}
-          disabled={!isActive || resettingRaceData}
-          style={{
-            height: 44,
-            borderRadius: 10,
-            border: '1px solid rgba(239,68,68,0.35)',
-            background: isActive ? 'rgba(239,68,68,0.10)' : 'transparent',
-            color: isActive ? '#ef4444' : theme.textMuted,
-            cursor: isActive && !resettingRaceData ? 'pointer' : 'not-allowed',
-            fontFamily: F,
-            fontWeight: 700,
-            fontSize: 13,
-            letterSpacing: 1.2,
-            textTransform: 'uppercase',
-            opacity: resettingRaceData ? 0.75 : 1,
-          }}
-        >
-          {resettingRaceData ? 'Resetting…' : 'False Start'}
-        </button>
+        {falseStartAvailable ? (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <button
+              type="button"
+              onClick={onFalseStartRace}
+              disabled={resettingRaceData}
+              style={{
+                height: 44,
+                borderRadius: 10,
+                border: '1px solid rgba(239,68,68,0.35)',
+                background: 'rgba(239,68,68,0.10)',
+                color: '#ef4444',
+                cursor: resettingRaceData ? 'wait' : 'pointer',
+                fontFamily: F,
+                fontWeight: 700,
+                fontSize: 13,
+                letterSpacing: 1.2,
+                textTransform: 'uppercase',
+                opacity: resettingRaceData ? 0.75 : 1,
+              }}
+            >
+              {resettingRaceData ? 'Resetting…' : 'False Start'}
+            </button>
+
+            <div
+              style={{
+                fontSize: 12,
+                color: theme.textMuted,
+                lineHeight: 1.4,
+              }}
+            >
+              Use only if the race was started in error. Available for {falseStartSecondsRemaining}s after start.
+            </div>
+          </div>
+        ) : isActive ? (
+          <div
+            style={{
+              fontSize: 12,
+              color: theme.textMuted,
+              lineHeight: 1.4,
+              maxWidth: 320,
+            }}
+          >
+            False Start is only available for the first 30 seconds after race start. To restart later, use Reset Race in Danger Zone.
+          </div>
+        ) : null}
 
         <button
           type="button"
@@ -1154,6 +1181,8 @@ export default function PreRaceSetup() {
   const [saving, setSaving] = useState(false)
   const [savingCheckpoint, setSavingCheckpoint] = useState(false)
   const [startingRace, setStartingRace] = useState(false)
+  const [nowMs, setNowMs] = useState(Date.now())
+  const FALSE_START_WINDOW_MS = 30 * 1000
   const [finishingRace, setFinishingRace] = useState(false)
   const [finalizingRace, setFinalizingRace] = useState(false)
   const [checkpointName, setCheckpointName] = useState('')
@@ -1243,6 +1272,14 @@ export default function PreRaceSetup() {
     if (!eventId) return
     loadSetupData()
   }, [eventId, loadSetupData])
+
+useEffect(() => {
+  const timer = window.setInterval(() => {
+    setNowMs(Date.now())
+  }, 1000)
+
+  return () => window.clearInterval(timer)
+}, [])
 
   useEffect(() => {
     if (!eventId) return
@@ -1454,6 +1491,25 @@ export default function PreRaceSetup() {
     setSavingCheckpoint(false)
     loadCheckpoints()
   }
+
+  const falseStartAvailable = useMemo(() => {
+  if (event?.status !== 'active') return false
+  if (!event?.race_started_at) return false
+
+  const startedAtMs = new Date(event.race_started_at).getTime()
+  if (Number.isNaN(startedAtMs)) return false
+
+  return nowMs - startedAtMs <= FALSE_START_WINDOW_MS
+    }, [event?.status, event?.race_started_at, nowMs])
+
+    const falseStartSecondsRemaining = useMemo(() => {
+      if (!event?.race_started_at) return 0
+
+      const startedAtMs = new Date(event.race_started_at).getTime()
+      if (Number.isNaN(startedAtMs)) return 0
+
+      return Math.max(0, Math.ceil((FALSE_START_WINDOW_MS - (nowMs - startedAtMs)) / 1000))
+    }, [event?.race_started_at, nowMs])
 
   const startWaveNow = async waveId => {
     const ok = window.confirm('Record actual start time for this wave as now?')
@@ -1838,65 +1894,83 @@ export default function PreRaceSetup() {
   }
 
   const falseStartRace = async () => {
-    if (event?.status !== 'active') {
-      window.alert('False Start is only available while the race is active.')
-      return
-    }
-
-    const ok = window.confirm(
-      'Declare a false start?\n\nThis will delete all captured splits/finishes, clear wave actual start times, and return the race to draft so it can be started again.'
-    )
-    if (!ok) return
-
-    try {
-      setResettingRaceData(true)
-
-      const { error: lapError } = await supabase
-        .from('lap_events')
-        .delete()
-        .eq('event_id', eventId)
-
-      if (lapError) throw lapError
-
-      const { error: finishError } = await supabase
-        .from('race_finishes')
-        .delete()
-        .eq('event_id', eventId)
-
-      if (finishError) throw finishError
-
-      const { error: waveError } = await supabase
-        .from('race_waves')
-        .update({ actual_start_time: null })
-        .eq('event_id', eventId)
-
-      if (waveError) throw waveError
-
-      const { data: updatedEvent, error: eventError } = await supabase
-        .from('race_events')
-        .update({
-          race_started_at: null,
-          race_finished_at: null,
-          status: 'draft',
-        })
-        .eq('id', eventId)
-        .select()
-        .single()
-
-      if (eventError) throw eventError
-
-      clearRaceEventLocal(eventId)
-      await loadWaves()
-      setEvent(updatedEvent)
-
-      window.alert('False start recorded. Race has been reset to draft.')
-    } catch (err) {
-      console.error('False start reset failed:', err)
-      window.alert(`False start reset failed: ${err.message || 'Unknown error'}`)
-    } finally {
-      setResettingRaceData(false)
-    }
+  if (event?.status !== 'active') {
+    window.alert('False Start is only available while the race is active.')
+    return
   }
+
+  if (!event?.race_started_at) {
+    window.alert('False Start is only available right after the race starts.')
+    return
+  }
+
+  const startedAtMs = new Date(event.race_started_at).getTime()
+  if (Number.isNaN(startedAtMs)) {
+    window.alert('False Start is unavailable because the race start time is invalid.')
+    return
+  }
+
+  if (Date.now() - startedAtMs > FALSE_START_WINDOW_MS) {
+    window.alert(
+      'False Start is only available for the first 30 seconds after race start. Use Reset Race in Danger Zone to restart later.'
+    )
+    return
+  }
+
+  const ok = window.confirm(
+    'Declare a false start?\n\nThis will delete all captured splits/finishes, clear wave actual start times, and return the race to draft so it can be started again.'
+  )
+  if (!ok) return
+
+  try {
+    setResettingRaceData(true)
+
+    const { error: lapError } = await supabase
+      .from('lap_events')
+      .delete()
+      .eq('event_id', eventId)
+
+    if (lapError) throw lapError
+
+    const { error: finishError } = await supabase
+      .from('race_finishes')
+      .delete()
+      .eq('event_id', eventId)
+
+    if (finishError) throw finishError
+
+    const { error: waveError } = await supabase
+      .from('race_waves')
+      .update({ actual_start_time: null })
+      .eq('event_id', eventId)
+
+    if (waveError) throw waveError
+
+    const { data: updatedEvent, error: eventError } = await supabase
+      .from('race_events')
+      .update({
+        race_started_at: null,
+        race_finished_at: null,
+        status: 'draft',
+      })
+      .eq('id', eventId)
+      .select()
+      .single()
+
+    if (eventError) throw eventError
+
+    clearRaceEventLocal(eventId)
+    await loadWaves()
+    setEvent(updatedEvent)
+
+    window.alert('False start recorded. Race has been reset to draft.')
+  } catch (err) {
+    console.error('False start reset failed:', err)
+    window.alert(`False start reset failed: ${err.message || 'Unknown error'}`)
+  } finally {
+    setResettingRaceData(false)
+  }
+}
 
   const handleFile = e => {
     const file = e.target.files?.[0]
@@ -2427,6 +2501,8 @@ export default function PreRaceSetup() {
           onFinishRace={finishRace}
           onFinalizeRace={finalizeRace}
           onFalseStartRace={falseStartRace}
+          falseStartAvailable={falseStartAvailable}
+          falseStartSecondsRemaining={falseStartSecondsRemaining}
           navigate={navigate}
           hasStartedWave={hasStartedWave}
           styles={S}

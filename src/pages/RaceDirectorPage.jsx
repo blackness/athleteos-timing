@@ -1052,7 +1052,6 @@ function getStyles(theme) {
       fontFamily: FB,
     },
     secondaryActionBtn: {
-      border: `1px solid ${theme.borderSoft}`,
       borderRadius: 12,
       padding: '14px 18px',
       background: theme.cardAltBg,

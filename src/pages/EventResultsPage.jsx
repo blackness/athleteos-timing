@@ -199,10 +199,6 @@ function RaceCard({ race, isAuthenticated, theme }) {
             Results
           </ActionLink>
 
-          <ActionLink to={getLiveBoardPath(race.id)} theme={theme}>
-            Live Board
-          </ActionLink>
-
           {isAuthenticated ? (
             <ActionLink to={getRaceDirectorPath(race.id)} primary theme={theme}>
               Director
@@ -335,7 +331,7 @@ export default function EventResultsPage() {
       <div style={styles.page}>
         <PublicNav
           theme={theme}
-          extraLinks={[{ to: getPublicHomePath(), label: 'Public Home' }]}
+          extraLinks={[{ to: getPublicHomePath(), label: 'Home' }]}
         />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.card}>Loading event…</div>
@@ -349,7 +345,7 @@ export default function EventResultsPage() {
       <div style={styles.page}>
         <PublicNav
           theme={theme}
-          extraLinks={[{ to: getPublicHomePath(), label: 'Public Home' }]}
+          extraLinks={[{ to: getPublicHomePath(), label: 'Home' }]}
         />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.error}>{error}</div>
@@ -363,7 +359,7 @@ export default function EventResultsPage() {
       <div style={styles.page}>
         <PublicNav
           theme={theme}
-          extraLinks={[{ to: getPublicHomePath(), label: 'Public Home' }]}
+          extraLinks={[{ to: getPublicHomePath(), label: 'Home' }]}
         />
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={styles.card}>Event not found.</div>
@@ -388,7 +384,7 @@ export default function EventResultsPage() {
       <PublicNav
         theme={theme}
         extraLinks={[
-          { to: getPublicHomePath(), label: 'Public Home' },
+          { to: getPublicHomePath(), label: 'Home' },
           { to: getEventHubPath(id), label: event?.name || 'Event Hub' },
         ]}
       />

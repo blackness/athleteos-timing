@@ -3,7 +3,7 @@ import { getPublicHomePath } from '../lib/routes'
 
 export default function PublicNav({
   theme,
-  homeLabel = 'Public Home',
+  homeLabel = 'Home',
   extraLinks = [],
   currentPath = null,
 }) {

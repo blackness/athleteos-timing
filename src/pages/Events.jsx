@@ -162,7 +162,7 @@ function RaceDashboardCard({ race, parentEventName, styles, theme }) {
       </div>
 
       <div style={styles.buttonRow}>
-        <ActionLink to={getRaceDirectorPath(race.id)} primary styles={styles}>
+        <ActionLink to={getRaceDirectorPath(race.id)} styles={styles}>
           Director
         </ActionLink>
 
@@ -451,7 +451,8 @@ export default function Events() {
         <div style={styles.heroCard}>
           <div style={styles.heroHeader}>
             <div>
-              <div style={styles.title}>Organizer Dashboard</div>
+              <div style={styles.eyebrow}>Organizer</div>
+              <div style={styles.title}>Dashboard</div>
               <div style={styles.subtitle}>
                 Open the next race that needs attention.
               </div>
@@ -577,8 +578,9 @@ function getStyles(theme) {
     },
 
     heroCard: {
-      background: theme.cardBg,
+      background: theme.mode === 'light' ? '#fffaf5' : theme.cardBg,
       border: `1px solid ${theme.border}`,
+      borderTop: '4px solid #f97316',
       borderRadius: 16,
       padding: 24,
       marginBottom: 24,
@@ -648,7 +650,14 @@ function getStyles(theme) {
       fontSize: 14,
       color: theme.textMuted,
     },
-
+    eyebrow: {
+      fontSize: 12,
+      fontWeight: 800,
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+      color: '#f97316',
+      marginBottom: 8,
+    },
     sectionTitle: {
       fontSize: 22,
       fontWeight: 800,
@@ -695,19 +704,25 @@ function getStyles(theme) {
       borderRadius: 10,
       padding: '12px 16px',
       fontWeight: 800,
-      background: theme.accent,
-      color: theme.accentText || '#fff',
+      background: '#f97316',
+      color: '#ffffff',
+      boxShadow: theme.mode === 'light'
+        ? '0 1px 2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(249, 115, 22, 0.08)'
+        : 'none',
     },
 
     secondaryButton: {
       display: 'inline-block',
       textDecoration: 'none',
-      border: `1px solid ${theme.borderSoft || theme.border}`,
+      border: `1px solid ${theme.border}`,
       borderRadius: 10,
       padding: '12px 16px',
       fontWeight: 700,
-      background: theme.cardAltBg || theme.secondaryBg,
+      background: theme.mode === 'light' ? '#f8fafc' : (theme.cardAltBg || theme.secondaryBg),
       color: theme.text,
+      boxShadow: theme.mode === 'light'
+        ? '0 1px 2px rgba(15, 23, 42, 0.04)'
+        : 'none',
     },
 
     dangerButton: {
@@ -727,18 +742,24 @@ function getStyles(theme) {
       padding: '12px 16px',
       fontWeight: 800,
       cursor: 'pointer',
-      background: theme.accent,
-      color: theme.accentText || '#fff',
+      background: '#f97316',
+      color: '#ffffff',
+      boxShadow: theme.mode === 'light'
+        ? '0 1px 2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(249, 115, 22, 0.08)'
+        : 'none',
     },
 
     secondaryButtonButton: {
-      border: `1px solid ${theme.borderSoft || theme.border}`,
+      border: `1px solid ${theme.border}`,
       borderRadius: 10,
       padding: '12px 16px',
       fontWeight: 700,
       cursor: 'pointer',
-      background: theme.cardAltBg || theme.secondaryBg,
+      background: theme.mode === 'light' ? '#f8fafc' : (theme.cardAltBg || theme.secondaryBg),
       color: theme.text,
+      boxShadow: theme.mode === 'light'
+        ? '0 1px 2px rgba(15, 23, 42, 0.04)'
+        : 'none',
     },
 
     error: {

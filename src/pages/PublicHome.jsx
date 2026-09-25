@@ -125,7 +125,7 @@ function EventCard({ event, races, theme }) {
 
                 <div style={styles.buttonRow}>
                   <ActionLink to={getResultsPath(race.id)} theme={theme}>Results</ActionLink>
-                  <ActionLink to={getLiveBoardPath(race.id)} theme={theme}>Live Board</ActionLink>
+                  
                 </div>
               </div>
             </div>
