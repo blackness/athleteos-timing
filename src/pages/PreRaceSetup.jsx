@@ -609,32 +609,35 @@ function RaceControlPanel({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr 1fr',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          alignItems: 'start',
           gap: 10,
           marginTop: 10,
         }}
       >
-        <button
-          type="button"
-          onClick={onFinalizeRace}
-          disabled={!isReview || finalizingRace}
-          style={{
-            height: 44,
-            borderRadius: 10,
-            border: `1px solid ${theme.borderSoft}`,
-            background: isReview ? 'rgba(16,185,129,0.10)' : 'transparent',
-            color: isReview ? '#10b981' : theme.textMuted,
-            cursor: isReview && !finalizingRace ? 'pointer' : 'not-allowed',
-            fontFamily: F,
-            fontWeight: 700,
-            fontSize: 13,
-            letterSpacing: 1.2,
-            textTransform: 'uppercase',
-            opacity: finalizingRace ? 0.75 : 1,
-          }}
-        >
-          {finalizingRace ? 'Finalizing…' : 'Finalize Results'}
-        </button>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            onClick={onFinalizeRace}
+            disabled={!isReview || finalizingRace}
+            style={{
+              height: 44,
+              borderRadius: 10,
+              border: `1px solid ${theme.borderSoft}`,
+              background: isReview ? 'rgba(16,185,129,0.10)' : 'transparent',
+              color: isReview ? '#10b981' : theme.textMuted,
+              cursor: isReview && !finalizingRace ? 'pointer' : 'not-allowed',
+              fontFamily: F,
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: 1.2,
+              textTransform: 'uppercase',
+              opacity: finalizingRace ? 0.75 : 1,
+            }}
+          >
+            {finalizingRace ? 'Finalizing…' : 'Finalize Results'}
+          </button>
+        </div>
 
         {falseStartAvailable ? (
           <div style={{ display: 'grid', gap: 8 }}>
@@ -665,6 +668,7 @@ function RaceControlPanel({
                 fontSize: 12,
                 color: theme.textMuted,
                 lineHeight: 1.4,
+                maxWidth: 320,
               }}
             >
               Use only if the race was started in error. Available for {falseStartSecondsRemaining}s after start.
@@ -683,45 +687,49 @@ function RaceControlPanel({
           </div>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => navigate(getRaceCorrectionsPath(eventId))}
-          style={{
-            height: 44,
-            borderRadius: 10,
-            border: `1px solid ${theme.borderSoft}`,
-            background: 'transparent',
-            color: '#a78bfa',
-            cursor: 'pointer',
-            fontFamily: F,
-            fontWeight: 700,
-            fontSize: 13,
-            letterSpacing: 1.2,
-            textTransform: 'uppercase',
-          }}
-        >
-          Review & Fix Results
-        </button>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => navigate(getRaceCorrectionsPath(eventId))}
+            style={{
+              height: 44,
+              borderRadius: 10,
+              border: `1px solid ${theme.borderSoft}`,
+              background: 'transparent',
+              color: '#a78bfa',
+              cursor: 'pointer',
+              fontFamily: F,
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: 1.2,
+              textTransform: 'uppercase',
+            }}
+          >
+            Review & Fix Results
+          </button>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => navigate(getRaceCheckpointQrPath(eventId))}
-          style={{
-            height: 44,
-            borderRadius: 10,
-            border: `1px solid ${theme.borderSoft}`,
-            background: 'transparent',
-            color: theme.secondaryText,
-            cursor: 'pointer',
-            fontFamily: F,
-            fontWeight: 700,
-            fontSize: 13,
-            letterSpacing: 1.2,
-            textTransform: 'uppercase',
-          }}
-        >
-          Print Device QR Codes
-        </button>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => navigate(getRaceCheckpointQrPath(eventId))}
+            style={{
+              height: 44,
+              borderRadius: 10,
+              border: `1px solid ${theme.borderSoft}`,
+              background: 'transparent',
+              color: theme.secondaryText,
+              cursor: 'pointer',
+              fontFamily: F,
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: 1.2,
+              textTransform: 'uppercase',
+            }}
+          >
+            Print Device QR Codes
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -1273,13 +1281,15 @@ export default function PreRaceSetup() {
     loadSetupData()
   }, [eventId, loadSetupData])
 
-useEffect(() => {
-  const timer = window.setInterval(() => {
-    setNowMs(Date.now())
-  }, 1000)
+  useEffect(() => {
+    if (event?.status !== 'active' || !event?.race_started_at) return
 
-  return () => window.clearInterval(timer)
-}, [])
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [event?.status, event?.race_started_at])
 
   useEffect(() => {
     if (!eventId) return

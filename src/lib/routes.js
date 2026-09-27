@@ -70,3 +70,19 @@ export function getRaceDirectorPath(raceId) {
 export function getStaffAccessPath(accessCode) {
   return `/staff/${accessCode}`
 }
+
+export function getCheckpointAdminPath(eventId, checkpointId) {
+  return `/race/${eventId}/checkpoints/${checkpointId}/admin`
+}
+
+export function getCheckpointDevicePath(eventId, checkpointId) {
+  return `/race/${eventId}/checkpoints/${checkpointId}/device`
+}
+
+export function getCheckpointTimerPath(eventId, checkpointId) {
+  return `/race/${eventId}/checkpoints/${checkpointId}/timer`
+}
+
+export function getCheckpointAssignPath(eventId, checkpointId) {
+  return `/race/${eventId}/checkpoints/${checkpointId}/assign`
+}
