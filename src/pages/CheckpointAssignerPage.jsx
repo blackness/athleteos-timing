@@ -348,207 +348,420 @@ export default function CheckpointAssignerPage() {
     )
   }
 
-  return (
-    <div style={S.page}>
-      <link
-        href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap"
-        rel="stylesheet"
-      />
+return (
+  <div
+    style={{
+      minHeight: '100dvh',
+      background: T.bg,
+      color: T.text,
+      fontFamily: FB,
+      display: 'flex',
+      flexDirection: 'column',
+    }}
+  >
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
 
-      <div style={S.header}>
-        <button type="button" style={S.backBtn} onClick={() => navigate(getRaceCheckpointsPath(eventId))}>
-          ← Timer Devices
-        </button>
-
-        <button type="button" style={S.backBtn} onClick={() => navigate(getRaceSetupPath(eventId))}>
-          Setup
-        </button>
+    {/* Header */}
+    <div
+      style={{
+        padding: '18px 16px 14px',
+        borderBottom: `1px solid ${T.border}`,
+        background: T.pageAlt,
+        textAlign: 'center',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 'clamp(28px, 6vw, 40px)',
+          fontWeight: 900,
+          color: T.textStrong,
+          fontFamily: F,
+          lineHeight: 1,
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+        }}
+      >
+        {checkpoint?.name || 'Checkpoint'}
       </div>
 
-      <div style={S.body}>
-        <div style={S.topCard}>
-          <div style={S.kicker}>Checkpoint Assigner</div>
-          <div style={S.title}>{checkpoint?.name || 'Checkpoint'}</div>
-          <div style={S.subTitle}>{event?.name || 'Race'}</div>
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 'clamp(40px, 9vw, 64px)',
+          fontWeight: 900,
+          letterSpacing: -1.5,
+          color: event?.race_started_at ? T.textStrong : T.dim,
+          fontVariantNumeric: 'tabular-nums',
+          fontFamily: F,
+          lineHeight: 1,
+        }}
+      >
+        {fmt(elapsed)}
+      </div>
 
-          <div style={S.clockWrap}>
-            <div style={S.clockLabel}>
-              {event?.status === 'active' ? 'Race Clock' : 'Waiting'}
-            </div>
-            <div style={S.clockValue}>{formatRaceClock(elapsedMs)}</div>
-          </div>
+      <div
+        style={{
+          marginTop: 8,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          ...statusPill(currentSaveState.tone),
+          borderRadius: 999,
+          padding: '6px 10px',
+          fontSize: 10,
+          fontFamily: F,
+          fontWeight: 800,
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+        }}
+      >
+        {currentSaveState.label}
+      </div>
 
-          <div style={S.metaRow}>
-            <span style={S.badge}>
-              {event?.status === 'active' ? 'LIVE' : (event?.status || 'DRAFT').toUpperCase()}
-            </span>
-            <span style={S.metaText}>
-              {rows.length} recorded {rows.length === 1 ? 'pass' : 'passes'}
-            </span>
-          </div>
-        </div>
-
-        {error ? <div style={S.errorBox}>{error}</div> : null}
-        {warning ? <div style={S.warningBox}>{warning}</div> : null}
-
-        <div style={S.panelGrid}>
-          <div style={S.panel}>
-            <div style={S.panelLabel}>Next Unassigned</div>
-
-            {nextUnassignedRow ? (
-              <div style={S.focusCard}>
-                <div style={S.focusLine}>
-                  <span style={S.focusPlace}>{nextUnassignedRow.visiblePlace}</span>
-                  <span style={S.focusTime}>{formatElapsed(nextUnassignedRow.elapsed_ms)}</span>
-                  <span style={S.focusBib}>—</span>
-                  <span style={S.focusName}>Unassigned</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => selectRow(nextUnassignedRow)}
-                  style={S.smallActionBtn}
-                >
-                  Select
-                </button>
-              </div>
-            ) : (
-              <div style={S.emptyState}>No unassigned passes right now.</div>
-            )}
-          </div>
-
-          <div style={S.panel}>
-            <div style={S.panelLabel}>Selected Row</div>
-
-            {selectedRow ? (
-              <>
-                <div style={S.focusCardSelected}>
-                  <div style={S.focusLine}>
-                    <span style={S.focusPlace}>{selectedRow.visiblePlace}</span>
-                    <span style={S.focusTime}>{elapsedDisplay}</span>
-                    <span style={S.focusBib}>{selectedRow.bib_number || '—'}</span>
-                    <span style={S.focusName}>{selectedName || 'Unassigned'}</span>
-                  </div>
-                </div>
-
-                <div style={S.assignBlock}>
-                  <input
-                    value={bibInput}
-                    onChange={e => setBibInput(e.target.value)}
-                    placeholder="Enter bib / race number"
-                    style={S.bigInput}
-                  />
-
-                  {!entryMap[String(bibInput || '').trim()] && !isUnknownBib(bibInput) ? (
-                    <input
-                      value={nameInput}
-                      onChange={e => setNameInput(e.target.value)}
-                      placeholder="Optional athlete name if bib is unknown"
-                      style={S.subInput}
-                    />
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={() => assignBib(bibInput, nameInput)}
-                    disabled={!selectedRow || saving}
-                    style={{
-                      ...S.assignBtn,
-                      opacity: !selectedRow || saving ? 0.65 : 1,
-                      cursor: !selectedRow || saving ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {saving ? 'Assigning…' : 'Assign'}
-                  </button>
-
-                  <div style={S.quickRow}>
-                    <button
-                      type="button"
-                      onClick={() => assignBib(UNKNOWN_BIB)}
-                      disabled={!selectedRow || saving}
-                      style={{
-                        ...S.quickBtn,
-                        opacity: !selectedRow || saving ? 0.65 : 1,
-                      }}
-                    >
-                      UNKNOWN
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => assignBib(NO_BIB)}
-                      disabled={!selectedRow || saving}
-                      style={{
-                        ...S.quickBtn,
-                        opacity: !selectedRow || saving ? 0.65 : 1,
-                      }}
-                    >
-                      NO BIB
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div style={S.emptyState}>Select a row to assign.</div>
-            )}
-          </div>
-        </div>
-
-        <div style={S.listCard}>
-          <div style={S.listHeader}>
-            <div style={S.listTitle}>Checkpoint Passes</div>
-            <div style={S.listHint}>Newest first</div>
-          </div>
-
-          {rows.length === 0 ? (
-            <div style={S.emptyState}>No passes recorded yet.</div>
-          ) : (
-            <div style={S.list}>
-              {rows.map(row => {
-                const selected = row.id === selectedLapId
-                const unassigned = isUnassignedRow(row)
-                const unknown = isUnknownBib(row.bib_number)
-
-                return (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => selectRow(row)}
-                    style={{
-                      ...S.row,
-                      ...(selected ? S.rowSelected : null),
-                      ...(unassigned ? S.rowUnassigned : null),
-                    }}
-                  >
-                    <div style={S.rowMain}>
-                      <span style={S.place}>{row.visiblePlace}</span>
-                      <span style={S.time}>{formatElapsed(row.elapsed_ms)}</span>
-                      <span style={S.bib}>
-                        {row.bib_number || '—'}
-                      </span>
-                      <span style={S.name}>
-                        {row.athleteName || (unknown ? 'Unknown athlete' : row.bib_number ? 'Unmatched bib' : 'Unassigned')}
-                      </span>
-                    </div>
-
-                    <div style={S.rowBadgeWrap}>
-                      {unassigned ? (
-                        <span style={S.pendingBadge}>Unassigned</span>
-                      ) : unknown ? (
-                        <span style={S.unknownBadge}>Unknown</span>
-                      ) : (
-                        <span style={S.assignedBadge}>Assigned</span>
-                      )}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
+      <div
+        style={{
+          marginTop: 10,
+          fontSize: 11,
+          color: T.muted,
+        }}
+      >
+        {isFinishCheckpoint
+          ? 'Assign bibs to recorded finishers.'
+          : 'Assign bibs to recorded checkpoint passes.'}
       </div>
     </div>
-  )
+
+    {/* Main */}
+    <div
+      style={{
+        flex: 1,
+        width: '100%',
+        maxWidth: 760,
+        margin: '0 auto',
+        display: 'grid',
+        gap: 16,
+        padding: 16,
+      }}
+    >
+      {/* Next unassigned focus */}
+      <div
+        style={{
+          borderRadius: 16,
+          border: `1px solid ${T.warningBorder}`,
+          background: T.warningBg,
+          padding: '14px 16px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            color: T.warning,
+            fontFamily: F,
+            fontWeight: 900,
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
+          }}
+        >
+          {isFinishCheckpoint ? 'Next Finisher to Assign' : 'Next Checkpoint Pass to Assign'}
+        </div>
+
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 22,
+            color: nextPending ? T.textStrong : T.muted2,
+            fontFamily: F,
+            fontWeight: 900,
+            lineHeight: 1,
+          }}
+        >
+          {nextPending
+            ? isFinishCheckpoint
+              ? `Place ${activePlaceByLapId[nextPending.id] ?? '—'} · ${fmt(nextPending.elapsed_ms, true)}`
+              : `Awaiting Bib · ${fmt(nextPending.elapsed_ms, true)}`
+            : actionWaitingLabel}
+        </div>
+
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 12,
+            color: T.muted,
+          }}
+        >
+          {nextPending
+            ? 'You can assign this row or select any row below.'
+            : 'No pending rows right now.'}
+        </div>
+      </div>
+
+      {/* Preview / warnings */}
+      <div
+        style={{
+          minHeight: 18,
+          fontSize: 12,
+        }}
+      >
+        {preview?.found && (
+          <span style={{ color: T.successBright }}>
+            ✓ {preview.name}{preview.team ? ` · ${preview.team}` : ''}
+          </span>
+        )}
+        {preview && !preview.found && (
+          <span style={{ color: T.warning }}>⚠ Not in roster</span>
+        )}
+        {duplicateBibAtCheckpoint && (
+          <span style={{ color: T.danger, marginLeft: 8 }}>
+            ⚠ Bib already recorded at this checkpoint
+          </span>
+        )}
+      </div>
+
+      {/* Assign panel */}
+      <div
+        style={{
+          borderRadius: 16,
+          border: `1px solid ${T.border2}`,
+          background: T.panel,
+          padding: 16,
+          display: 'grid',
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            color: T.muted2,
+            textTransform: 'uppercase',
+            letterSpacing: 1.4,
+            fontFamily: F,
+            fontWeight: 700,
+          }}
+        >
+          {isFinishCheckpoint ? 'Assign Bib' : 'Assign Bib'}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            ref={inputRef}
+            type="number"
+            inputMode="numeric"
+            value={bibInput}
+            onChange={e => setBibInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') assignBib()
+              if (e.key === 'Escape') {
+                setBibInput('')
+                setPreview(null)
+              }
+            }}
+            placeholder="Bib #"
+            disabled={!nextPending}
+            style={{
+              flex: 1,
+              height: 64,
+              background: T.inputBg,
+              border: `1px solid ${T.inputBorder}`,
+              borderRadius: 12,
+              color: T.textStrong,
+              fontSize: 30,
+              fontWeight: 700,
+              textAlign: 'center',
+              fontFamily: F,
+              outline: 'none',
+              MozAppearance: 'textfield',
+              opacity: !nextPending ? 0.4 : 1,
+            }}
+          />
+
+          <button
+            onPointerDown={e => e.preventDefault()}
+            onClick={assignBib}
+            disabled={!bibInput.trim() || !nextPending || savingAssign}
+            style={{
+              width: 120,
+              height: 64,
+              background: T.success,
+              border: 'none',
+              borderRadius: 12,
+              color: T.buttonText,
+              fontSize: 16,
+              fontWeight: 900,
+              cursor: !bibInput.trim() || !nextPending || savingAssign ? 'not-allowed' : 'pointer',
+              fontFamily: F,
+              letterSpacing: 1.2,
+              opacity: !bibInput.trim() || !nextPending || savingAssign ? 0.35 : 1,
+              textTransform: 'uppercase',
+            }}
+          >
+            {savingAssign ? '…' : 'Assign'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => assignSpecialBib('UNKNOWN')}
+            disabled={!nextPending || savingAssign}
+            style={{
+              flex: 1,
+              height: 42,
+              borderRadius: 10,
+              border: `1px solid ${T.warningBorder}`,
+              background: 'transparent',
+              color: nextPending ? T.warning : T.dim,
+              fontFamily: F,
+              fontWeight: 800,
+              fontSize: 12,
+              letterSpacing: 1.1,
+              textTransform: 'uppercase',
+              cursor: nextPending ? 'pointer' : 'not-allowed',
+              opacity: nextPending ? 1 : 0.5,
+            }}
+          >
+            Unknown
+          </button>
+
+          <button
+            onClick={() => assignSpecialBib('NO BIB')}
+            disabled={!nextPending || savingAssign}
+            style={{
+              flex: 1,
+              height: 42,
+              borderRadius: 10,
+              border: `1px solid ${T.warningBorder}`,
+              background: 'transparent',
+              color: nextPending ? T.warning : T.dim,
+              fontFamily: F,
+              fontWeight: 800,
+              fontSize: 12,
+              letterSpacing: 1.1,
+              textTransform: 'uppercase',
+              cursor: nextPending ? 'pointer' : 'not-allowed',
+              opacity: nextPending ? 1 : 0.5,
+            }}
+          >
+            No Bib
+          </button>
+        </div>
+      </div>
+
+      {/* Recent list */}
+      <div
+        style={{
+          borderRadius: 16,
+          border: `1px solid ${T.border2}`,
+          background: T.panel,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '10px 14px',
+            borderBottom: `1px solid ${T.border}`,
+            fontSize: 10,
+            color: T.muted2,
+            textTransform: 'uppercase',
+            letterSpacing: 2,
+            fontFamily: F,
+            fontWeight: 800,
+          }}
+        >
+          {isFinishCheckpoint ? 'Finish Queue' : 'Checkpoint Queue'}
+        </div>
+
+        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          {[...laps]
+            .filter(l => l.status !== 'void')
+            .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))
+            .map(l => {
+              const bib = l.bib_number || '—'
+              const name = l.bib_number ? getEntryDisplayName(l.bib_number) : 'Pending tap'
+              const isPending = !l.bib_number
+
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => selectPendingLap(l)}
+                  style={{
+                    width: '100%',
+                    display: 'grid',
+                    gridTemplateColumns: '64px 90px 70px 1fr',
+                    padding: '10px 14px',
+                    border: 'none',
+                    borderBottom: `1px solid ${T.faint}`,
+                    alignItems: 'center',
+                    gap: 8,
+                    background: selectedLapId === l.id
+                      ? T.pendingNext
+                      : isPending
+                        ? T.pendingBg
+                        : 'transparent',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: isPending ? T.warning : T.muted2,
+                      fontFamily: F,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {activePlaceByLapId[l.id] ?? '—'}
+                  </span>
+
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: T.textStrong,
+                      fontVariantNumeric: 'tabular-nums',
+                      fontFamily: F,
+                    }}
+                  >
+                    {fmt(l.elapsed_ms, true)}
+                  </span>
+
+                  <span
+                    style={{
+                      color: l.bib_number ? T.warning : T.dim,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      fontFamily: F,
+                    }}
+                  >
+                    {bib}
+                  </span>
+
+                  <span
+                    style={{
+                      fontSize: 13,
+                      color: name ? T.text : T.dim,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {name}
+                  </span>
+                </button>
+              )
+            })}
+        </div>
+      </div>
+
+      {message && (
+        <div style={{ textAlign: 'center', fontSize: 11, color: T.warning }}>
+          {message}
+        </div>
+      )}
+    </div>
+  </div>
+)
 }
 
 function getStyles(theme) {

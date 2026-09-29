@@ -1,831 +1,1382 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useTheme } from '../contexts/ThemeContext'
-import { getRaceCheckpointsPath, getRaceSetupPath } from '../lib/routes'
-import { getRaceElapsedMs, formatRaceClock } from '../lib/raceClock' // adjust if needed
+import { getRaceElapsedMs } from '../lib/raceClock'
+import {
+  loadRaceEventLocal,
+  clearRaceEventLocal,
+  mergeEventWithLocal,
+} from '../lib/raceEventLocalState'
 
-const F = `'Barlow Condensed', sans-serif`
-const FB = `'Barlow', sans-serif`
+const F = "'Barlow Condensed', sans-serif"
+const FB = "'Barlow', sans-serif"
 
-function formatElapsed(ms) {
-  return formatRaceClock(ms || 0)
+const THEMES = {
+  dark: {
+    bg: '#080b0f',
+    pageAlt: '#0c1018',
+    panel: '#0e1318',
+    panel2: '#141920',
+    border: '#1a2030',
+    border2: '#243040',
+    faint: '#10161f',
+    inputBg: '#070a0f',
+    inputBorder: '#1f2937',
+    text: '#cbd5e1',
+    textStrong: '#f8fafc',
+    muted: '#64748b',
+    muted2: '#475569',
+    dim: '#334155',
+    accent: '#f97316',
+    accentAlt: '#3b82f6',
+    buttonText: '#ffffff',
+    success: '#10b981',
+    successBright: '#34d399',
+    successBg: 'rgba(16,185,129,0.10)',
+    successBorder: 'rgba(16,185,129,0.28)',
+    warning: '#f59e0b',
+    warningBg: 'rgba(245,158,11,0.10)',
+    warningBorder: 'rgba(245,158,11,0.25)',
+    danger: '#ef4444',
+    dangerBg: 'rgba(239,68,68,0.08)',
+    dangerBorder: 'rgba(239,68,68,0.3)',
+    pendingBg: 'rgba(245,158,11,0.06)',
+    pendingNext: 'rgba(245,158,11,0.10)',
+    voidBg: 'rgba(239,68,68,0.08)',
+    zebra: '#0b1118',
+    flash: '#fb923c',
+    info: '#38bdf8',
+    infoBg: 'rgba(56,189,248,0.10)',
+    infoBorder: 'rgba(56,189,248,0.22)',
+  },
+  light: {
+    bg: '#f8fafc',
+    pageAlt: '#ffffff',
+    panel: '#ffffff',
+    panel2: '#f1f5f9',
+    border: '#dbe2ea',
+    border2: '#cbd5e1',
+    faint: '#edf2f7',
+    inputBg: '#ffffff',
+    inputBorder: '#cbd5e1',
+    text: '#334155',
+    textStrong: '#0f172a',
+    muted: '#64748b',
+    muted2: '#94a3b8',
+    dim: '#94a3b8',
+    accent: '#ea580c',
+    accentAlt: '#2563eb',
+    buttonText: '#ffffff',
+    success: '#16a34a',
+    successBright: '#16a34a',
+    successBg: 'rgba(22,163,74,0.08)',
+    successBorder: 'rgba(22,163,74,0.22)',
+    warning: '#d97706',
+    warningBg: 'rgba(217,119,6,0.08)',
+    warningBorder: 'rgba(217,119,6,0.2)',
+    danger: '#dc2626',
+    dangerBg: 'rgba(220,38,38,0.06)',
+    dangerBorder: 'rgba(220,38,38,0.25)',
+    pendingBg: 'rgba(217,119,6,0.05)',
+    pendingNext: 'rgba(217,119,6,0.10)',
+    voidBg: 'rgba(220,38,38,0.06)',
+    zebra: '#f8fafc',
+    flash: '#fb923c',
+    info: '#0284c7',
+    infoBg: 'rgba(2,132,199,0.08)',
+    infoBorder: 'rgba(2,132,199,0.20)',
+  },
 }
 
-function buildEntryMap(entries) {
-  const byBib = {}
+function fmt(ms, includeCenti = true) {
+  if (ms == null) return '00:00'
+  const total = Math.max(0, ms)
+  const hours = Math.floor(total / 3600000)
+  const minutes = Math.floor((total % 3600000) / 60000)
+  const seconds = Math.floor((total % 60000) / 1000)
+  const centi = Math.floor((total % 1000) / 10)
 
-  for (const entry of entries || []) {
-    const bib = String(entry?.bib_number || '').trim()
-    if (!bib) continue
-    byBib[bib] = entry
+  if (hours > 0) {
+    return includeCenti
+      ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centi).padStart(2, '0')}`
+      : `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
   }
 
-  return byBib
+  return includeCenti
+    ? `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(centi).padStart(2, '0')}`
+    : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-function getEntryDisplayName(entry) {
-  if (!entry) return ''
-  return [entry.first_name, entry.last_name].filter(Boolean).join(' ').trim()
+function getDeviceId() {
+  const key = 'checkpoint_timer_device_id'
+  let existing = localStorage.getItem(key)
+  if (existing) return existing
+  const created = `device-${Math.random().toString(36).slice(2)}-${Date.now()}`
+  localStorage.setItem(key, created)
+  return created
 }
 
-function getVisibleCheckpointRows(lapEvents, entryMap) {
-  const active = (lapEvents || [])
-    .filter(row => row.status !== 'void')
-    .slice()
-    .sort((a, b) => {
-      const aSeq = Number(a.sequence_number) || 0
-      const bSeq = Number(b.sequence_number) || 0
-      if (aSeq !== bSeq) return aSeq - bSeq
-
-      return new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
-    })
-
-  const withPlaces = active.map((row, index) => {
-    const bib = String(row.bib_number || '').trim()
-    const matched = bib ? entryMap[bib] : null
-
-    return {
-      ...row,
-      visiblePlace: index + 1,
-      athleteName: matched ? getEntryDisplayName(matched) : '',
-    }
-  })
-
-  return withPlaces.slice().reverse()
+function getModeStorageKey(checkpointId) {
+  return `checkpoint_timer_mode:${checkpointId}`
 }
 
-function getNextSequenceNumber(lapEvents) {
-  const maxSeq = Math.max(
-    0,
-    ...(lapEvents || [])
-      .filter(row => row.status !== 'void')
-      .map(row => Number(row.sequence_number) || 0)
-  )
-
-  return maxSeq + 1
+function getRepeatGuardStorageKey(checkpointId) {
+  return `checkpoint_timer_repeat_guard:${checkpointId}`
 }
 
-function getToggleKey(checkpointId, key) {
-  return `checkpoint-timer:${checkpointId}:${key}`
+function getThemeStorageKey(checkpointId) {
+  return `checkpoint_timer_theme:${checkpointId}`
 }
 
-function loadToggle(checkpointId, key, fallback = true) {
+function getPendingLocalStorageKey(eventId, checkpointId) {
+  return `checkpoint_timer_pending:${eventId}:${checkpointId}`
+}
+
+function loadPendingLocal(eventId, checkpointId) {
   try {
-    const value = localStorage.getItem(getToggleKey(checkpointId, key))
-    if (value == null) return fallback
-    return value === 'true'
+    const raw = localStorage.getItem(getPendingLocalStorageKey(eventId, checkpointId))
+    return raw ? JSON.parse(raw) : []
   } catch {
-    return fallback
+    return []
   }
 }
 
-function saveToggle(checkpointId, key, value) {
-  try {
-    localStorage.setItem(getToggleKey(checkpointId, key), String(value))
-  } catch {
-    // ignore
-  }
+function savePendingLocal(eventId, checkpointId, rows) {
+  localStorage.setItem(getPendingLocalStorageKey(eventId, checkpointId), JSON.stringify(rows))
 }
 
 export default function CheckpointTimerPage() {
-  const { eventId, checkpointId } = useParams()
+  const { id: eventId, checkpointId } = useParams()
   const navigate = useNavigate()
-  const { theme } = useTheme()
-  const S = useMemo(() => getStyles(theme), [theme])
 
+  const [session, setSession] = useState(null)
   const [event, setEvent] = useState(null)
   const [checkpoint, setCheckpoint] = useState(null)
-  const [entries, setEntries] = useState([])
-  const [lapEvents, setLapEvents] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [voidingId, setVoidingId] = useState(null)
-  const [error, setError] = useState('')
-  const [flashOn, setFlashOn] = useState(false)
-  const [nowMs, setNowMs] = useState(Date.now())
+  const [entries, setEntries] = useState({})
+  const [laps, setLaps] = useState([])
+  const [raceStart, setRaceStart] = useState(null)
+  const [elapsed, setElapsed] = useState(0)
 
-  const [soundEnabled, setSoundEnabled] = useState(() => loadToggle(checkpointId, 'sound', true))
-  const [hapticEnabled, setHapticEnabled] = useState(() => loadToggle(checkpointId, 'haptic', true))
-  const [flashEnabled, setFlashEnabled] = useState(() => loadToggle(checkpointId, 'flash', true))
+  const [bibInput, setBibInput] = useState('')
+  const [preview, setPreview] = useState(null)
 
-  const audioRef = useRef(null)
+  const [repeatGuardMs, setRepeatGuardMs] = useState(0)
+  const [recentFilter, setRecentFilter] = useState('all')
+  const [theme, setTheme] = useState('light')
+
+  const [savingLap, setSavingLap] = useState(false)
+  const [savingAssign, setSavingAssign] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [flash, setFlash] = useState(false)
+  const [message, setMessage] = useState('')
+  const [mobileTab, setMobileTab] = useState('timer')
+
+  const [editingLapId, setEditingLapId] = useState(null)
+  const [editingBib, setEditingBib] = useState('')
+
+  const [lastAction, setLastAction] = useState(null)
+  const [confirmUndoOpen, setConfirmUndoOpen] = useState(false)
+
+  const tickRef = useRef(null)
+  const retryRef = useRef(null)
+  const inputRef = useRef(null)
+  const deviceIdRef = useRef(null)
+  const lastCaptureAtRef = useRef(0)
+
+  const T = THEMES[theme]
+  const isAdmin = !!session?.user
+
+  const checkpointName = String(checkpoint?.name || '').trim().toLowerCase()
+  const isFinishCheckpoint =
+    checkpointName === 'finish' ||
+    checkpointName.includes('finish') ||
+    checkpointName.includes('finish line')
+
+  const captureLabel = isFinishCheckpoint ? 'Finish' : 'Lap'
+  const checkpointSummaryLabel = isFinishCheckpoint ? 'Finish Summary' : 'Checkpoint Summary'
+  const recordedCountLabel = isFinishCheckpoint ? 'Recorded Finishers' : 'Recorded Checkpoints'
+  const pendingLabel = isFinishCheckpoint ? 'Pending Finish Assignments' : 'Pending'
+  const actionWaitingLabel = isFinishCheckpoint ? 'No pending finishers' : 'No pending laps'
+
+  const pillBtn = active => ({
+    padding: '6px 10px',
+    borderRadius: 999,
+    border: `1px solid ${T.border2}`,
+    background: active ? T.accentAlt : 'transparent',
+    color: active ? T.buttonText : T.muted,
+    cursor: 'pointer',
+    fontFamily: F,
+    fontWeight: 700,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  })
+
+  const filterBtn = active => ({
+    padding: '7px 10px',
+    borderRadius: 999,
+    border: `1px solid ${T.border2}`,
+    background: active ? T.accent : 'transparent',
+    color: active ? T.buttonText : T.muted,
+    cursor: 'pointer',
+    fontFamily: F,
+    fontWeight: 700,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  })
+
+  const themeBtn = active => ({
+    padding: '6px 10px',
+    borderRadius: 999,
+    border: `1px solid ${T.border2}`,
+    background: active ? T.panel2 : 'transparent',
+    color: active ? T.textStrong : T.muted,
+    cursor: 'pointer',
+    fontFamily: F,
+    fontWeight: 700,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  })
+
+  const statusPill = (tone = 'default') => {
+    if (tone === 'success') {
+      return {
+        background: T.successBg,
+        border: `1px solid ${T.successBorder}`,
+        color: T.successBright,
+      }
+    }
+    if (tone === 'warning') {
+      return {
+        background: T.warningBg,
+        border: `1px solid ${T.warningBorder}`,
+        color: T.warning,
+      }
+    }
+    if (tone === 'danger') {
+      return {
+        background: T.dangerBg,
+        border: `1px solid ${T.dangerBorder}`,
+        color: T.danger,
+      }
+    }
+    if (tone === 'info') {
+      return {
+        background: T.infoBg,
+        border: `1px solid ${T.infoBorder}`,
+        color: T.info,
+      }
+    }
+    return {
+      background: T.panel2,
+      border: `1px solid ${T.border2}`,
+      color: T.muted,
+    }
+  }
+
+  const setTransientMessage = useCallback((text, ms = 1500) => {
+    setMessage(text)
+    if (ms) {
+      window.setTimeout(() => setMessage(''), ms)
+    }
+  }, [])
+
+  const pushLastAction = useCallback((payload) => {
+    setLastAction({
+      at: Date.now(),
+      ...payload,
+    })
+  }, [])
+
+  const refocusBibInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.focus()
+        inputRef.current.select?.()
+      }
+    })
+  }, [])
+
+  const isPendingLap = useCallback(
+    lap => lap?.status !== 'void' && !lap?.bib_number,
+    []
+  )
+
+  const getEntryDisplayName = useCallback((bib) => {
+    const entry = bib ? entries[bib] : null
+    if (!entry) return bib ? `Bib ${bib}` : 'Pending tap'
+    return `${entry.first_name ?? ''}${entry.last_name ? ` ${entry.last_name}` : ''}`.trim() || entry.team || `Bib ${bib}`
+  }, [entries])
+
+  const getEntryTeam = useCallback((bib) => {
+    const entry = bib ? entries[bib] : null
+    return entry?.team || ''
+  }, [entries])
+
+  const getLastActionTone = useCallback(() => {
+    if (!lastAction) return null
+    if (lastAction.status === 'failed') return { tone: 'danger', icon: '⚠', title: 'Action Failed' }
+    if (lastAction.status === 'local') return { tone: 'warning', icon: '☁', title: 'Saved Locally' }
+    if (lastAction.status === 'syncing') return { tone: 'info', icon: '↻', title: 'Saving' }
+    if (lastAction.type === 'undo') return { tone: 'warning', icon: '↩', title: 'Last Undo' }
+    if (lastAction.type === 'void') return { tone: 'warning', icon: '⛔', title: 'Voided' }
+    if (lastAction.type === 'assign') return { tone: 'success', icon: '✓', title: 'Last Assignment' }
+    return { tone: 'success', icon: '✓', title: isFinishCheckpoint ? 'Last Finish Capture' : 'Last Capture' }
+  }, [lastAction, isFinishCheckpoint])
 
   useEffect(() => {
-    setSoundEnabled(loadToggle(checkpointId, 'sound', true))
-    setHapticEnabled(loadToggle(checkpointId, 'haptic', true))
-    setFlashEnabled(loadToggle(checkpointId, 'flash', true))
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null)
+    })
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession ?? null)
+    })
+
+    return () => {
+      listener.subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    setConfirmUndoOpen(false)
+  }, [lastAction?.lapId])
+
+  useEffect(() => {
+    const savedGuard = localStorage.getItem(getRepeatGuardStorageKey(checkpointId))
+    if (savedGuard != null) {
+      const parsed = parseInt(savedGuard, 10)
+      if ([0, 300, 500].includes(parsed)) setRepeatGuardMs(parsed)
+    }
+
+    const savedTheme = localStorage.getItem(getThemeStorageKey(checkpointId))
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      setTheme(savedTheme)
+    } else {
+      setTheme('light')
+    }
   }, [checkpointId])
 
   useEffect(() => {
-    saveToggle(checkpointId, 'sound', soundEnabled)
-  }, [checkpointId, soundEnabled])
-
-  useEffect(() => {
-    saveToggle(checkpointId, 'haptic', hapticEnabled)
-  }, [checkpointId, hapticEnabled])
-
-  useEffect(() => {
-    saveToggle(checkpointId, 'flash', flashEnabled)
-  }, [checkpointId, flashEnabled])
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNowMs(Date.now())
-    }, 1000)
-
-    return () => window.clearInterval(timer)
-  }, [])
-
-  const loadLapEvents = useCallback(async () => {
-    if (!eventId || !checkpointId) return
-
-    const { data, error } = await supabase
-      .from('lap_events')
-      .select('*')
-      .eq('event_id', eventId)
-      .eq('checkpoint_id', checkpointId)
-      .neq('status', 'void')
-      .order('sequence_number', { ascending: false })
-      .order('captured_at', { ascending: false })
-
-    if (error) {
-      setError(error.message || 'Could not load checkpoint passes.')
-      return
-    }
-
-    setLapEvents(data || [])
-  }, [eventId, checkpointId])
-
-  const loadPage = useCallback(async () => {
-    if (!eventId || !checkpointId) return
-
-    setLoading(true)
-    setError('')
-
-    const [
-      { data: eventData, error: eventError },
-      { data: checkpointData, error: checkpointError },
-      { data: entriesData, error: entriesError },
-      { data: lapsData, error: lapsError },
-    ] = await Promise.all([
-      supabase.from('race_events').select('*').eq('id', eventId).single(),
-      supabase.from('race_checkpoints').select('*').eq('id', checkpointId).single(),
-      supabase.from('event_entries').select('id, bib_number, first_name, last_name').eq('event_id', eventId),
-      supabase
-        .from('lap_events')
-        .select('*')
-        .eq('event_id', eventId)
-        .eq('checkpoint_id', checkpointId)
-        .neq('status', 'void')
-        .order('sequence_number', { ascending: false })
-        .order('captured_at', { ascending: false }),
-    ])
-
-    if (eventError || checkpointError || entriesError || lapsError) {
-      setError(
-        eventError?.message ||
-        checkpointError?.message ||
-        entriesError?.message ||
-        lapsError?.message ||
-        'Failed to load checkpoint timer.'
-      )
-      setLoading(false)
-      return
-    }
-
-    setEvent(eventData || null)
-    setCheckpoint(checkpointData || null)
-    setEntries(entriesData || [])
-    setLapEvents(lapsData || [])
-    setLoading(false)
-  }, [eventId, checkpointId])
-
-  useEffect(() => {
-    loadPage()
-  }, [loadPage])
+    if (!checkpointId) return
+    localStorage.setItem(getRepeatGuardStorageKey(checkpointId), String(repeatGuardMs))
+  }, [checkpointId, repeatGuardMs])
 
   useEffect(() => {
     if (!checkpointId) return
+    localStorage.setItem(getThemeStorageKey(checkpointId), theme)
+  }, [checkpointId, theme])
 
-    const channel = supabase
-      .channel(`checkpoint-timer:${checkpointId}`)
+  useEffect(() => {
+    if (!eventId || !checkpointId) return
+
+    setEvent(null)
+    setCheckpoint(null)
+    setEntries({})
+    setLaps([])
+    setRaceStart(null)
+    setElapsed(0)
+    setBibInput('')
+    setPreview(null)
+    setEditingLapId(null)
+    setEditingBib('')
+    setLastAction(null)
+    setConfirmUndoOpen(false)
+
+    deviceIdRef.current = getDeviceId()
+
+    async function load() {
+      const [
+        { data: eventData },
+        { data: checkpointData },
+        { data: entryData },
+        { data: lapData },
+      ] = await Promise.all([
+        supabase.from('race_events').select('*').eq('id', eventId).single(),
+        supabase
+          .from('race_checkpoints')
+          .select('*')
+          .eq('id', checkpointId)
+          .eq('event_id', eventId)
+          .single(),
+        supabase.from('event_entries').select('*').eq('event_id', eventId),
+        supabase
+          .from('lap_events')
+          .select('*')
+          .eq('event_id', eventId)
+          .eq('checkpoint_id', checkpointId)
+          .order('captured_at', { ascending: true }),
+      ])
+
+      const localPending = loadRaceEventLocal(eventId)
+      const mergedEvent = mergeEventWithLocal(eventData || null, localPending)
+
+      setEvent(mergedEvent || null)
+      setCheckpoint(checkpointData || null)
+
+      if (mergedEvent?.race_started_at) {
+        setRaceStart(new Date(mergedEvent.race_started_at).getTime())
+      } else {
+        setRaceStart(null)
+        setElapsed(0)
+      }
+
+      const map = {}
+      ;(entryData || []).forEach(e => {
+        map[e.bib_number] = e
+      })
+      setEntries(map)
+      setLaps(lapData || [])
+    }
+
+    load()
+
+    const ch = supabase
+      .channel(`checkpoint:${eventId}:${checkpointId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'lap_events',
-          filter: `checkpoint_id=eq.${checkpointId}`,
-        },
-        () => {
-          loadLapEvents()
+        { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
+        payload => {
+          const localPending = loadRaceEventLocal(eventId)
+          const mergedEvent = mergeEventWithLocal(payload.new, localPending)
+
+          setEvent(mergedEvent)
+
+          if (mergedEvent?.race_started_at) {
+            setRaceStart(new Date(mergedEvent.race_started_at).getTime())
+          } else {
+            setRaceStart(null)
+            setElapsed(0)
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` },
+        payload => {
+          const row = payload.new
+          if (row.checkpoint_id !== checkpointId) return
+
+          setLaps(prev => {
+            if (prev.find(x => x.id === row.id)) return prev
+            return [...prev, row].sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+          })
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` },
+        payload => {
+          const row = payload.new
+          if (row.checkpoint_id !== checkpointId) return
+
+          setLaps(prev => {
+            const exists = prev.find(x => x.id === row.id)
+            const next = exists
+              ? prev.map(x => (x.id === row.id ? row : x))
+              : [...prev, row]
+
+            return next.sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+          })
         }
       )
       .subscribe()
 
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(ch)
+      clearInterval(tickRef.current)
+      clearInterval(retryRef.current)
     }
-  }, [checkpointId, loadLapEvents])
+  }, [eventId, checkpointId])
 
-  const entryMap = useMemo(() => buildEntryMap(entries), [entries])
+  useEffect(() => {
+    clearInterval(tickRef.current)
 
-  const rows = useMemo(() => getVisibleCheckpointRows(lapEvents, entryMap), [lapEvents, entryMap])
-
-  const elapsedMs = useMemo(() => {
-    return getRaceElapsedMs(event, nowMs)
-  }, [event, nowMs])
-
-  const lastRow = rows[0] || null
-  const canRecord = event?.status === 'active' && !!event?.race_started_at && !saving
-  const canUndoLast = !saving && !!lastRow
-
-  const triggerFeedback = () => {
-    if (flashEnabled) {
-      setFlashOn(true)
-      window.setTimeout(() => setFlashOn(false), 140)
+    if (!event?.race_started_at) {
+      setElapsed(0)
+      return
     }
 
-    if (hapticEnabled && navigator.vibrate) {
-      navigator.vibrate(35)
+    const updateElapsed = () => {
+      setElapsed(getRaceElapsedMs(event, Date.now()) ?? 0)
     }
 
-    if (soundEnabled) {
-      try {
-        if (audioRef.current) {
-          audioRef.current.currentTime = 0
-          audioRef.current.play().catch(() => {})
+    updateElapsed()
+
+    if (event?.status === 'active') {
+      tickRef.current = setInterval(updateElapsed, 50)
+    }
+
+    return () => clearInterval(tickRef.current)
+  }, [event?.race_started_at, event?.race_finished_at, event?.status])
+
+  useEffect(() => {
+    const bib = bibInput.trim()
+    if (!bib) {
+      setPreview(null)
+      return
+    }
+    const entry = entries[bib]
+    if (entry) {
+      setPreview({
+        found: true,
+        name: getEntryDisplayName(bib),
+        team: entry.team || '',
+      })
+    } else {
+      setPreview({ found: false })
+    }
+  }, [bibInput, entries, getEntryDisplayName])
+
+  useEffect(() => {
+    if (!eventId || !checkpointId) return
+
+    async function retryUnsynced() {
+      const localRaceEvent = loadRaceEventLocal(eventId)
+
+      if (localRaceEvent?.type === 'start_race') {
+        const { data: syncedEvent, error: eventSyncError } = await supabase
+          .from('race_events')
+          .update({
+            status: 'active',
+            race_started_at: localRaceEvent.race_started_at,
+            race_finished_at: null,
+          })
+          .eq('id', eventId)
+          .select()
+          .single()
+
+        if (!eventSyncError && syncedEvent) {
+          clearRaceEventLocal(eventId)
+          setEvent(syncedEvent)
+
+          if (syncedEvent?.race_started_at) {
+            setRaceStart(new Date(syncedEvent.race_started_at).getTime())
+          } else {
+            setRaceStart(null)
+            setElapsed(0)
+          }
         }
-      } catch {
-        // ignore
       }
-    }
-  }
 
-  const recordLap = async () => {
-    if (!event?.race_started_at || event?.status !== 'active' || saving) return
+      const pendingLocal = loadPendingLocal(eventId, checkpointId)
+      if (!pendingLocal.length) return
 
-    setSaving(true)
-    setError('')
+      setSyncing(true)
+      const remaining = []
 
-    const nextSequence = getNextSequenceNumber(lapEvents)
-    const elapsedMsValue = getRaceElapsedMs(event, Date.now())
+      for (const row of pendingLocal) {
+        if (row.type === 'insert') {
+          const { local_id, type, ...dbRow } = row
+          const { data, error } = await supabase.from('lap_events').insert(dbRow).select().single()
+          if (!error && data) {
+            setLaps(prev => {
+              const withoutLocal = prev.filter(x => x.id !== local_id)
+              if (withoutLocal.find(x => x.id === data.id)) return withoutLocal
+              return [...withoutLocal, data].sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+            })
 
-    const { data, error } = await supabase
-      .from('lap_events')
-      .insert({
-        event_id: eventId,
-        checkpoint_id: checkpointId,
-        user_id: event?.user_id || null,
-        entry_id: null,
-        bib_number: null,
-        elapsed_ms: elapsedMsValue,
-        captured_at: new Date().toISOString(),
-        assigned_at: null,
-        status: 'pending',
-        sequence_number: nextSequence,
-        source: 'manual',
-        device_id: null,
-      })
-      .select()
-      .single()
+            pushLastAction({
+              type: 'capture',
+              status: 'saved',
+              lapId: data.id,
+              bib_number: data.bib_number || null,
+              name: data.bib_number ? getEntryDisplayName(data.bib_number) : 'Pending tap',
+              team: data.bib_number ? getEntryTeam(data.bib_number) : '',
+              elapsed_ms: data.elapsed_ms,
+              detail: 'Local save synced successfully',
+            })
+          } else {
+            remaining.push(row)
+          }
+        } else if (row.type === 'assign') {
+          const { target_id, bib_number, entry_id } = row
+          const { error } = await supabase
+            .from('lap_events')
+            .update({
+              bib_number,
+              entry_id,
+              assigned_at: new Date().toISOString(),
+              status: 'assigned',
+              is_corrected: true,
+            })
+            .eq('id', target_id)
 
-    setSaving(false)
+          if (error) remaining.push(row)
+        } else if (row.type === 'status_update') {
+          const { target_id, payload } = row
+          const { error } = await supabase
+            .from('lap_events')
+            .update(payload)
+            .eq('id', target_id)
 
-    if (error || !data) {
-      setError(error?.message || 'Could not record lap.')
-      return
-    }
+          if (error) remaining.push(row)
+        } else {
+          remaining.push(row)
+        }
+      }
 
-    triggerFeedback()
-    setLapEvents(prev => [data, ...prev])
-  }
-
-  const voidLap = async (lapId, note = 'Voided from timer page') => {
-    if (!lapId) return
-
-    setVoidingId(lapId)
-    setError('')
-
-    const { error } = await supabase
-      .from('lap_events')
-      .update({
-        status: 'void',
-        is_corrected: true,
-        correction_note: note,
-      })
-      .eq('id', lapId)
-
-    setVoidingId(null)
-
-    if (error) {
-      setError(error.message || 'Could not void lap.')
-      return
+      savePendingLocal(eventId, checkpointId, remaining)
+      setSyncing(false)
     }
 
-    setLapEvents(prev => prev.filter(row => row.id !== lapId))
-  }
+    retryUnsynced()
+    retryRef.current = setInterval(retryUnsynced, 5000)
 
-  const undoLast = async () => {
-    if (!lastRow) return
-    await voidLap(lastRow.id, 'Voided from timer undo last')
-  }
+    return () => clearInterval(retryRef.current)
+  }, [eventId, checkpointId, getEntryDisplayName, getEntryTeam, pushLastAction])
 
-  if (loading) {
-    return (
-      <div style={S.loadingPage}>
-        Loading checkpoint timer…
-      </div>
-    )
-  }
+  const canCapture = event?.status === 'active' && !!raceStart
 
-  return (
-    <div style={S.page}>
-      <link
-        href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap"
-        rel="stylesheet"
-      />
-
-      <audio ref={audioRef} preload="auto">
-        <source src="/sounds/timer-tap.mp3" type="audio/mpeg" />
-      </audio>
-
-      <div style={S.header}>
-        <button type="button" style={S.backBtn} onClick={() => navigate(getRaceCheckpointsPath(eventId))}>
-          ← Timer Devices
-        </button>
-
-        <button type="button" style={S.backBtn} onClick={() => navigate(getRaceSetupPath(eventId))}>
-          Setup
-        </button>
-      </div>
-
-      <div style={S.body}>
-        <div style={S.topCard}>
-          <div style={S.kicker}>Checkpoint Timer</div>
-          <div style={S.title}>{checkpoint?.name || 'Checkpoint'}</div>
-          <div style={S.subTitle}>{event?.name || 'Race'}</div>
-
-          <div style={S.clockWrap}>
-            <div style={S.clockLabel}>
-              {event?.status === 'active' ? 'Race Clock' : 'Waiting'}
-            </div>
-            <div style={S.clockValue}>{formatRaceClock(elapsedMs)}</div>
-          </div>
-
-          <div style={S.metaRow}>
-            <span style={S.badge}>
-              {event?.status === 'active' ? 'LIVE' : (event?.status || 'DRAFT').toUpperCase()}
-            </span>
-            <span style={S.metaText}>
-              {rows.length} recorded {rows.length === 1 ? 'pass' : 'passes'}
-            </span>
-          </div>
-        </div>
-
-        {error ? <div style={S.errorBox}>{error}</div> : null}
-
-        <div style={{ ...S.captureCard, ...(flashOn ? S.captureCardFlash : null) }}>
-          <button
-            type="button"
-            onClick={recordLap}
-            disabled={!canRecord}
-            style={{
-              ...S.captureBtn,
-              opacity: canRecord ? 1 : 0.6,
-              cursor: canRecord ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {saving ? 'Recording…' : 'Record Lap'}
-          </button>
-
-          <div style={S.actionRow}>
-            <button
-              type="button"
-              onClick={undoLast}
-              disabled={!canUndoLast || !!voidingId}
-              style={{
-                ...S.secondaryBtn,
-                opacity: canUndoLast && !voidingId ? 1 : 0.6,
-                cursor: canUndoLast && !voidingId ? 'pointer' : 'not-allowed',
-              }}
-            >
-              Undo Last
-            </button>
-          </div>
-
-          <div style={S.toggleRow}>
-            <ToggleChip
-              label="Sound"
-              enabled={soundEnabled}
-              onToggle={() => setSoundEnabled(v => !v)}
-              styles={S}
-            />
-            <ToggleChip
-              label="Haptic"
-              enabled={hapticEnabled}
-              onToggle={() => setHapticEnabled(v => !v)}
-              styles={S}
-            />
-            <ToggleChip
-              label="Flash"
-              enabled={flashEnabled}
-              onToggle={() => setFlashEnabled(v => !v)}
-              styles={S}
-            />
-          </div>
-        </div>
-
-        <div style={S.listCard}>
-          <div style={S.listHeader}>
-            <div style={S.listTitle}>Recent Passes</div>
-            <div style={S.listHint}>Newest first</div>
-          </div>
-
-          {rows.length === 0 ? (
-            <div style={S.emptyState}>No passes recorded yet.</div>
-          ) : (
-            <div style={S.list}>
-              {rows.map(row => (
-                <div key={row.id} style={S.row}>
-                  <div style={S.rowMain}>
-                    <span style={S.place}>{row.visiblePlace}</span>
-                    <span style={S.time}>{formatElapsed(row.elapsed_ms)}</span>
-                    <span style={S.bib}>
-                      {row.bib_number ? row.bib_number : '—'}
-                    </span>
-                    <span style={S.name}>
-                      {row.athleteName || (row.bib_number ? 'Unknown athlete' : 'Unassigned')}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => voidLap(row.id, 'Voided from timer recent list')}
-                    disabled={voidingId === row.id}
-                    style={{
-                      ...S.rowActionBtn,
-                      opacity: voidingId === row.id ? 0.6 : 1,
-                    }}
-                  >
-                    {voidingId === row.id ? 'Voiding…' : 'Void'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+  const pending = useMemo(
+    () =>
+      laps
+        .filter(isPendingLap)
+        .sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at)),
+    [laps, isPendingLap]
   )
-}
 
-function ToggleChip({ label, enabled, onToggle, styles }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
+  const assigned = useMemo(
+    () =>
+      laps
+        .filter(l => l.status !== 'void' && !!l.bib_number)
+        .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at)),
+    [laps]
+  )
+
+  const voided = useMemo(
+    () =>
+      laps
+        .filter(l => l.status === 'void')
+        .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at)),
+    [laps]
+  )
+
+  const activeOrderedLaps = useMemo(() => {
+    return laps
+      .filter(l => l.status !== 'void')
+      .sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+  }, [laps])
+
+  const activePlaceByLapId = useMemo(() => {
+    const map = {}
+    activeOrderedLaps.forEach((lap, idx) => {
+      map[lap.id] = idx + 1
+    })
+    return map
+  }, [activeOrderedLaps])
+
+  const nextPending = pending[0] || null
+
+  const undoTarget = useMemo(() => {
+    if (!lastAction?.lapId) return null
+    return laps.find(l => l.id === lastAction.lapId && l.status !== 'void') || null
+  }, [lastAction, laps])
+
+  const duplicateBibAtCheckpoint = useMemo(() => {
+    const bib = bibInput.trim()
+    if (!bib) return false
+    return laps.some(l => l.status !== 'void' && l.bib_number === bib)
+  }, [bibInput, laps])
+
+  const filteredRecentLaps = useMemo(() => {
+    const sorted = [...laps].sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))
+
+    if (recentFilter === 'pending') return sorted.filter(isPendingLap)
+    if (recentFilter === 'assigned') return sorted.filter(l => l.status !== 'void' && !!l.bib_number)
+    if (recentFilter === 'void') return sorted.filter(l => l.status === 'void')
+    return sorted
+  }, [laps, recentFilter, isPendingLap])
+
+  const recentCaptured = useMemo(() => {
+    return [...laps]
+      .filter(l => l.status !== 'void')
+      .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))
+      .slice(0, 5)
+  }, [laps])
+
+  const checkpointCount = useMemo(() => {
+    return laps.filter(l => l.status !== 'void').length
+  }, [laps])
+
+  const lastActiveLap = useMemo(() => {
+    return [...laps]
+      .filter(l => l.status !== 'void')
+      .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))[0] || null
+  }, [laps])
+
+  const currentSaveState = useMemo(() => {
+    const pendingLocal = eventId && checkpointId ? loadPendingLocal(eventId, checkpointId) : []
+    if (syncing) return { label: 'Syncing…', tone: 'info' }
+    if (pendingLocal.length > 0) return { label: 'Saved locally', tone: 'warning' }
+    if (canCapture) return { label: 'Ready', tone: 'success' }
+    if (nextPending) return { label: 'Assigning', tone: 'info' }
+    if (event?.status === 'finished') return { label: 'Race finished', tone: 'default' }
+    if (event?.status === 'results_review') return { label: 'Results review', tone: 'warning' }
+    return { label: 'Waiting', tone: 'default' }
+  }, [eventId, checkpointId, syncing, canCapture, event?.status, nextPending])
+
+  const lastActionTone = getLastActionTone()
+
+  const assignBib = useCallback(async () => {
+  const bib = bibInput.trim()
+  if (!bib || !nextPending || savingAssign) return
+
+  const entry = entries[bib]
+  setSavingAssign(true)
+
+  const update = {
+    bib_number: bib,
+    entry_id: entry?.id ?? null,
+    assigned_at: new Date().toISOString(),
+    status: 'assigned',
+    is_corrected: true,
+  }
+
+  setLaps(prev => prev.map(l => (l.id === nextPending.id ? { ...l, ...update } : l)))
+
+  pushLastAction({
+    type: 'assign',
+    status: 'syncing',
+    lapId: nextPending.id,
+    bib_number: bib,
+    name: getEntryDisplayName(bib),
+    team: getEntryTeam(bib),
+    elapsed_ms: nextPending.elapsed_ms,
+    detail: isFinishCheckpoint
+      ? 'Assigning bib to pending finisher…'
+      : 'Assigning bib to pending tap…',
+  })
+
+  const { error } = await supabase
+    .from('lap_events')
+    .update(update)
+    .eq('id', nextPending.id)
+
+  if (error) {
+    const pendingLocal = loadPendingLocal(eventId, checkpointId)
+    pendingLocal.push({
+      type: 'assign',
+      target_id: nextPending.id,
+      bib_number: bib,
+      entry_id: entry?.id ?? null,
+    })
+    savePendingLocal(eventId, checkpointId, pendingLocal)
+
+    pushLastAction({
+      type: 'assign',
+      status: 'local',
+      lapId: nextPending.id,
+      bib_number: bib,
+      name: getEntryDisplayName(bib),
+      team: getEntryTeam(bib),
+      elapsed_ms: nextPending.elapsed_ms,
+      detail: 'Assignment saved locally — waiting to sync',
+    })
+
+    setTransientMessage('Assignment saved locally, waiting to sync', 2000)
+  } else {
+    pushLastAction({
+      type: 'assign',
+      status: 'saved',
+      lapId: nextPending.id,
+      bib_number: bib,
+      name: getEntryDisplayName(bib),
+      team: getEntryTeam(bib),
+      elapsed_ms: nextPending.elapsed_ms,
+      detail: 'Bib assigned',
+    })
+
+    setTransientMessage(`Assigned bib ${bib}`, 1500)
+  }
+
+  setBibInput('')
+  setPreview(null)
+  setSavingAssign(false)
+  refocusBibInput()
+}, [
+  bibInput,
+  nextPending,
+  savingAssign,
+  entries,
+  eventId,
+  checkpointId,
+  getEntryDisplayName,
+  getEntryTeam,
+  pushLastAction,
+  refocusBibInput,
+  setTransientMessage,
+  isFinishCheckpoint,
+])
+
+
+ return (
+  <div
+    style={{
+      minHeight: '100dvh',
+      background: T.bg,
+      color: T.text,
+      fontFamily: FB,
+      display: 'flex',
+      flexDirection: 'column',
+    }}
+  >
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    {/* Header */}
+    <div
       style={{
-        ...styles.toggleChip,
-        ...(enabled ? styles.toggleChipOn : styles.toggleChipOff),
+        padding: '18px 16px 14px',
+        borderBottom: `1px solid ${T.border}`,
+        background: T.pageAlt,
+        textAlign: 'center',
       }}
     >
-      {label}: {enabled ? 'On' : 'Off'}
-    </button>
-  )
-}
+      <div
+        style={{
+          fontSize: 'clamp(28px, 6vw, 40px)',
+          fontWeight: 900,
+          color: T.textStrong,
+          fontFamily: F,
+          lineHeight: 1,
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+        }}
+      >
+        {checkpoint?.name || 'Checkpoint'}
+      </div>
 
-function getStyles(theme) {
-  return {
-    page: {
-      minHeight: '100dvh',
-      background: theme.pageBg,
-      color: theme.text,
-      padding: 16,
-    },
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 'clamp(40px, 9vw, 64px)',
+          fontWeight: 900,
+          letterSpacing: -1.5,
+          color: event?.race_started_at ? T.textStrong : T.dim,
+          fontVariantNumeric: 'tabular-nums',
+          fontFamily: F,
+          lineHeight: 1,
+        }}
+      >
+        {fmt(elapsed)}
+      </div>
 
-    loadingPage: {
-      minHeight: '100dvh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: theme.pageBg,
-      color: theme.textMuted,
-      fontFamily: FB,
-    },
+      <div
+        style={{
+          marginTop: 8,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          ...statusPill(currentSaveState.tone),
+          borderRadius: 999,
+          padding: '6px 10px',
+          fontSize: 10,
+          fontFamily: F,
+          fontWeight: 800,
+          letterSpacing: 1.1,
+          textTransform: 'uppercase',
+        }}
+      >
+        {currentSaveState.label}
+      </div>
 
-    header: {
-      display: 'flex',
-      gap: 10,
-      flexWrap: 'wrap',
-      marginBottom: 16,
-    },
+      <div
+        style={{
+          marginTop: 10,
+          fontSize: 11,
+          color: T.muted,
+        }}
+      >
+        {isFinishCheckpoint
+          ? 'Tap finishers as they cross.'
+          : 'Tap racers as they pass.'}
+      </div>
+    </div>
 
-    backBtn: {
-      height: 40,
-      padding: '0 14px',
-      borderRadius: 10,
-      border: `1px solid ${theme.border}`,
-      background: theme.cardBg,
-      color: theme.text,
-      cursor: 'pointer',
-      fontFamily: F,
-      fontWeight: 700,
-      fontSize: 13,
-      letterSpacing: 1,
-    },
+    {/* Main content */}
+    <div
+      style={{
+        flex: 1,
+        width: '100%',
+        maxWidth: 760,
+        margin: '0 auto',
+        display: 'grid',
+        gap: 16,
+        padding: 16,
+      }}
+    >
+      {/* Optional pending assignment banner */}
+      {pending.length > 0 && (
+        <div
+          style={{
+            borderRadius: 12,
+            border: `1px solid ${T.warningBorder}`,
+            background: T.warningBg,
+            padding: '12px 14px',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: T.warning,
+              fontFamily: F,
+              fontWeight: 900,
+              letterSpacing: 1.5,
+              textTransform: 'uppercase',
+            }}
+          >
+            {isFinishCheckpoint
+              ? `${pending.length} unassigned ${pending.length === 1 ? 'finisher' : 'finishers'}`
+              : `${pending.length} unassigned ${pending.length === 1 ? 'tap' : 'taps'}`}
+          </div>
 
-    body: {
-      maxWidth: 860,
-      margin: '0 auto',
-      display: 'grid',
-      gap: 16,
-    },
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 12,
+              color: T.muted,
+            }}
+          >
+            Assignment happens on the assigner screen.
+          </div>
+        </div>
+      )}
 
-    topCard: {
-      background: theme.cardBg,
-      border: `1px solid ${theme.border}`,
-      borderRadius: 18,
-      padding: 18,
-      boxShadow: theme.shadowSm,
-    },
+      {/* Capture button */}
+      <div
+        style={{
+          display: 'grid',
+          gap: 10,
+        }}
+      >
+        <button
+          onPointerDown={e => {
+            e.preventDefault()
+            if (canCapture) captureLap()
+          }}
+          disabled={!canCapture || savingLap}
+          style={{
+            width: '100%',
+            minHeight: 140,
+            borderRadius: 18,
+            border: 'none',
+            background: !canCapture
+              ? T.dim
+              : flash
+                ? T.flash
+                : T.accent,
+            color: T.buttonText,
+            fontSize: 28,
+            fontWeight: 900,
+            letterSpacing: 2,
+            cursor: canCapture && !savingLap ? 'pointer' : 'not-allowed',
+            fontFamily: F,
+            textTransform: 'uppercase',
+            transform: flash ? 'scale(0.97)' : 'scale(1)',
+            transition: 'background 0.08s, transform 0.08s',
+            touchAction: 'manipulation',
+            opacity: canCapture && !savingLap ? 1 : 0.6,
+          }}
+        >
+          {savingLap
+            ? 'Saving…'
+            : event?.status === 'finished'
+              ? 'Ended'
+              : !canCapture
+                ? 'Waiting'
+                : captureLabel}
+        </button>
 
-    kicker: {
-      fontSize: 11,
-      color: theme.secondaryText,
-      textTransform: 'uppercase',
-      letterSpacing: 2,
-      marginBottom: 8,
-      fontFamily: F,
-      fontWeight: 800,
-    },
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={undoLastCheckpoint}
+            disabled={!undoTarget}
+            style={{
+              flex: 1,
+              minWidth: 140,
+              height: 42,
+              borderRadius: 10,
+              border: `1px solid ${T.warningBorder}`,
+              background: 'transparent',
+              color: undoTarget ? T.warning : T.dim,
+              fontFamily: F,
+              fontWeight: 800,
+              fontSize: 12,
+              letterSpacing: 1.1,
+              textTransform: 'uppercase',
+              cursor: undoTarget ? 'pointer' : 'not-allowed',
+              opacity: undoTarget ? 1 : 0.5,
+            }}
+          >
+            Undo Last
+          </button>
 
-    title: {
-      fontSize: 28,
-      lineHeight: 1,
-      fontFamily: F,
-      fontWeight: 900,
-      color: theme.text,
-      marginBottom: 6,
-    },
+          <button
+            onClick={voidLastPending}
+            disabled={!pending.length}
+            style={{
+              flex: 1,
+              minWidth: 140,
+              height: 42,
+              borderRadius: 10,
+              border: `1px solid ${T.dangerBorder}`,
+              background: 'transparent',
+              color: pending.length ? T.danger : T.dim,
+              fontFamily: F,
+              fontWeight: 800,
+              fontSize: 12,
+              letterSpacing: 1.1,
+              textTransform: 'uppercase',
+              cursor: pending.length ? 'pointer' : 'not-allowed',
+              opacity: pending.length ? 1 : 0.5,
+            }}
+          >
+            {isFinishCheckpoint ? 'Void Last Finisher' : 'Void Last Tap'}
+          </button>
+        </div>
+      </div>
 
-    subTitle: {
-      fontSize: 14,
-      color: theme.textMuted,
-      marginBottom: 16,
-      fontFamily: FB,
-    },
+      {/* Summary cards */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            borderRadius: 16,
+            border: `1px solid ${T.border2}`,
+            background: T.panel,
+            padding: '12px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            minHeight: 150,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: T.muted2,
+              textTransform: 'uppercase',
+              letterSpacing: 2,
+              fontFamily: F,
+              fontWeight: 700,
+            }}
+          >
+            {checkpointSummaryLabel}
+          </div>
 
-    clockWrap: {
-      marginBottom: 14,
-    },
+          <div style={{ marginTop: 10 }}>
+            <div
+              style={{
+                fontSize: 40,
+                lineHeight: 1,
+                fontWeight: 900,
+                color: T.textStrong,
+                fontFamily: F,
+              }}
+            >
+              {checkpointCount}
+            </div>
 
-    clockLabel: {
-      fontSize: 11,
-      color: theme.textMuted,
-      textTransform: 'uppercase',
-      letterSpacing: 1.6,
-      fontFamily: F,
-      fontWeight: 700,
-      marginBottom: 6,
-    },
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                color: T.muted,
+                textTransform: 'uppercase',
+                letterSpacing: 1.4,
+                fontFamily: F,
+                fontWeight: 700,
+              }}
+            >
+              {recordedCountLabel}
+            </div>
+          </div>
 
-    clockValue: {
-      fontSize: 48,
-      lineHeight: 1,
-      letterSpacing: -1.5,
-      fontFamily: F,
-      fontWeight: 900,
-      color: theme.text,
-    },
+          <div style={{ marginTop: 12 }}>
+            <div
+              style={{
+                fontSize: 10,
+                color: T.muted2,
+                textTransform: 'uppercase',
+                letterSpacing: 1.4,
+                fontFamily: F,
+                fontWeight: 700,
+              }}
+            >
+              Last Time
+            </div>
 
-    metaRow: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      flexWrap: 'wrap',
-    },
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 24,
+                lineHeight: 1,
+                fontWeight: 900,
+                color: T.textStrong,
+                fontFamily: F,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {lastActiveLap ? fmt(lastActiveLap.elapsed_ms, true) : '—'}
+            </div>
+          </div>
+        </div>
 
-    badge: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      padding: '6px 10px',
-      borderRadius: 999,
-      background: 'rgba(239,68,68,0.10)',
-      color: '#ef4444',
-      border: '1px solid rgba(239,68,68,0.25)',
-      fontSize: 11,
-      letterSpacing: 1.2,
-      textTransform: 'uppercase',
-      fontFamily: F,
-      fontWeight: 800,
-    },
+        <div
+          style={{
+            borderRadius: 16,
+            border: `1px solid ${T.border2}`,
+            background: T.panel,
+            padding: '12px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            minHeight: 150,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: T.muted2,
+              textTransform: 'uppercase',
+              letterSpacing: 2,
+              fontFamily: F,
+              fontWeight: 700,
+            }}
+          >
+            {isFinishCheckpoint ? 'Last Finishers' : 'Last Captures'}
+          </div>
 
-    metaText: {
-      fontSize: 12,
-      color: theme.textMuted,
-      fontFamily: FB,
-    },
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+            {recentCaptured.length === 0 ? (
+              <div style={{ color: T.dim, fontSize: 14, textAlign: 'center', paddingTop: 20 }}>
+                No taps yet
+              </div>
+            ) : (
+              recentCaptured.slice(0, 3).map((l, idx) => {
+                const label = idx === 0 ? 'Last' : idx === 1 ? 'Prev' : 'Earlier'
+                const bib = l.bib_number || '—'
+                const name = l.bib_number ? getEntryDisplayName(l.bib_number) : 'Pending tap'
 
-    errorBox: {
-      background: theme.dangerSurface || 'rgba(220,38,38,0.10)',
-      border: `1px solid ${theme.dangerBorder || '#ef4444'}`,
-      color: theme.dangerText || theme.text,
-      borderRadius: 12,
-      padding: 12,
-      fontSize: 13,
-    },
+                return (
+                  <div key={l.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          color: idx === 0 ? T.successBright : T.muted2,
+                          textTransform: 'uppercase',
+                          letterSpacing: 1.2,
+                          fontFamily: F,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {label}
+                      </span>
 
-    captureCard: {
-      background: theme.cardBg,
-      border: `1px solid ${theme.border}`,
-      borderRadius: 18,
-      padding: 18,
-      transition: 'box-shadow 120ms ease, border-color 120ms ease, background 120ms ease',
-    },
+                      <span
+                        style={{
+                          fontSize: idx === 0 ? 24 : 18,
+                          color: T.textStrong,
+                          fontWeight: 900,
+                          fontFamily: F,
+                          lineHeight: 1,
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {fmt(l.elapsed_ms, true)}
+                      </span>
+                    </div>
 
-    captureCardFlash: {
-      boxShadow: '0 0 0 3px rgba(249,115,22,0.18)',
-      border: '1px solid rgba(249,115,22,0.35)',
-      background: theme.mode === 'light' ? '#fffaf5' : theme.cardBg,
-    },
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: T.textStrong,
+                        fontWeight: 700,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {isFinishCheckpoint
+                        ? `Place ${activePlaceByLapId[l.id] ?? '—'} · Bib ${bib} · ${name}`
+                        : `Bib ${bib} · ${name}`}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      </div>
 
-    captureBtn: {
-      width: '100%',
-      minHeight: 120,
-      borderRadius: 18,
-      border: 'none',
-      background: 'linear-gradient(135deg, #f97316, #ea580c)',
-      color: '#fff',
-      fontFamily: F,
-      fontWeight: 900,
-      fontSize: 30,
-      letterSpacing: 1.4,
-      textTransform: 'uppercase',
-      cursor: 'pointer',
-      boxShadow: '0 10px 24px rgba(249,115,22,0.22)',
-    },
+      {/* Last action / undo feedback */}
+      {lastAction && lastActionTone && (
+        <div
+          style={{
+            borderRadius: 14,
+            border: statusPill(lastActionTone.tone).border,
+            background: statusPill(lastActionTone.tone).background,
+            padding: '12px 14px',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: statusPill(lastActionTone.tone).color,
+              fontFamily: F,
+              fontWeight: 900,
+              letterSpacing: 1.5,
+              textTransform: 'uppercase',
+            }}
+          >
+            {lastActionTone.icon} {lastActionTone.title}
+          </div>
 
-    actionRow: {
-      display: 'flex',
-      gap: 10,
-      marginTop: 12,
-      flexWrap: 'wrap',
-    },
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 24,
+              color: T.textStrong,
+              fontFamily: F,
+              fontWeight: 900,
+              lineHeight: 1,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {fmt(lastAction.elapsed_ms, true)}
+          </div>
 
-    secondaryBtn: {
-      height: 44,
-      padding: '0 14px',
-      borderRadius: 10,
-      border: `1px solid ${theme.border}`,
-      background: theme.cardAltBg || theme.secondaryBg,
-      color: theme.text,
-      cursor: 'pointer',
-      fontFamily: F,
-      fontWeight: 700,
-      fontSize: 13,
-      letterSpacing: 1,
-    },
+          <div style={{ marginTop: 4, fontSize: 14, color: T.textStrong, fontWeight: 700 }}>
+            {lastAction.name}
+            {lastAction.bib_number ? ` · Bib ${lastAction.bib_number}` : ''}
+          </div>
 
-    toggleRow: {
-      display: 'flex',
-      gap: 10,
-      flexWrap: 'wrap',
-      marginTop: 12,
-    },
+          <div style={{ marginTop: 5, fontSize: 12, color: T.muted }}>
+            {lastAction.detail}
+          </div>
+        </div>
+      )}
 
-    toggleChip: {
-      height: 38,
-      padding: '0 12px',
-      borderRadius: 999,
-      border: `1px solid ${theme.border}`,
-      cursor: 'pointer',
-      fontFamily: F,
-      fontWeight: 700,
-      fontSize: 12,
-      letterSpacing: 1,
-    },
+      {/* Recent list */}
+      <div
+        style={{
+          borderRadius: 16,
+          border: `1px solid ${T.border2}`,
+          background: T.panel,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '10px 14px',
+            borderBottom: `1px solid ${T.border}`,
+            fontSize: 10,
+            color: T.muted2,
+            textTransform: 'uppercase',
+            letterSpacing: 2,
+            fontFamily: F,
+            fontWeight: 800,
+          }}
+        >
+          Recent Passes
+        </div>
 
-    toggleChipOn: {
-      background: 'rgba(249,115,22,0.10)',
-      color: '#f97316',
-      border: '1px solid rgba(249,115,22,0.30)',
-    },
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          {[...laps]
+            .filter(l => l.status !== 'void')
+            .sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))
+            .map(l => {
+              const bib = l.bib_number || '—'
+              const name = l.bib_number ? getEntryDisplayName(l.bib_number) : 'Pending tap'
 
-    toggleChipOff: {
-      background: theme.cardAltBg || theme.secondaryBg,
-      color: theme.textMuted,
-    },
+              return (
+                <div
+                  key={l.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '90px 70px 1fr 96px',
+                    padding: '8px 14px',
+                    borderBottom: `1px solid ${T.faint}`,
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: T.textStrong,
+                      fontVariantNumeric: 'tabular-nums',
+                      fontFamily: F,
+                    }}
+                  >
+                    {fmt(l.elapsed_ms, true)}
+                  </span>
 
-    listCard: {
-      background: theme.cardBg,
-      border: `1px solid ${theme.border}`,
-      borderRadius: 18,
-      padding: 18,
-      boxShadow: theme.shadowSm,
-    },
+                  <span
+                    style={{
+                      color: l.bib_number ? T.warning : T.dim,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      fontFamily: F,
+                    }}
+                  >
+                    {bib}
+                  </span>
 
-    listHeader: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      gap: 10,
-      alignItems: 'baseline',
-      flexWrap: 'wrap',
-      marginBottom: 12,
-    },
+                  <span
+                    style={{
+                      fontSize: 13,
+                      color: name ? T.text : T.dim,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {name}
+                  </span>
 
-    listTitle: {
-      fontSize: 18,
-      color: theme.text,
-      fontFamily: F,
-      fontWeight: 800,
-    },
+                  <button
+                    onClick={() => voidLap(l)}
+                    style={{
+                      minWidth: 78,
+                      height: 30,
+                      borderRadius: 8,
+                      border: `1px solid ${T.dangerBorder}`,
+                      background: 'transparent',
+                      color: T.danger,
+                      fontFamily: F,
+                      fontWeight: 700,
+                      fontSize: 11,
+                      letterSpacing: 1,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Void
+                  </button>
+                </div>
+              )
+            })}
+        </div>
+      </div>
 
-    listHint: {
-      fontSize: 12,
-      color: theme.textMuted,
-      fontFamily: FB,
-    },
-
-    emptyState: {
-      color: theme.textMuted,
-      fontSize: 13,
-      padding: '8px 0',
-    },
-
-    list: {
-      display: 'grid',
-      gap: 10,
-    },
-
-    row: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 10,
-      background: theme.cardAltBg || theme.secondaryBg,
-      border: `1px solid ${theme.borderSoft || theme.border}`,
-      borderRadius: 12,
-      padding: 12,
-    },
-
-    rowMain: {
-      display: 'grid',
-      gridTemplateColumns: '52px 110px 100px minmax(0, 1fr)',
-      gap: 10,
-      alignItems: 'center',
-      minWidth: 0,
-      flex: 1,
-    },
-
-    place: {
-      color: theme.secondaryText,
-      fontFamily: F,
-      fontWeight: 900,
-      fontSize: 18,
-    },
-
-    time: {
-      color: theme.text,
-      fontFamily: F,
-      fontWeight: 800,
-      fontSize: 16,
-    },
-
-    bib: {
-      color: theme.text,
-      fontFamily: F,
-      fontWeight: 700,
-      fontSize: 15,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    },
-
-    name: {
-      color: theme.textMuted,
-      fontFamily: FB,
-      fontSize: 13,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    },
-
-    rowActionBtn: {
-      height: 38,
-      padding: '0 12px',
-      borderRadius: 10,
-      border: '1px solid rgba(239,68,68,0.25)',
-      background: 'rgba(239,68,68,0.08)',
-      color: '#ef4444',
-      cursor: 'pointer',
-      fontFamily: F,
-      fontWeight: 700,
-      fontSize: 12,
-      letterSpacing: 1,
-      textTransform: 'uppercase',
-      flexShrink: 0,
-    },
-  }
+      {message && (
+        <div style={{ textAlign: 'center', fontSize: 11, color: T.warning }}>
+          {message}
+        </div>
+      )}
+    </div>
+  </div>
+)
 }

@@ -39,7 +39,7 @@ export default function CheckpointRedirect() {
         return
       }
 
-      const targetPath = `/race/${checkpoint.event_id}/checkpoint/${checkpoint.id}`
+      const targetPath = `/race/${checkpoint.event_id}/checkpoints/${checkpoint.id}/admin`
 
       const {
         data: { session },
