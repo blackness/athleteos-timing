@@ -92,6 +92,8 @@ export default function StaffAccessGate() {
       role: row.role,
       raceEventId: row.race_event_id,
       raceName: row.race_name,
+      checkpointId: row.checkpoint_id ?? null,
+      checkpointName: row.checkpoint_name ?? '',
     })
 
     navigate(getStaffRolePath(accessCode, row.role), { replace: true })

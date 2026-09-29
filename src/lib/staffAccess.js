@@ -16,7 +16,14 @@ export function saveStoredStaffSessions(sessions) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
 }
 
-export function createStaffSession({ accessCode, role, raceEventId, raceName }) {
+export function createStaffSession({
+  accessCode,
+  role,
+  raceEventId,
+  raceName,
+  checkpointId = null,
+  checkpointName = '',
+}) {
   const sessions = getStoredStaffSessions()
   const grantedAt = new Date().toISOString()
   const expiresAt = new Date(Date.now() + SESSION_HOURS * 60 * 60 * 1000).toISOString()
@@ -26,6 +33,8 @@ export function createStaffSession({ accessCode, role, raceEventId, raceName }) 
     role,
     raceEventId,
     raceName: raceName || '',
+    checkpointId,
+    checkpointName: checkpointName || '',
     grantedAt,
     expiresAt,
   }

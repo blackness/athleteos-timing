@@ -71,12 +71,12 @@ export function getStaffAccessPath(accessCode) {
   return `/staff/${accessCode}`
 }
 
-export function getCheckpointAdminPath(eventId, checkpointId) {
-  return `/race/${eventId}/checkpoints/${checkpointId}/admin`
-}
-
 export function getCheckpointDevicePath(eventId, checkpointId) {
   return `/race/${eventId}/checkpoints/${checkpointId}/device`
+}
+
+export function getCheckpointAdminPath(eventId, checkpointId) {
+  return `/race/${eventId}/checkpoints/${checkpointId}/admin`
 }
 
 export function getCheckpointTimerPath(eventId, checkpointId) {
