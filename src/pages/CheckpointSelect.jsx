@@ -21,11 +21,11 @@ export default function CheckpointSelect() {
 
       const [{ data: raceData }, { data: checkpointData }] = await Promise.all([
         supabase.from('race_events').select('id,name,status').eq('id', id).single(),
-        supabase
+          supabase
           .from('race_checkpoints')
           .select('*')
           .eq('event_id', id)
-          .order('display_order', { ascending: true }),
+          .order('checkpoint_order', { ascending: true })
       ])
 
       if (!active) return

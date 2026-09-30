@@ -191,11 +191,39 @@ export default function StaffTimerPage() {
   }, [])
 
   const statusPill = useCallback((tone = 'default') => {
-    if (tone === 'success') return { background: T.successBg, border: `1px solid ${T.successBorder}`, color: T.successBright }
-    if (tone === 'warning') return { background: T.warningBg, border: `1px solid ${T.warningBorder}`, color: T.warning }
-    if (tone === 'danger') return { background: T.dangerBg, border: `1px solid ${T.dangerBorder}`, color: T.danger }
-    if (tone === 'info') return { background: T.infoBg, border: `1px solid ${T.infoBorder}`, color: T.info }
-    return { background: T.panel2, border: `1px solid ${T.border2}`, color: T.muted }
+    if (tone === 'success') {
+      return {
+        background: T.successBg,
+        border: `1px solid ${T.successBorder}`,
+        color: T.successBright,
+      }
+    }
+    if (tone === 'warning') {
+      return {
+        background: T.warningBg,
+        border: `1px solid ${T.warningBorder}`,
+        color: T.warning,
+      }
+    }
+    if (tone === 'danger') {
+      return {
+        background: T.dangerBg,
+        border: `1px solid ${T.dangerBorder}`,
+        color: T.danger,
+      }
+    }
+    if (tone === 'info') {
+      return {
+        background: T.infoBg,
+        border: `1px solid ${T.infoBorder}`,
+        color: T.info,
+      }
+    }
+    return {
+      background: T.panel2,
+      border: `1px solid ${T.border2}`,
+      color: T.muted,
+    }
   }, [T])
 
   const themeBtn = active => ({
@@ -240,7 +268,11 @@ export default function StaffTimerPage() {
     if (lastAction.status === 'syncing') return { tone: 'info', icon: '↻', title: 'Saving' }
     if (lastAction.type === 'undo') return { tone: 'warning', icon: '↩', title: 'Last Undo' }
     if (lastAction.type === 'void') return { tone: 'warning', icon: '⛔', title: 'Voided' }
-    return { tone: 'success', icon: '✓', title: isFinishCheckpoint ? 'Last Finish Capture' : 'Last Capture' }
+    return {
+      tone: 'success',
+      icon: '✓',
+      title: isFinishCheckpoint ? 'Last Finish Capture' : 'Last Capture',
+    }
   }, [lastAction, isFinishCheckpoint])
 
   useEffect(() => {
@@ -316,9 +348,19 @@ export default function StaffTimerPage() {
       const [{ data: eventData }, { data: checkpointData }, { data: entryData }, { data: lapData }] =
         await Promise.all([
           supabase.from('race_events').select('*').eq('id', eventId).single(),
-          supabase.from('race_checkpoints').select('*').eq('id', checkpointId).eq('event_id', eventId).single(),
+          supabase
+            .from('race_checkpoints')
+            .select('*')
+            .eq('id', checkpointId)
+            .eq('event_id', eventId)
+            .single(),
           supabase.from('event_entries').select('*').eq('event_id', eventId),
-          supabase.from('lap_events').select('*').eq('event_id', eventId).eq('checkpoint_id', checkpointId).order('captured_at', { ascending: true }),
+          supabase
+            .from('lap_events')
+            .select('*')
+            .eq('event_id', eventId)
+            .eq('checkpoint_id', checkpointId)
+            .order('captured_at', { ascending: true }),
         ])
 
       const localPending = loadRaceEventLocal(eventId)
@@ -346,35 +388,47 @@ export default function StaffTimerPage() {
 
     const ch = supabase
       .channel(`checkpoint:${eventId}:${checkpointId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` }, payload => {
-        const localPending = loadRaceEventLocal(eventId)
-        const mergedEvent = mergeEventWithLocal(payload.new, localPending)
-        setEvent(mergedEvent)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'race_events', filter: `id=eq.${eventId}` },
+        payload => {
+          const localPending = loadRaceEventLocal(eventId)
+          const mergedEvent = mergeEventWithLocal(payload.new, localPending)
+          setEvent(mergedEvent)
 
-        if (mergedEvent?.race_started_at) {
-          setRaceStart(new Date(mergedEvent.race_started_at).getTime())
-        } else {
-          setRaceStart(null)
-          setElapsed(0)
+          if (mergedEvent?.race_started_at) {
+            setRaceStart(new Date(mergedEvent.race_started_at).getTime())
+          } else {
+            setRaceStart(null)
+            setElapsed(0)
+          }
         }
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` }, payload => {
-        const row = payload.new
-        if (row.checkpoint_id !== checkpointId) return
-        setLaps(prev => {
-          if (prev.find(x => x.id === row.id)) return prev
-          return [...prev, row].sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
-        })
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` }, payload => {
-        const row = payload.new
-        if (row.checkpoint_id !== checkpointId) return
-        setLaps(prev => {
-          const exists = prev.find(x => x.id === row.id)
-          const next = exists ? prev.map(x => (x.id === row.id ? row : x)) : [...prev, row]
-          return next.sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
-        })
-      })
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` },
+        payload => {
+          const row = payload.new
+          if (row.checkpoint_id !== checkpointId) return
+          setLaps(prev => {
+            if (prev.find(x => x.id === row.id)) return prev
+            return [...prev, row].sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+          })
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'lap_events', filter: `event_id=eq.${eventId}` },
+        payload => {
+          const row = payload.new
+          if (row.checkpoint_id !== checkpointId) return
+          setLaps(prev => {
+            const exists = prev.find(x => x.id === row.id)
+            const next = exists ? prev.map(x => (x.id === row.id ? row : x)) : [...prev, row]
+            return next.sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+          })
+        }
+      )
       .subscribe()
 
     return () => {
@@ -515,7 +569,9 @@ export default function StaffTimerPage() {
       .slice(0, 5)
   }, [laps])
 
-  const checkpointCount = useMemo(() => laps.filter(l => l.status !== 'void').length, [laps])
+  const checkpointCount = useMemo(() => {
+    return laps.filter(l => l.status !== 'void').length
+  }, [laps])
 
   const lastActiveLap = useMemo(() => {
     return [...laps]
@@ -569,7 +625,10 @@ export default function StaffTimerPage() {
     const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const optimistic = { ...row, id: localId }
 
-    setLaps(prev => [...prev, optimistic].sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at)))
+    setLaps(prev =>
+      [...prev, optimistic].sort((a, b) => new Date(a.captured_at) - new Date(b.captured_at))
+    )
+
     setFlash(true)
     window.setTimeout(() => setFlash(false), 160)
 
@@ -621,7 +680,9 @@ export default function StaffTimerPage() {
       })
 
       setTransientMessage(
-        isFinishCheckpoint ? 'Finisher saved locally, waiting to sync' : 'Tap saved locally, waiting to sync',
+        isFinishCheckpoint
+          ? 'Finisher saved locally, waiting to sync'
+          : 'Tap saved locally, waiting to sync',
         2200
       )
     }
@@ -656,7 +717,11 @@ export default function StaffTimerPage() {
 
     if (error) {
       const pendingLocal = loadPendingLocal(eventId, checkpointId)
-      pendingLocal.push({ type: 'status_update', target_id: target.id, payload: update })
+      pendingLocal.push({
+        type: 'status_update',
+        target_id: target.id,
+        payload: update,
+      })
       savePendingLocal(eventId, checkpointId, pendingLocal)
 
       pushLastAction({
@@ -680,7 +745,9 @@ export default function StaffTimerPage() {
         name: 'Pending tap',
         team: '',
         elapsed_ms: target.elapsed_ms,
-        detail: isFinishCheckpoint ? 'Most recent pending finisher voided' : 'Most recent pending tap voided',
+        detail: isFinishCheckpoint
+          ? 'Most recent pending finisher voided'
+          : 'Most recent pending tap voided',
       })
 
       setTransientMessage(
@@ -710,7 +777,11 @@ export default function StaffTimerPage() {
 
     if (error) {
       const pendingLocal = loadPendingLocal(eventId, checkpointId)
-      pendingLocal.push({ type: 'status_update', target_id: target.id, payload: update })
+      pendingLocal.push({
+        type: 'status_update',
+        target_id: target.id,
+        payload: update,
+      })
       savePendingLocal(eventId, checkpointId, pendingLocal)
 
       pushLastAction({
@@ -765,7 +836,11 @@ export default function StaffTimerPage() {
 
     if (error) {
       const pendingLocal = loadPendingLocal(eventId, checkpointId)
-      pendingLocal.push({ type: 'status_update', target_id: lap.id, payload: update })
+      pendingLocal.push({
+        type: 'status_update',
+        target_id: lap.id,
+        payload: update,
+      })
       savePendingLocal(eventId, checkpointId, pendingLocal)
 
       pushLastAction({
@@ -805,6 +880,7 @@ export default function StaffTimerPage() {
 
     const handler = e => {
       const inInput = isTextInput(document.activeElement)
+
       if (e.code === 'Space' && !inInput) {
         e.preventDefault()
         if (canCapture) captureLap()
@@ -824,28 +900,84 @@ export default function StaffTimerPage() {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: T.bg, color: T.text, fontFamily: FB, display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{
+        minHeight: '100dvh',
+        background: T.bg,
+        color: T.text,
+        fontFamily: FB,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=Barlow:wght@400;500;600&display=swap"
         rel="stylesheet"
       />
 
-      <div style={{ padding: '18px 16px 14px', borderBottom: `1px solid ${T.border}`, background: T.pageAlt, textAlign: 'center' }}>
-        <div style={{ fontSize: 'clamp(28px, 6vw, 40px)', fontWeight: 900, color: T.textStrong, fontFamily: F, lineHeight: 1, textTransform: 'uppercase', letterSpacing: 1 }}>
+      <div
+        style={{
+          padding: '18px 16px 14px',
+          borderBottom: `1px solid ${T.border}`,
+          background: T.pageAlt,
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 'clamp(28px, 6vw, 40px)',
+            fontWeight: 900,
+            color: T.textStrong,
+            fontFamily: F,
+            lineHeight: 1,
+            textTransform: 'uppercase',
+            letterSpacing: 1,
+          }}
+        >
           {checkpoint?.name || 'Checkpoint'}
         </div>
 
-        <div style={{ marginTop: 8, fontSize: 'clamp(40px, 9vw, 64px)', fontWeight: 900, letterSpacing: -1.5, color: event?.race_started_at ? T.textStrong : T.dim, fontVariantNumeric: 'tabular-nums', fontFamily: F, lineHeight: 1 }}>
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 'clamp(40px, 9vw, 64px)',
+            fontWeight: 900,
+            letterSpacing: -1.5,
+            color: event?.race_started_at ? T.textStrong : T.dim,
+            fontVariantNumeric: 'tabular-nums',
+            fontFamily: F,
+            lineHeight: 1,
+          }}
+        >
           {fmt(elapsed)}
         </div>
 
-        <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', ...statusPill(currentSaveState.tone), borderRadius: 999, padding: '6px 10px', fontSize: 10, fontFamily: F, fontWeight: 800, letterSpacing: 1.1, textTransform: 'uppercase' }}>
+        <div
+          style={{
+            marginTop: 8,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            ...statusPill(currentSaveState.tone),
+            borderRadius: 999,
+            padding: '6px 10px',
+            fontSize: 10,
+            fontFamily: F,
+            fontWeight: 800,
+            letterSpacing: 1.1,
+            textTransform: 'uppercase',
+          }}
+        >
           {currentSaveState.label}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10 }}>
-          <button style={themeBtn(theme === 'light')} onClick={() => setTheme('light')}>☀ Light</button>
-          <button style={themeBtn(theme === 'dark')} onClick={() => setTheme('dark')}>🌙 Dark</button>
+          <button style={themeBtn(theme === 'light')} onClick={() => setTheme('light')}>
+            ☀ Light
+          </button>
+          <button style={themeBtn(theme === 'dark')} onClick={() => setTheme('dark')}>
+            🌙 Dark
+          </button>
         </div>
 
         <div style={{ marginTop: 10, fontSize: 11, color: T.muted }}>
@@ -853,14 +985,41 @@ export default function StaffTimerPage() {
         </div>
       </div>
 
-      <div style={{ flex: 1, width: '100%', maxWidth: 760, margin: '0 auto', display: 'grid', gap: 16, padding: 16 }}>
+      <div
+        style={{
+          flex: 1,
+          width: '100%',
+          maxWidth: 760,
+          margin: '0 auto',
+          display: 'grid',
+          gap: 16,
+          padding: 16,
+        }}
+      >
         {pending.length > 0 && (
-          <div style={{ borderRadius: 12, border: `1px solid ${T.warningBorder}`, background: T.warningBg, padding: '12px 14px' }}>
-            <div style={{ fontSize: 11, color: T.warning, fontFamily: F, fontWeight: 900, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+          <div
+            style={{
+              borderRadius: 12,
+              border: `1px solid ${T.warningBorder}`,
+              background: T.warningBg,
+              padding: '12px 14px',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: T.warning,
+                fontFamily: F,
+                fontWeight: 900,
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+              }}
+            >
               {isFinishCheckpoint
                 ? `${pending.length} unassigned ${pending.length === 1 ? 'finisher' : 'finishers'}`
                 : `${pending.length} unassigned ${pending.length === 1 ? 'tap' : 'taps'}`}
             </div>
+
             <div style={{ marginTop: 4, fontSize: 12, color: T.muted }}>
               Assignment happens on the assigner screen.
             </div>
@@ -893,7 +1052,13 @@ export default function StaffTimerPage() {
               opacity: canCapture && !savingLap ? 1 : 0.6,
             }}
           >
-            {savingLap ? 'Saving…' : event?.status === 'finished' ? 'Ended' : !canCapture ? 'Waiting' : captureLabel}
+            {savingLap
+              ? 'Saving…'
+              : event?.status === 'finished'
+                ? 'Ended'
+                : !canCapture
+                  ? 'Waiting'
+                  : captureLabel}
           </button>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -945,33 +1110,112 @@ export default function StaffTimerPage() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div style={{ borderRadius: 16, border: `1px solid ${T.border2}`, background: T.panel, padding: '12px 14px', minHeight: 150 }}>
-            <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              border: `1px solid ${T.border2}`,
+              background: T.panel,
+              padding: '12px 14px',
+              minHeight: 150,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                color: T.muted2,
+                textTransform: 'uppercase',
+                letterSpacing: 2,
+                fontFamily: F,
+                fontWeight: 700,
+              }}
+            >
               {checkpointSummaryLabel}
             </div>
 
             <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 40, lineHeight: 1, fontWeight: 900, color: T.textStrong, fontFamily: F }}>
+              <div
+                style={{
+                  fontSize: 40,
+                  lineHeight: 1,
+                  fontWeight: 900,
+                  color: T.textStrong,
+                  fontFamily: F,
+                }}
+              >
                 {checkpointCount}
               </div>
-              <div style={{ marginTop: 4, fontSize: 12, color: T.muted, textTransform: 'uppercase', letterSpacing: 1.4, fontFamily: F, fontWeight: 700 }}>
+
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 12,
+                  color: T.muted,
+                  textTransform: 'uppercase',
+                  letterSpacing: 1.4,
+                  fontFamily: F,
+                  fontWeight: 700,
+                }}
+              >
                 {recordedCountLabel}
               </div>
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 1.4, fontFamily: F, fontWeight: 700 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: T.muted2,
+                  textTransform: 'uppercase',
+                  letterSpacing: 1.4,
+                  fontFamily: F,
+                  fontWeight: 700,
+                }}
+              >
                 Last Time
               </div>
-              <div style={{ marginTop: 4, fontSize: 24, lineHeight: 1, fontWeight: 900, color: T.textStrong, fontFamily: F, fontVariantNumeric: 'tabular-nums' }}>
+
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 24,
+                  lineHeight: 1,
+                  fontWeight: 900,
+                  color: T.textStrong,
+                  fontFamily: F,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
                 {lastActiveLap ? fmt(lastActiveLap.elapsed_ms, true) : '—'}
               </div>
             </div>
           </div>
 
-          <div style={{ borderRadius: 16, border: `1px solid ${T.border2}`, background: T.panel, padding: '12px 14px', minHeight: 150 }}>
-            <div style={{ fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 700 }}>
+          <div
+            style={{
+              borderRadius: 16,
+              border: `1px solid ${T.border2}`,
+              background: T.panel,
+              padding: '12px 14px',
+              minHeight: 150,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                color: T.muted2,
+                textTransform: 'uppercase',
+                letterSpacing: 2,
+                fontFamily: F,
+                fontWeight: 700,
+              }}
+            >
               {isFinishCheckpoint ? 'Last Finishers' : 'Last Captures'}
             </div>
 
@@ -988,16 +1232,51 @@ export default function StaffTimerPage() {
 
                   return (
                     <div key={lap.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 10, color: idx === 0 ? T.successBright : T.muted2, textTransform: 'uppercase', letterSpacing: 1.2, fontFamily: F, fontWeight: 800 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'baseline',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 10,
+                            color: idx === 0 ? T.successBright : T.muted2,
+                            textTransform: 'uppercase',
+                            letterSpacing: 1.2,
+                            fontFamily: F,
+                            fontWeight: 800,
+                          }}
+                        >
                           {label}
                         </span>
-                        <span style={{ fontSize: idx === 0 ? 24 : 18, color: T.textStrong, fontWeight: 900, fontFamily: F, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+
+                        <span
+                          style={{
+                            fontSize: idx === 0 ? 24 : 18,
+                            color: T.textStrong,
+                            fontWeight: 900,
+                            fontFamily: F,
+                            lineHeight: 1,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
                           {fmt(lap.elapsed_ms, true)}
                         </span>
                       </div>
 
-                      <div style={{ fontSize: 12, color: T.textStrong, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: T.textStrong,
+                          fontWeight: 700,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {isFinishCheckpoint
                           ? `Place ${activePlaceByLapId[lap.id] ?? '—'} · Bib ${bib} · ${name}`
                           : `Bib ${bib} · ${name}`}
@@ -1011,25 +1290,72 @@ export default function StaffTimerPage() {
         </div>
 
         {lastAction && lastActionTone && (
-          <div style={{ borderRadius: 14, border: statusPill(lastActionTone.tone).border, background: statusPill(lastActionTone.tone).background, padding: '12px 14px' }}>
-            <div style={{ fontSize: 11, color: statusPill(lastActionTone.tone).color, fontFamily: F, fontWeight: 900, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+          <div
+            style={{
+              borderRadius: 14,
+              border: statusPill(lastActionTone.tone).border,
+              background: statusPill(lastActionTone.tone).background,
+              padding: '12px 14px',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: statusPill(lastActionTone.tone).color,
+                fontFamily: F,
+                fontWeight: 900,
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+              }}
+            >
               {lastActionTone.icon} {lastActionTone.title}
             </div>
-            <div style={{ marginTop: 6, fontSize: 24, color: T.textStrong, fontFamily: F, fontWeight: 900, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 24,
+                color: T.textStrong,
+                fontFamily: F,
+                fontWeight: 900,
+                lineHeight: 1,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
               {fmt(lastAction.elapsed_ms, true)}
             </div>
+
             <div style={{ marginTop: 4, fontSize: 14, color: T.textStrong, fontWeight: 700 }}>
               {lastAction.name}
               {lastAction.bib_number ? ` · Bib ${lastAction.bib_number}` : ''}
             </div>
+
             <div style={{ marginTop: 5, fontSize: 12, color: T.muted }}>
               {lastAction.detail}
             </div>
           </div>
         )}
 
-        <div style={{ borderRadius: 16, border: `1px solid ${T.border2}`, background: T.panel, overflow: 'hidden' }}>
-          <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, fontSize: 10, color: T.muted2, textTransform: 'uppercase', letterSpacing: 2, fontFamily: F, fontWeight: 800 }}>
+        <div
+          style={{
+            borderRadius: 16,
+            border: `1px solid ${T.border2}`,
+            background: T.panel,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '10px 14px',
+              borderBottom: `1px solid ${T.border}`,
+              fontSize: 10,
+              color: T.muted2,
+              textTransform: 'uppercase',
+              letterSpacing: 2,
+              fontFamily: F,
+              fontWeight: 800,
+            }}
+          >
             Recent Passes
           </div>
 
@@ -1053,15 +1379,38 @@ export default function StaffTimerPage() {
                       gap: 8,
                     }}
                   >
-                    <span style={{ fontSize: 13, fontWeight: 700, color: T.textStrong, fontVariantNumeric: 'tabular-nums', fontFamily: F }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: T.textStrong,
+                        fontVariantNumeric: 'tabular-nums',
+                        fontFamily: F,
+                      }}
+                    >
                       {fmt(lap.elapsed_ms, true)}
                     </span>
 
-                    <span style={{ color: lap.bib_number ? T.warning : T.dim, fontSize: 13, fontWeight: 700, fontFamily: F }}>
+                    <span
+                      style={{
+                        color: lap.bib_number ? T.warning : T.dim,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        fontFamily: F,
+                      }}
+                    >
                       {bib}
                     </span>
 
-                    <span style={{ fontSize: 13, color: name ? T.text : T.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        color: name ? T.text : T.dim,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
                       {name}
                     </span>
 
@@ -1089,7 +1438,11 @@ export default function StaffTimerPage() {
           </div>
         </div>
 
-        {message && <div style={{ textAlign: 'center', fontSize: 11, color: T.warning }}>{message}</div>}
+        {message && (
+          <div style={{ textAlign: 'center', fontSize: 11, color: T.warning }}>
+            {message}
+          </div>
+        )}
       </div>
     </div>
   )
